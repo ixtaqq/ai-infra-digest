@@ -265,16 +265,18 @@ async function processFiling(
  * Process SEC filings through AI to extract key financial metrics.
  * Filings are processed one at a time to keep costs low.
  * Only processes the top N most impactful filings.
+ * Includes a 1-second delay between batches to avoid rate limits.
  */
 export async function analyzeSECFilings(
   filings: SECFiling[],
-  maxFilings = 5
+  maxFilings = 3
 ): Promise<SECAnalysisResult> {
   if (filings.length === 0) {
     return { extracts: [], totalTokens: 0, promptTokens: 0, completionTokens: 0 };
   }
 
-  logger.info(`Analyzing ${Math.min(filings.length, maxFilings)} SEC filings with AI...`);
+  const actualCount = Math.min(filings.length, maxFilings);
+  logger.info(`Analyzing ${actualCount} SEC filings with AI (max ${maxFilings}, ~1,200 tokens each)...`);
 
   const client = createClient();
   const extracts: SECFinancialExtract[] = [];
@@ -294,6 +296,11 @@ export async function analyzeSECFilings(
   for (let i = 0; i < toProcess.length; i++) {
     const filing = toProcess[i];
     logger.info(`SEC AI [${i + 1}/${toProcess.length}]: ${filing.ticker} ${filing.formType} (${filing.filingDate})`);
+
+    // Add 1-second delay between filings to avoid Groq rate limits
+    if (i > 0) {
+      await sleep(1000);
+    }
 
     const result = await processFiling(client, filing);
     totalTokens += result.tokenUsage.totalTokens;

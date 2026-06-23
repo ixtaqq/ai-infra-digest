@@ -429,6 +429,11 @@
       </div>
 
       <div class="charts-grid">
+        <div class="chart-card"><h3>💸 Capex & AI Spending <span class="badge" id="capexBadge">from SEC filings</span></h3><canvas id="capexChart"></canvas></div>
+        <div class="chart-card"><h3>⭐ Feedback Pulse <span class="badge" id="feedbackBadge">over time</span></h3><canvas id="feedbackChart"></canvas></div>
+      </div>
+
+      <div class="charts-grid">
         <div class="chart-card"><h3>⚡ Digest Run Performance</h3><canvas id="digestPerfChart"></canvas></div>
         <div class="chart-card"><h3>🔬 AI Token Usage</h3><canvas id="tokenChart"></canvas></div>
       </div>
@@ -452,10 +457,11 @@
           </div>
           <input class="filter-search" id="filterSearch" placeholder="Search articles..." oninput="onSearchChange()">
           <button class="filter-clear" id="filterClear" onclick="clearFilters()" style="display:none">✕ Clear</button>
-        </div>          <table><thead><tr><th>Title</th><th>Category</th><th>Impact</th><th>Score</th><th>Stocks</th></tr></thead><tbody id="articlesBody"></tbody></table>
+        </div>          <table><thead><tr><th>Title</th><th>Category</th><th>Impact</th><th>Score</th><th>Stocks</th><th></th></tr></thead><tbody id="articlesBody"></tbody></table>
         <div id="articlesCount" style="margin-top:10px;font-size:12px;color:var(--text-muted)"></div>
         <div id="paginationControls" style="margin-top:12px;display:flex;align-items:center;gap:10px">
           <button id="loadMoreBtn" onclick="loadMoreArticles()" style="background:var(--bg-hover);border:1px solid var(--border);color:var(--text);padding:8px 18px;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:500;font-family:'Inter',sans-serif;transition:all 0.2s var(--transition);display:none" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">⬇️ Load More</button>
+          <button onclick="exportCSV()" style="background:var(--bg-hover);border:1px solid var(--border);color:var(--text);padding:8px 18px;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:500;font-family:'Inter',sans-serif;transition:all 0.2s var(--transition)" onmouseover="this.style.borderColor='var(--accent2)'" onmouseout="this.style.borderColor='var(--border)'">📥 Export CSV</button>
           <span id="paginationInfo" style="font-size:11px;color:var(--text-muted)"></span>
         </div>
       </div>
@@ -481,8 +487,17 @@
     let isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     let stockPriceDataCache = [];
 
-    // ─── Filter State ──
-    let activeFilters = { sector: null, impact: null, search: '' };
+    // ─── Filter State (persisted in localStorage) ──
+    function loadSavedFilters() {
+      try {
+        const saved = JSON.parse(localStorage.getItem('savedFilters') || '{}');
+        return { sector: saved.sector || null, impact: saved.impact || null, search: saved.search || '' };
+      } catch { return { sector: null, impact: null, search: '' }; }
+    }
+    function saveFilters() {
+      try { localStorage.setItem('savedFilters', JSON.stringify(activeFilters)); } catch {}
+    }
+    let activeFilters = loadSavedFilters();
     let allArticlesCache = [];
     let allSectors = [];
     let searchDebounceTimer = null;
@@ -641,6 +656,8 @@
         renderStockChart(stocks);
         renderStockPriceChart(prices);
         renderSectorTrendChart(sectors);
+        renderCapexChart(metrics);
+        renderFeedbackChart(metrics);
         renderDigestPerformanceChart(digests, metrics);
         renderTokenChart(metrics);
         renderFilterBar();
@@ -687,6 +704,89 @@
           </div>
         `;
       }
+    }
+
+    // ─── Capex & AI Spending Chart ──
+    function renderCapexChart(metrics) {
+      if(charts.capex) charts.capex.destroy();
+      const sorted = (metrics||[]).filter(m => (m.sec_capex_total || m.sec_ai_revenue_total || m.total_capex_announced)).sort((a,b) => a.date.localeCompare(b.date));
+      if(!sorted.length) return;
+      const dates = sorted.map(m => fmtShortDate(m.date));
+      const capexData = sorted.map(m => (m.sec_capex_total || m.total_capex_announced || 0));
+      const aiRevData = sorted.map(m => (m.sec_ai_revenue_total || 0));
+      const ctx=document.getElementById('capexChart').getContext('2d');
+      const c=chartTextColor(),gc=chartGridColor();
+      const badge=document.getElementById('capexBadge');
+      if(badge) badge.textContent=`${sorted.length} days tracked`;
+      charts.capex = new Chart(ctx, {
+        type:'bar', data:{
+          labels: dates,
+          datasets: [
+            { label:'Capex ($M)', data:capexData, backgroundColor:'rgba(34,211,238,0.7)', borderColor:'#22d3ee', borderWidth:1, borderRadius:4, borderSkipped:false, yAxisID:'y' },
+            { label:'AI Revenue ($M)', data:aiRevData, backgroundColor:'rgba(16,185,129,0.7)', borderColor:'#10b981', borderWidth:1, borderRadius:4, borderSkipped:false, yAxisID:'y' },
+          ]
+        },
+        options:{
+          responsive:true, interaction:{mode:'index',intersect:false},
+          plugins:{
+            legend:{labels:{color:c,boxWidth:12,padding:14,usePointStyle:true,pointStyle:'circle',font:{size:11}}},
+            tooltip:{backgroundColor:isDark?'rgba(17,24,39,0.95)':'rgba(255,255,255,0.95)',titleColor:isDark?'#f1f5f9':'#0f172a',bodyColor:c,borderColor:isDark?'rgba(51,65,85,0.5)':'rgba(203,213,225,0.5)',borderWidth:1,padding:12,cornerRadius:8,callbacks:{label:(ctx)=>`${ctx.dataset.label}: $${Number(ctx.raw).toLocaleString()}M`}}
+          },
+          scales:{
+            x:{ticks:{color:c,maxTicksLimit:8,maxRotation:45},grid:{color:gc}},
+            y:{ticks:{color:c,callback:(v)=>'$'+v.toFixed(0)+'M'},grid:{color:gc},beginAtZero:true}
+          }
+        }
+      });
+    }
+
+    // ─── Feedback Pulse Chart ──
+    function renderFeedbackChart(metrics) {
+      if(charts.feedback) charts.feedback.destroy();
+      const sorted = (metrics||[]).filter(m => m.feedback_ratings).sort((a,b) => a.date.localeCompare(b.date));
+      if(!sorted.length) return;
+      const dates = sorted.map(m => fmtShortDate(m.date));
+      const avgRatings = sorted.map(m => {
+        try {
+          const p = JSON.parse(m.feedback_ratings);
+          if(p.ratings && p.ratings.length) return p.ratings.reduce((s,r)=>s+r,0)/p.ratings.length;
+        } catch {}
+        return null;
+      });
+      const voteCounts = sorted.map(m => {
+        try {
+          const p = JSON.parse(m.feedback_ratings);
+          return p.ratings ? p.ratings.length : 0;
+        } catch { return 0; }
+      });
+      // Only keep days with actual ratings
+      const valid = dates.map((d,i) => ({date:d, avg:avgRatings[i], votes:voteCounts[i]})).filter(v => v.avg !== null);
+      if(valid.length < 2) return;
+      const badge=document.getElementById('feedbackBadge');
+      if(badge) badge.textContent=`${valid.reduce((s,v)=>s+v.votes,0)} votes`;
+      const ctx=document.getElementById('feedbackChart').getContext('2d');
+      const c=chartTextColor(),gc=chartGridColor();
+      charts.feedback = new Chart(ctx, {
+        type:'line', data:{
+          labels: valid.map(v => v.date),
+          datasets: [
+            { label:'Avg Rating', data:valid.map(v => v.avg), borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.08)', fill:true, tension:0.35, pointRadius:4, pointHoverRadius:7, borderWidth:2 },
+            { label:'Votes', data:valid.map(v => v.votes), borderColor:'#8b5cf6', backgroundColor:'rgba(139,92,246,0.08)', fill:true, tension:0.35, pointRadius:3, pointHoverRadius:6, borderWidth:1, yAxisID:'y1' },
+          ]
+        },
+        options:{
+          responsive:true, interaction:{mode:'index',intersect:false},
+          plugins:{
+            legend:{labels:{color:c,boxWidth:12,padding:14,usePointStyle:true,pointStyle:'circle',font:{size:11}}},
+            tooltip:{backgroundColor:isDark?'rgba(17,24,39,0.95)':'rgba(255,255,255,0.95)',titleColor:isDark?'#f1f5f9':'#0f172a',bodyColor:c,borderColor:isDark?'rgba(51,65,85,0.5)':'rgba(203,213,225,0.5)',borderWidth:1,padding:12,cornerRadius:8,callbacks:{label:(ctx)=>{if(ctx.datasetIndex===0)return`${'⭐'.repeat(Math.round(ctx.raw))} ${ctx.raw.toFixed(2)}`;return`${ctx.raw} votes`}}}
+          },
+          scales:{
+            x:{ticks:{color:c,maxTicksLimit:7,maxRotation:45},grid:{color:gc}},
+            y:{ticks:{color:c,min:1,max:5},grid:{color:gc},beginAtZero:false},
+            y1:{type:'linear',display:true,position:'right',ticks:{color:c},grid:{drawOnChartArea:false},beginAtZero:true}
+          }
+        }
+      });
     }
 
     // ─── Stats ──
@@ -948,17 +1048,18 @@
     }
 
     function setFilter(type, value) {
-      // Toggle: if already active, deactivate; otherwise activate
       if (activeFilters[type] === value) {
         activeFilters[type] = null;
       } else {
         activeFilters[type] = value;
       }
+      saveFilters();
       applyFilters();
     }
 
     function clearFilters() {
       activeFilters = { sector: null, impact: null, search: '' };
+      localStorage.removeItem('savedFilters');
       document.getElementById('filterSearch').value = '';
       applyFilters();
     }
@@ -967,6 +1068,7 @@
       clearTimeout(searchDebounceTimer);
       searchDebounceTimer = setTimeout(() => {
         activeFilters.search = document.getElementById('filterSearch').value.toLowerCase().trim();
+        saveFilters();
         applyFilters();
       }, 250);
     }
@@ -995,13 +1097,32 @@
       renderArticles(filtered, true);
     }
 
+    // ─── CSV Export ──
+    function exportCSV() {
+      const data = allFetchedArticles.length > 0 ? allFetchedArticles : allArticlesCache;
+      if (!data.length) return;
+      const headers = ['title','source','category','impact','impact_score','affected_stocks','summary','url'];
+      const rows = data.map(a => headers.map(h => {
+        const v = a[h] || '';
+        const s = Array.isArray(v) ? v.join('; ') : String(v);
+        return '"' + s.replace(/"/g,'""') + '"';
+      }).join(','));
+      const csv = [headers.join(','), ...rows].join('\n');
+      const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `articles-${new Date().toISOString().split('T')[0]}.csv`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    }
+
     // ─── Articles ──
     function renderArticles(articles, filtered = false) {
       const tbody = document.getElementById('articlesBody');
       const countEl = document.getElementById('articlesCount');
 
       if (!articles.length) {
-        tbody.innerHTML = '<tr><td colspan="5" style="padding:24px;text-align:center;color:var(--text-dim)">' +
+        tbody.innerHTML = '<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--text-dim)">' +
           (filtered ? 'No articles match your filters' : 'No articles yet — run the digest first') +
           '</td></tr>';
         if (countEl) countEl.textContent = '';
@@ -1014,7 +1135,8 @@
         `<td><span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:${SECTOR_COLORS[a.category]||'var(--text-dim)'};display:inline-block"></span>${a.category||'—'}</span></td>` +
         `<td class="${sentimentClass(a.impact)}">${sentimentArrow(a.impact)} ${a.impact||'—'}</td>` +
         `<td><span style="font-weight:600;font-family:'JetBrains Mono',monospace">${a.impact_score||'—'}</span><span style="color:var(--text-muted)">/10</span></td>` +
-        `<td>${(a.affected_stocks||[]).map(s => `<span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:var(--bg-hover);padding:1px 6px;border-radius:4px;margin:0 2px">${s}</span>`).join('')||'—'}</td></tr>`
+        `<td>${(a.affected_stocks||[]).map(s => `<span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:var(--bg-hover);padding:1px 6px;border-radius:4px;margin:0 2px">${s}</span>`).join('')||'—'}</td>` +
+        `<td><a href="${a.url||'#'}" target="_blank" style="font-size:11px;color:var(--accent)">🔗</a></td></tr>`
       ).join('');
 
       if (countEl && filtered) {
