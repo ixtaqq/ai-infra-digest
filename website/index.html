@@ -687,118 +687,126 @@
   <!-- Roadmap -->
   <section id="roadmap">
     <div class="container section-center">
-      <div class="section-label animate">What's Next</div>
-      <h2 class="section-title animate">Roadmap</h2>
+      <div class="section-label animate">Product Evolution</div>
+      <h2 class="section-title animate">Version Roadmap</h2>
       <p class="section-sub animate">
-        Every feature is designed to turn raw data into a personal intelligence feed.
-        Here's what's coming — ranked by impact and actively in development.
+        Built in public. Each version adds a major capability to the AI infrastructure intelligence pipeline — from basic RSS collection to deep financial analysis.
       </p>
 
       <div class="roadmap-phases">
-        <!-- Phase 1: Now -->
+        <!-- Phase 1: Shipped -->
         <div class="roadmap-phase p1 animate">
           <div class="roadmap-phase-header">
-            <div class="roadmap-phase-label">🔥 Phase 1 · Now</div>
-            <span class="roadmap-phase-tag tag-now">In Development</span>
+            <div class="roadmap-phase-label">✅ Shipped</div>
+            <span class="roadmap-phase-tag tag-now">v1 → v2.2</span>
           </div>
           <div class="roadmap-items">
+            <div class="roadmap-item">
+              <span class="status-dot status-now"></span>
+              <span class="item-icon">🚀</span>
+              <div class="item-content">
+                <div class="item-title">v1 — Core Pipeline<span class="item-badge badge-now">Shipped</span></div>
+                <div class="item-desc">RSS → AI → Telegram → GitHub Actions cron. 57 feeds, 10 sectors, keyword filtering, conditional GET caching.</div>
+              </div>
+            </div>
+            <div class="roadmap-item">
+              <span class="status-dot status-now"></span>
+              <span class="item-icon">📊</span>
+              <div class="item-content">
+                <div class="item-title">v1.1 — Supabase &amp; Dashboard<span class="item-badge badge-now">Shipped</span></div>
+                <div class="item-desc">Supabase metrics, stock prices via Yahoo Finance, premium glassmorphism dashboard, URL + Jaccard dedup.</div>
+              </div>
+            </div>
+            <div class="roadmap-item">
+              <span class="status-dot status-now"></span>
+              <span class="item-icon">🧪</span>
+              <div class="item-content">
+                <div class="item-title">v1.2 — Testing &amp; Tracking<span class="item-badge badge-now">Shipped</span></div>
+                <div class="item-desc">Token tracking, 58 unit tests (Vitest), premium dashboard upgrades, shimmer loading animations.</div>
+              </div>
+            </div>
+            <div class="roadmap-item">
+              <span class="status-dot status-now"></span>
+              <span class="item-icon">💬</span>
+              <div class="item-content">
+                <div class="item-title">v1.3 — Interactive Bot<span class="item-badge badge-now">Shipped</span></div>
+                <div class="item-desc">Telegram commands (/digest, /sources, /last), user management, health alerts, exponential backoff, Jaccard dedup v2.</div>
+              </div>
+            </div>
+            <div class="roadmap-item">
+              <span class="status-dot status-now"></span>
+              <span class="item-icon">🔍</span>
+              <div class="item-content">
+                <div class="item-title">v2.0 — Watchlist &amp; Alerts<span class="item-badge badge-now">Shipped</span></div>
+                <div class="item-desc">/digest watchlist filtering, /alert on/off/threshold, dashboard full-text search + pagination, conditional RSS fetching.</div>
+              </div>
+            </div>
+            <div class="roadmap-item">
+              <span class="status-dot status-now"></span>
+              <span class="item-icon">📝</span>
+              <div class="item-content">
+                <div class="item-title">v2.1 — Structured Logging<span class="item-badge badge-now">Shipped</span></div>
+                <div class="item-desc">NDJSON structured logging, enhanced error alerts with recovery actions, production webhook support (Vercel, Cloudflare).</div>
+              </div>
+            </div>
             <div class="roadmap-item">
               <span class="status-dot status-now"></span>
               <span class="item-icon">⭐</span>
               <div class="item-content">
-                <div class="item-title">
-                  Personal Watchlist
-                  <span class="item-badge badge-now">🔨 Building</span>
-                  <span class="item-badge badge-effort">~2 hrs</span>
-                </div>
-                <div class="item-desc">Star tickers to track their prices, news, and alerts in one place. Persists across sessions.</div>
-              </div>
-            </div>
-            <div class="roadmap-item">
-              <span class="status-dot status-now"></span>
-              <span class="item-icon">🧠</span>
-              <div class="item-content">
-                <div class="item-title">
-                  Daily AI Summary
-                  <span class="item-badge badge-now">🔨 Building</span>
-                  <span class="item-badge badge-effort">~1.5 hrs</span>
-                </div>
-                <div class="item-desc">A narrative overview of the day's most important events — generated by Llama 3.3 from your daily digest.</div>
+                <div class="item-title">v2.2 — Feedback &amp; Trending<span class="item-badge badge-now">Shipped</span></div>
+                <div class="item-desc">/feedback with inline keyboard, /trending (7-day rolling), per-user scheduled delivery, user_delivery_log idempotency.</div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Phase 2: Next -->
+        <!-- Phase 2: Building -->
         <div class="roadmap-phase p2 animate delay-1">
           <div class="roadmap-phase-header">
-            <div class="roadmap-phase-label">🚀 Phase 2 · Next</div>
-            <span class="roadmap-phase-tag tag-next">Coming Soon</span>
+            <div class="roadmap-phase-label">🔨 Building</div>
+            <span class="roadmap-phase-tag tag-next">v3 — In Progress</span>
           </div>
           <div class="roadmap-items">
             <div class="roadmap-item">
               <span class="status-dot status-next"></span>
-              <span class="item-icon">📚</span>
+              <span class="item-icon">🏛️</span>
               <div class="item-content">
-                <div class="item-title">
-                  Full-Text Archive Search
-                  <span class="item-badge badge-effort">~2 hrs</span>
-                </div>
-                <div class="item-desc">Server-side full-text search of the entire article database with pagination, total counts, and URL-based deep linking.</div>
+                <div class="item-title">SEC Filing Deep Analysis<span class="item-badge badge-effort">High priority</span></div>
+                <div class="item-desc">Parse 8-K, 10-K, 10-Q filings for 35 companies. Extract Capex, AI Revenue, Margins, Inventory, and forward guidance with AI-powered summarization.</div>
               </div>
             </div>
             <div class="roadmap-item">
               <span class="status-dot status-next"></span>
-              <span class="item-icon">🔔</span>
+              <span class="item-icon">🎙️</span>
               <div class="item-content">
-                <div class="item-title">
-                  Smart Alert Inbox
-                  <span class="item-badge badge-effort">~2 hrs</span>
-                </div>
-                <div class="item-desc">Bell icon with unread badge — alerts for high-impact SEC filings, price movements on watchlist tickers, and sector shifts.</div>
+                <div class="item-title">Earnings Transcript Parsing<span class="item-badge badge-effort">High priority</span></div>
+                <div class="item-desc">Download and analyze earnings call transcripts. Extract Capex guidance, AI revenue mentions, and management tone signals.</div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Phase 3: Later -->
+        <!-- Phase 3: Future -->
         <div class="roadmap-phase p3 animate delay-2">
           <div class="roadmap-phase-header">
-            <div class="roadmap-phase-label">📈 Phase 3 · Future</div>
-            <span class="roadmap-phase-tag tag-later">Planned</span>
+            <div class="roadmap-phase-label">📈 Future</div>
+            <span class="roadmap-phase-tag tag-later">v4 → v5 — Planned</span>
           </div>
           <div class="roadmap-items">
             <div class="roadmap-item">
               <span class="status-dot status-coming"></span>
-              <span class="item-icon">📸</span>
+              <span class="item-icon">🗄️</span>
               <div class="item-content">
-                <div class="item-title">
-                  Shareable Snapshots
-                  <span class="item-badge badge-effort">~1 hr</span>
-                </div>
-                <div class="item-desc">One-click PNG export of any chart or the stats row — share today's snapshot in your Telegram groups or on social media.</div>
+                <div class="item-title">v4 — Article Archival &amp; Trends<span class="item-badge badge-effort">Next up</span></div>
+                <div class="item-desc">Full article archival with historical trend analysis across sectors and tickers. Price threshold alerts — get notified when a stock hits your target.</div>
               </div>
             </div>
             <div class="roadmap-item">
               <span class="status-dot status-coming"></span>
-              <span class="item-icon">⚡</span>
+              <span class="item-icon">📈</span>
               <div class="item-content">
-                <div class="item-title">
-                  Keyboard Shortcuts &amp; URL State
-                  <span class="item-badge badge-effort">~1 hr</span>
-                </div>
-                <div class="item-desc">Press <code>?</code> for help, <code>f</code> to search, <code>r</code> to refresh. Shareable dashboard URLs with sector and range parameters.</div>
-              </div>
-            </div>
-            <div class="roadmap-item">
-              <span class="status-dot status-coming"></span>
-              <span class="item-icon">📋</span>
-              <div class="item-content">
-                <div class="item-title">
-                  Refined Onboarding &amp; Empty States
-                  <span class="item-badge badge-effort">~1 hr</span>
-                </div>
-                <div class="item-desc">Guided first-run setup wizard, helpful empty-state illustrations, and contextual tips for new users.</div>
+                <div class="item-title">v5 — Theses &amp; Portfolio<span class="item-badge badge-effort">Research</span></div>
+                <div class="item-desc">Bull/bear thesis generation per ticker, competitive landscape analysis across the AI value chain, and personal portfolio tracking with P&L.</div>
               </div>
             </div>
           </div>
