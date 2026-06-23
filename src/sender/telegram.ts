@@ -380,7 +380,11 @@ export async function setupWebhook(
 ): Promise<boolean> {
   try {
     const b = getBot();
-    // Stop polling if it was running
+    // Stop polling first — prevents wasted getUpdates requests after webhook is set
+    if (typeof b.stopPolling === "function") {
+      await b.stopPolling().catch(() => logger.debug("stopPolling threw (bot may not have been polling)"));
+    }
+    // Delete any existing webhook, then set the new one
     await b.deleteWebHook();
     await b.setWebHook(webhookUrl, {
       max_connections: options?.maxConnections ?? 40,
