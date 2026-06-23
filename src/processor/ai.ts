@@ -199,14 +199,19 @@ async function backoff(attempt: number, baseDelayMs = 2000): Promise<void> {
 }
 
 // ─── Call AI with Retry ──────────────────────────────
-async function callAI(client: OpenAI, prompt: string): Promise<CallAIResult> {
+/**
+ * Call the AI model with retry logic.
+ * Uses the cheap fast model for classification and the expensive strong model for synthesis.
+ */
+async function callAI(client: OpenAI, prompt: string, model?: string): Promise<CallAIResult> {
+  const activeModel = model || config.ai.model;
   let lastError: Error | null = null;
   const maxRetries = 3;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const response = await client.chat.completions.create({
-        model: config.ai.model,
+        model: activeModel,
         messages: [
           {
             role: "system",
@@ -252,7 +257,7 @@ interface BatchResult {
   completionTokens: number;
 }
 
-// ─── Process Articles in Batches ─────────────────────
+// ─── Process Articles in Batches (uses FAST model) ──
 async function processBatch(
   client: OpenAI,
   batch: Article[],
@@ -260,12 +265,12 @@ async function processBatch(
   totalBatches: number
 ): Promise<BatchResult> {
   const prompt = buildBatchPrompt(batch, batchNum, totalBatches);
-  const { content, usage } = await callAI(client, prompt);
+  // Classification uses the fast/cheap model (llama-3.1-8b-instant)
+  const { content, usage } = await callAI(client, prompt, config.ai.fastModel);
   const result = parseJSON<{ articles: ProcessedArticle[] }>(content);
 
-  if (!result?.articles) {
-    logger.warn(`Batch ${batchNum} returned unparseable result, retrying...`);
-    const retryResult = await callAI(client, prompt);
+  if (!result?.articles) {      logger.warn(`Batch ${batchNum} returned unparseable result, retrying with fast model...`);
+    const retryResult = await callAI(client, prompt, config.ai.fastModel);
     const retryContent = retryResult.content;
     const retryParsed = parseJSON<{ articles: ProcessedArticle[] }>(retryContent);
     if (!retryParsed?.articles) {
@@ -344,7 +349,8 @@ export async function processArticles(
 
   try {
     const synthesisPrompt = buildSynthesisPrompt(allBatchResults);
-    const synthesisResult = await callAI(client, synthesisPrompt);
+    // Synthesis uses the strong model (llama-3.3-70b-versatile) for higher quality
+    const synthesisResult = await callAI(client, synthesisPrompt, config.ai.model);
     totalTokens += synthesisResult.usage.totalTokens;
     totalPromptTokens += synthesisResult.usage.promptTokens;
     totalCompletionTokens += synthesisResult.usage.completionTokens;

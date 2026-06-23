@@ -11,7 +11,8 @@ export interface Config {
   ai: {
     provider: "groq" | "openai" | "openrouter" | "custom";
     apiKey: string;
-    model: string;
+    model: string;              // Strong model for synthesis (default: llama-3.3-70b-versatile)
+    fastModel: string;          // Fast/cheap model for classification (default: llama-3.1-8b-instant)
     baseUrl?: string;
   };
   app: {
@@ -60,6 +61,7 @@ function loadConfig(): Config {
       provider,
       apiKey: requireEnv("AI_API_KEY"),
       model: process.env.AI_MODEL || "llama-3.3-70b-versatile",
+      fastModel: process.env.AI_FAST_MODEL || "llama-3.1-8b-instant",
       baseUrl: baseUrls[provider] || process.env.AI_BASE_URL,
     },
     app: {
