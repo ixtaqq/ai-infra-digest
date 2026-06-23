@@ -1,6 +1,6 @@
 # 🚀 AI Infra Digest
 
-**Daily AI infrastructure intelligence** — A pipeline that collects 57+ RSS feeds, analyzes news with AI, and delivers a curated morning digest via Telegram at **8:00 AM Malaysia Time**.
+**Daily AI infrastructure intelligence** — A pipeline that collects 57+ RSS feeds, analyzes news with AI, and delivers a curated morning digest via Telegram at each user's preferred delivery time.
 
 Covers the **full AI infrastructure value chain**: power generation → cooling → networking → chips → AI models.
 
@@ -11,10 +11,14 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 - **Smart deduplication** — URL matching + **Jaccard similarity** (catches near-identical headlines from different sources)
 - **10-sector classification**: Chips & GPUs, Cloud & Hyperscalers, Datacenters, Networking, Semiconductor Manufacturing, Power & Utilities, Cooling Infrastructure, AI Models & Labs, M&A, Earnings
 - **Keyword filtering** — 200+ AI/semiconductor keywords
+- **Conditional GET caching** — stores ETag/Last-Modified headers per feed, returns 304 for unchanged content, reducing bandwidth and parse time
+- **Consecutive failure tracking** — feeds failing 2+ times in a row are automatically skipped
+- **RSS retry with exponential backoff** — up to 2 retries per feed with full-jitter backoff
 
 ### 🤖 AI Processing
 - **Multi-provider**: Groq (default), OpenAI, OpenRouter, or custom endpoints
-- **Batch processing** (10 articles/batch) with **exponential backoff** (full-jitter retry, up to 3 attempts)
+- **Dynamic batch sizing** — automatically adjusts batch size (5–15 articles) to target ~4 batches, optimizing token cost vs. quality
+- **Batch processing** with **exponential backoff** (full-jitter retry, up to 3 attempts)
 - **Synthesis pass** — generates market outlook, top stocks, and daily summary
 - **Token tracking** — actual `prompt_tokens`, `completion_tokens`, `total_tokens` recorded per run
 
@@ -24,62 +28,99 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 - Stored in Supabase for historical trend charts
 
 ### 📱 Interactive Telegram Bot
-- **`/start`** — Welcome & register your preferences
-- **`/digest`** — Request the latest digest
-- **`/digest watchlist`** — Filter digest by your saved watchlist tickers
-- **`/digest sector=Chips_&_GPUs`** — Filter digest by sector
-- **`/sources`** — List all 57 tracked RSS feeds with health status
-- **`/last`** — Show the most recent digest summary from Supabase
-- **`/settings`** — View your user preferences
-- **`/watchlist NVDA,AMD,AVGO`** — Set your ticker watchlist
-- **`/alert on`** — Enable instant high-impact alerts (score 8+)
-- **`/alert off`** — Disable alerts
-- **`/alert threshold 9`** — Set minimum impact score for alerts
-- **`/help`** — Show available commands
+
+| Command | Description |
+|---------|-------------|
+| `/start` | Welcome & register your preferences |
+| `/help` | Show all available commands |
+| `/digest` | Request the latest digest |
+| `/digest watchlist` | Filter digest by your saved watchlist tickers |
+| `/digest sector=Chips_&_GPUs` | Filter digest by sector |
+| `/sources` | List all 57 tracked RSS feeds with health status |
+| `/last` | Show the most recent digest summary from Supabase |
+| `/trending` | See what's trending in AI infra (last 7 days) |
+| `/feedback 5` | Rate today's digest (1–5) with optional comment |
+| `/settings` | View your user preferences |
+| `/watchlist NVDA,AMD,AVGO` | Set your ticker watchlist |
+| `/alert on` | Enable instant high-impact alerts (score 8+) |
+| `/alert off` | Disable alerts |
+| `/alert threshold 9` | Set minimum impact score for alerts |
+
+#### Inline Feedback Keyboard
+`/feedback` without arguments shows an inline keyboard with star rating buttons (1–5) and a comment option.
+
+### ⏰ Scheduled Delivery (Per-User)
+- **Custom delivery times** — each user sets their `preferred_time` via `/settings`
+- **Timezone-aware** — delivery triggers at the user's local time in their configured timezone
+- **Idempotent** — `user_delivery_log` table prevents duplicate deliveries via upsert
+- **GitHub Actions cron** — runs every 30 minutes, checks all active users, delivers only to those at their preferred time
 
 ### 📊 Premium Dashboard
 - **6 interactive charts**: Stock price history, sector trend, digest performance, token usage, sector bar, stock movers
 - **Glassmorphism design** with gradient accents, shimmer loading skeletons, staggered entrance animations
 - **Dark/light theme** toggle
 - **Interactive article filtering** — click sector chart bars or use filter pills (sector, impact, search)
+- **Dashboard pagination** — "Load More" button fetches additional 20 articles via cursor, dedup by URL
 - **Full-text article search** — search bar queries Supabase by title, summary, source, category, and stocks
 - **Auto-refresh** every 60 seconds
 - **Chart.js** with rounded bar corners, gradient fills, custom tooltips
 
 ### 🗄️ Database (Supabase)
-- **10 tables**: `digest_runs`, `articles`, `sector_activity`, `stock_mentions`, `pipeline_health`, `capex_tracking`, `ai_usage`, `daily_metrics`, `stock_prices`, `user_preferences`
+- **11 tables**: `digest_runs`, `articles`, `sector_activity`, `stock_mentions`, `pipeline_health`, `capex_tracking`, `ai_usage`, `daily_metrics`, `stock_prices`, `user_preferences`, `user_delivery_log`
 - All pipeline data written automatically after each digest run
 - Dashboard reads directly from Supabase REST API
-- User preferences stored per Telegram chat ID (watchlist, alert settings, categories)
+- User preferences stored per Telegram chat ID (watchlist, alert settings, categories, delivery time)
 
-### 🔔 Health Monitoring & Alerts
+### 📈 Structured Logging & Metrics
+- **Per-day NDJSON logs** — `logs/2025-06-23.ndjson` both written to disk and streamed to stdout
+- **Event types**: `feed_fetch`, `ai_batch`, `stock_fetch`, `digest_delivery`, `error`
+- **Daily summary aggregation** — `summarizeRun()` reads all events for a date and produces a `RunSummary`
+- **Supabase persistence** — key metrics also upserted to `daily_metrics` table at pipeline end
+
+### 🔔 Error Handling & Alerts
 - **Source health alerts** — if >20% of RSS feeds fail, Telegram admin is notified with failing feed names
-- **Conditional RSS fetching** — consistently failing feeds (2+ consecutive failures) are automatically skipped to reduce runtime and avoid rate limits
-- **High-impact alert system** — articles scoring 8+/10 trigger instant Telegram notifications to opted-in users via `/alert on`
-- **Error recording** — failed pipeline runs logged to Supabase with error details
+- **Conditional RSS fetching** — consistently failing feeds (2+ consecutive failures) are automatically skipped
+- **High-impact alert system** — articles scoring 8+/10 trigger instant Telegram notifications to opted-in users
+- **Enhanced error alerts with recovery actions** — AI 429 rate limits, Yahoo Finance failures, Supabase connection errors all emit structured `ErrorEvent` metrics with human-readable recovery suggestions
+- **Error event metric** — emitted for every failure with source, severity, status code, and recovery action
+- **Supabase error recording** — failed pipeline runs logged to Supabase with error details
 - **GitHub Actions integration** — workflow secrets for `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`
 
+### 🌐 Production Webhook Support
+- `setupWebhook()` — stops polling, deletes old webhook, sets new one with optional secret token
+- `switchToPolling()` — deletes webhook, resumes polling (for local dev)
+- `startWebhookBot()` — registers commands + sets webhook in one call
+- **`WEBHOOK_SETUP.md`** — deployment guides for Vercel, Cloudflare Workers, Railway/Render/Fly.io
+
+### 📱 Trending Now
+- **Daily trending computation** — top tickers and sectors by mention count, average impact score, and dominant sentiment
+- **Stored in `daily_metrics`** — JSON-serialized `TrendingItem[]` with top 3 articles per entity
+- **`/trending` command** — views last 7 days of trending data with sentiment emojis
+
 ### 🧪 Testing
-- **26 unit tests** with **Vitest** covering:
-  - Deduplication (5 tests — first run, URL dedup, Jaccard similarity, retention expiry)
-  - Keyword matching (13 tests — tickers, sectors, case-insensitive, negative cases)
-  - Stock price fetching (3 tests — empty, capped, response shape)
-  - Telegram formatter (5 tests — header, articles, stock prices, value chain, empty state)
+- **58 unit tests** with **Vitest** covering:
+  - Deduplication (5 tests)
+  - Keyword matching (13 tests)
+  - Stock price fetching (8 tests)
+  - Telegram formatter (5 tests)
+  - Supabase integration (15 tests)
+  - Telegram integration (9 tests)
+  - Stocks integration (8 tests)
 - **TypeScript strict mode** — entire project compiles cleanly
 
 ## Architecture
 
 ```
-RSS Feeds (57 sources)
+RSS Feeds (57 sources, conditional GET with ETag cache)
       │
       ▼
-Step 1: News Collector (rss-parser + keyword filter)
+Step 1: News Collector (rss-parser + keyword filter + retry backoff)
       │
       ▼
 Step 1b: Dedup (URL match + Jaccard similarity)
       │
       ▼
-Step 2: AI Processor (batched analysis + synthesis)
+Step 2: AI Processor (dynamic batch sizing + synthesis)
       │
       ▼
 Step 2b: Yahoo Finance (stock prices for mentioned tickers)
@@ -88,13 +129,13 @@ Step 2b: Yahoo Finance (stock prices for mentioned tickers)
 Step 3: Telegram Formatter (HTML, categorized, with price data)
       │
       ▼
-Step 4: Telegram Bot (send + interactive commands)
+Step 4: Telegram Bot (send + interactive commands + webhook support)
       │
       ▼
-Step 5: Supabase (9 tables — metrics, articles, users)
+Step 5: Supabase (11 tables + per-user delivery logging)
       │
-      ▼
-Dashboard (premium HTML/JS — reads from Supabase)
+      ├── Dashboard (premium HTML/JS — reads from Supabase)
+      └── NDJSON logs (per-day files + stdout streaming)
 ```
 
 ## Quick Start
@@ -145,20 +186,26 @@ nano .env
 # Run the pipeline once
 npm run dev
 
-# Or the test script
-npm run test-digest
+# Or run the scheduler to check user delivery times
+npm run scheduler
 ```
 
 ### Run Tests
 
 ```bash
-npm test              # Run all 26 tests
+npm test              # Run all 58 tests
 npm run test:watch    # Watch mode for development
 ```
 
 ## GitHub Actions (Production)
 
+### Daily Digest (Default)
+
 The workflow in `.github/workflows/daily-digest.yml` runs at **8:00 AM MYT** (midnight UTC).
+
+### Scheduled Delivery (Per-User)
+
+The workflow in `.github/workflows/scheduled-delivery.yml` runs **every 30 minutes**, queries all active users, and delivers the digest to users whose `preferred_time` + `timezone` matches the current time.
 
 ### Required Secrets
 
@@ -192,32 +239,38 @@ The dashboard reads from your Supabase database — configure credentials via th
 
 ```
 ai-infra-digest/
-├── .env.example                    # Environment template
-├── .github/workflows/daily-digest.yml
+├── .env.example                          # Environment template
+├── .github/workflows/
+│   ├── daily-digest.yml                  # 8 AM MYT cron (default delivery)
+│   └── scheduled-delivery.yml            # Every 30 min (per-user delivery)
+├── WEBHOOK_SETUP.md                      # Production webhook deployment guide
 ├── dashboard/
-│   ├── index.html                  # Premium dashboard (glassmorphism, 6 charts, filtering)
-│   └── server.js                   # Static file server
+│   ├── index.html                        # Premium dashboard (glassmorphism, 6 charts, pagination)
+│   └── server.js                         # Static file server
 ├── scripts/
-│   ├── test-digest.ts             # Manual pipeline test
-│   └── migration-v2.sql           # Supabase migration for alert system columns
+│   ├── test-digest.ts                    # Manual pipeline test
+│   └── migration-v2.sql                  # Supabase migration for alert system columns
 ├── src/
-│   ├── index.ts                   # Main orchestrator & command handler registration
-│   ├── config.ts                  # Environment config loader
+│   ├── index.ts                          # Main orchestrator, pipeline runner, command handlers
+│   ├── scheduler.ts                      # Cron-friendly per-user delivery scheduler
+│   ├── config.ts                         # Environment config loader
 │   ├── collector/
-│   │   └── rss.ts                 # 57 RSS feeds + keyword filter + matchesKeywords()
+│   │   └── rss.ts                        # 57 RSS feeds + conditional GET caching + retry backoff
 │   ├── formatter/
-│   │   └── telegram.ts            # HTML Telegram message formatter
+│   │   └── telegram.ts                   # HTML Telegram message formatter
 │   ├── processor/
-│   │   └── ai.ts                  # AI batch processing + exponential backoff
+│   │   └── ai.ts                         # AI batch processing + dynamic batch sizing + backoff
 │   ├── sender/
-│   │   └── telegram.ts            # Bot API (polling mode, interactive commands)
+│   │   └── telegram.ts                   # Bot API (polling + webhook, interactive commands, inline keyboards)
 │   └── utils/
-│       ├── dedup.ts               # URL + Jaccard similarity deduplication
-│       ├── logger.ts              # Structured timestamped logger
-│       ├── stocks.ts              # Yahoo Finance price fetcher
-│       └── supabase.ts           # Supabase REST CRUD (all tables + users)
-├── supabase-schema.sql           # Full database schema (10 tables + RLS)
-├── vitest.config.ts              # Vitest configuration
+│       ├── dedup.ts                      # URL + Jaccard similarity deduplication
+│       ├── helpers.ts                    # Shared utilities (sleep)
+│       ├── logger.ts                     # Structured timestamped logger
+│       ├── metrics.ts                    # NDJSON structured logging (5 event types + summary)
+│       ├── stocks.ts                     # Yahoo Finance price fetcher
+│       └── supabase.ts                   # Supabase REST CRUD (11 tables + delivery log)
+├── supabase-schema.sql                   # Full database schema (11 tables + RLS)
+├── vitest.config.ts                      # Vitest configuration
 ├── package.json
 ├── tsconfig.json
 └── README.md
@@ -249,7 +302,9 @@ Tom's Hardware, AnandTech, Ars Technica, TechCrunch, The Verge, Seeking Alpha, S
 - [x] **v1.1** — Supabase metrics, stock prices, dashboard, dedup
 - [x] **v1.2** — Token tracking, unit tests (26 tests), premium dashboard
 - [x] **v1.3** — Interactive Telegram commands, user management, health alerts, exponential backoff, Jaccard dedup
-- [x] **v2.0** — Watchlist filtering (`/digest watchlist`), conditional RSS fetching, alert system (`/alert on/off/threshold`), dashboard full-text search
+- [x] **v2.0** — Watchlist filtering (`/digest watchlist`), conditional RSS fetching, alert system (`/alert on/off/threshold`), dashboard full-text search + pagination
+- [x] **v2.1** — Structured logging & metrics (NDJSON), RSS conditional GET caching, enhanced error alerts with recovery actions, production webhook support (`WEBHOOK_SETUP.md`)
+- [x] **v2.2** — `/feedback` with inline keyboard, `/trending` (7-day rolling trend), per-user scheduled delivery (cron), `user_delivery_log` idempotency
 - [ ] **v3** — SEC filing deep analysis, earnings transcript parsing
 - [ ] **v4** — Article archival & historical trend analysis, price threshold alerts
 - [ ] **v5** — Bull/bear theses, competitive landscape analysis, portfolio tracking
