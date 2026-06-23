@@ -72,6 +72,15 @@ export interface AIUsageData {
   cost_estimated: number;
 }
 
+export interface StockPriceData {
+  date: string;
+  ticker: string;
+  price?: number;
+  change?: number;
+  change_percent?: number;
+  previous_close?: number;
+}
+
 export interface FeedStatus {
   name: string;
   url: string;
@@ -270,6 +279,22 @@ export const supabase = {
       { date, ...metrics },
       "on_conflict=date"
     );
+  },
+
+  async insertStockPrices(prices: StockPriceData[]): Promise<boolean> {
+    if (!prices.length) return true;
+    let success = true;
+    for (const price of prices) {
+      const ok = await supabaseFetch(
+        "POST",
+        "stock_prices",
+        price,
+        `on_conflict=date,ticker`
+      );
+      if (!ok) success = false;
+    }
+    logger.info(`Supabase: stored ${prices.length} stock prices`);
+    return success;
   },
 
   // Quick helper to check if the database is reachable

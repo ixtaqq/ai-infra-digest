@@ -9,7 +9,7 @@
     :root {
       --bg: #0a0e17; --bg-card: #111827; --bg-hover: #1f2937;
       --text: #f1f5f9; --text-dim: #94a3b8; --border: #1e293b;
-      --accent: #22d3ee; --accent2: #10b981; --danger: #ef4444;
+      --accent: #22d3ee; --accent2: #10b981; --danger: #ef4444; --warn: #f59e0b;
       --bullish: #22c55e; --bearish: #ef4444; --neutral: #94a3b8;
       --header-bg: rgba(17,24,39,0.8); --shadow: 0 4px 6px -1px rgba(0,0,0,0.3);
     }
@@ -26,6 +26,9 @@
     .header-controls { display:flex; align-items:center; gap:12px; }
     .header-controls select, .header-controls button { background:var(--bg-card); color:var(--text); border:1px solid var(--border); padding:8px 14px; border-radius:8px; font-size:13px; cursor:pointer; transition:all .2s; }
     .header-controls select:hover, .header-controls button:hover { border-color:var(--accent); }
+    .header-controls .ticker-picker { display:flex; align-items:center; gap:6px; }
+    .header-controls .ticker-picker label { font-size:12px; color:var(--text-dim); }
+    .header-controls .ticker-picker select { font-size:12px; padding:4px 8px; }
     .status-dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
     .status-dot.live { background:var(--accent2); animation:pulse 2s infinite; }
     @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.4;} }
@@ -36,10 +39,11 @@
     .stat-card .label { font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:var(--text-dim); margin-bottom:6px; }
     .stat-card .value { font-size:28px; font-weight:700; line-height:1.2; }
     .stat-card .sub { font-size:12px; color:var(--text-dim); margin-top:4px; }
-    .charts-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(400px,1fr)); gap:16px; margin-bottom:24px; }
+    .charts-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(420px,1fr)); gap:16px; margin-bottom:24px; }
     .chart-card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:20px; }
-    .chart-card h3 { font-size:14px; font-weight:600; margin-bottom:12px; color:var(--text-dim); }
-    .chart-card canvas { max-height:250px; }
+    .chart-card h3 { font-size:14px; font-weight:600; margin-bottom:12px; color:var(--text-dim); display:flex; align-items:center; gap:8px; }
+    .chart-card h3 .badge { font-size:11px; background:var(--bg-hover); padding:2px 8px; border-radius:4px; color:var(--text-dim); font-weight:400; }
+    .chart-card canvas { max-height:260px; }
     .table-card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:16px; overflow-x:auto; }
     .table-card h3 { font-size:14px; font-weight:600; margin-bottom:12px; color:var(--text-dim); }
     table { width:100%; border-collapse:collapse; font-size:13px; }
@@ -62,7 +66,8 @@
     .config-form input { width:100%; padding:10px 12px; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:14px; margin-bottom:16px; font-family:monospace; }
     .config-form button { background:var(--accent); color:#000; border:none; padding:10px 24px; border-radius:8px; cursor:pointer; font-weight:600; font-size:14px; width:100%; }
     .config-form .note { font-size:12px; color:var(--text-dim); margin-top:8px; }
-    @media (max-width:768px) { .container{padding:12px;} .charts-grid{grid-template-columns:1fr;} .stats-grid{grid-template-columns:repeat(2,1fr);} .header{padding:12px 16px;} .header h1{font-size:16px;} }
+    .trend-up { color:var(--bullish); } .trend-down { color:var(--bearish); } .trend-flat { color:var(--neutral); }
+    @media (max-width:768px) { .container{padding:12px;} .charts-grid{grid-template-columns:1fr;} .stats-grid{grid-template-columns:repeat(2,1fr);} .header{padding:12px 16px;} .header h1{font-size:16px;} .header-controls .ticker-picker{display:none;} }
   </style>
 </head>
 <body>
@@ -90,13 +95,21 @@
     </div>
     <div id="content" style="display:none">
       <div class="stats-grid" id="statsGrid"></div>
-      <div class="charts-grid" id="chartsGrid">
+      <div class="charts-grid">
         <div class="chart-card"><h3>📊 Sector Activity</h3><canvas id="sectorChart"></canvas></div>
         <div class="chart-card"><h3>📈 Top Stock Movers</h3><canvas id="stockChart"></canvas></div>
       </div>
       <div class="charts-grid">
+        <div class="chart-card" id="stockPriceCard">
+          <h3>💹 Stock Price History <span class="badge" id="tickerBadge">top 5</span></h3>
+          <div style="margin-bottom:8px;display:flex;gap:6px;flex-wrap:wrap" id="tickerToggle"></div>
+          <canvas id="stockPriceChart"></canvas>
+        </div>
+        <div class="chart-card"><h3>📅 Sector Trend Over Time</h3><canvas id="sectorTrendChart"></canvas></div>
+      </div>
+      <div class="charts-grid">
+        <div class="chart-card"><h3>⚡ Digest Run Performance</h3><canvas id="digestPerfChart"></canvas></div>
         <div class="chart-card"><h3>🔬 AI Token Usage</h3><canvas id="tokenChart"></canvas></div>
-        <div class="chart-card"><h3>⚡ Pipeline Health</h3><div id="pipelineMini"></div></div>
       </div>
       <div class="table-card"><h3>📰 Latest Articles</h3><table><thead><tr><th>Title</th><th>Category</th><th>Impact</th><th>Score</th><th>Stocks</th></tr></thead><tbody id="articlesBody"></tbody></table></div>
       <div class="table-card"><h3>🔌 Feed Health</h3><div id="pipelineHealth"></div></div>
@@ -110,6 +123,20 @@
     let SUPABASE_ANON_KEY = localStorage.getItem('supabase_anon_key') || '';
     let charts = {};
     let isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    let stockPriceDataCache = []; // cached for ticker toggling
+
+    const TICKER_COLORS = [
+      '#22d3ee', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899',
+      '#ef4444', '#06b6d4', '#f97316', '#6366f1', '#14b8a6',
+      '#84cc16', '#a78bfa', '#fb923c', '#2dd4bf', '#e879f9',
+    ];
+
+    const ALL_TRACKED_TICKERS = [
+      'NVDA','AMD','AVGO','TSM','ASML','MU','ANET','VRT','CEG',
+      'MSFT','AMZN','GOOGL','ORCL','ARM','MRVL','QCOM','INTC',
+      'AMAT','LRCX','KLAC','DLR','EQIX','CSCO','META','IBM',
+      'DELL','SMCI','ETN','TT','VST','GEV'
+    ];
 
     function toggleTheme() {
       isDark = !isDark;
@@ -117,7 +144,7 @@
       document.getElementById('themeBtn').textContent = isDark ? '☀️ Light' : '🌙 Dark';
       Object.values(charts).forEach(c => { if(c) c.destroy(); });
       charts = {};
-      loadDashboard();
+      renderAllCharts();
     }
 
     function showConfig() {
@@ -145,13 +172,16 @@
       loadDashboard();
     }
 
-    // ─── Direct REST API with timeout (no SDK needed) ──
+    // ─── Direct REST API with timeout ──
     async function supabaseQuery(table, opts = {}) {
       if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return [];
       let url = `${SUPABASE_URL}/rest/v1/${table}?select=${opts.select || '*'}`;
       if (opts.order) url += `&order=${opts.order}.${opts.ascending === false ? 'asc' : 'desc'}`;
       if (opts.limit) url += `&limit=${opts.limit}`;
-      if (opts.range) url += `&date=gte.${opts.range}`;
+      if (opts.range) {
+        const col = opts.rangeColumn || 'date';
+        url += `&${col}=gte.${opts.range}`;
+      }
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10000);
       try {
@@ -172,8 +202,11 @@
     // ─── Formatting ──
     function fmtNum(n) { return (n||0).toLocaleString(); }
     function fmtDate(d) { try { return new Date(d).toLocaleDateString('en-MY',{timeZone:'Asia/Kuala_Lumpur'}); } catch { return d; } }
+    function fmtShortDate(d) { try { const dt=new Date(d); return dt.toLocaleDateString('en-MY',{timeZone:'Asia/Kuala_Lumpur',month:'short',day:'numeric'}); } catch { return d; } }
     function ic(i) { return i==='Bullish'?'bullish':i==='Bearish'?'bearish':'neutral'; }
     function ia(i) { return i==='Bullish'?'▲':i==='Bearish'?'▼':'▬'; }
+    function fmtPct(n) { return (n>=0?'+':'')+(n||0).toFixed(1)+'%'; }
+    function trClass(n) { return n>0?'trend-up':n<0?'trend-down':'trend-flat'; }
 
     // ─── Load ──
     async function loadDashboard() {
@@ -195,25 +228,27 @@
       const days = parseInt(document.getElementById('rangeSelect').value);
       const rangeDate = new Date(Date.now()-days*86400000).toISOString().split('T')[0];
 
-      // Show a timeout warning if loading takes too long
       let slowTimer = setTimeout(() => {
         msg.innerHTML = '⏳ Still connecting... (CORS may be blocked from file:// — <a href="#" onclick="showCorsHelp();return false" style="color:var(--accent)">try the local server</a>)';
       }, 5000);
 
       try {
-        const [digests, sectors, stocks, articles, feeds, capex, metrics] = await Promise.all([
-          supabaseQuery('digest_runs', { order: 'run_date', limit: 30 }).catch(()=>[]),
-          supabaseQuery('sector_activity', { select: 'date,sector,article_count,avg_impact_score,bullish_count,bearish_count', order: 'date', range: rangeDate }).catch(()=>[]),
+        const [digests, sectors, stocks, articles, feeds, capex, metrics, prices] = await Promise.all([
+          supabaseQuery('digest_runs', { order: 'run_date', limit: 60, rangeColumn: 'run_date', range: rangeDate }).catch(()=>[]),
+          supabaseQuery('sector_activity', { select: 'date,sector,article_count,avg_impact_score', order: 'date', range: rangeDate }).catch(()=>[]),
           supabaseQuery('stock_mentions', { order: 'mention_count', limit: 10, range: rangeDate }).catch(()=>[]),
           supabaseQuery('articles', { order: 'impact_score', limit: 20 }).catch(()=>[]),
           supabaseQuery('pipeline_health', { order: 'created_at', limit: 50 }).catch(()=>[]),
           supabaseQuery('capex_tracking', { order: 'date', limit: 10 }).catch(()=>[]),
-          supabaseQuery('daily_metrics', { order: 'date', limit: 30 }).catch(()=>[]),
+          supabaseQuery('daily_metrics', { order: 'date', limit: 30, range: rangeDate }).catch(()=>[]),
+          supabaseQuery('stock_prices', { order: 'date', limit: 500, range: rangeDate }).catch(()=>[]),
         ]);
 
         clearTimeout(slowTimer);
         loading.style.display = 'none';
         content.style.display = 'block';
+
+        stockPriceDataCache = prices;
 
         const hasData = digests.length > 0 || articles.length > 0;
         if (!hasData) {
@@ -230,8 +265,11 @@
         renderStats(digests, sectors, metrics);
         renderSectorChart(sectors);
         renderStockChart(stocks);
+        stockPriceDataCache = prices;
+        renderStockPriceChart(prices);
+        renderSectorTrendChart(sectors);
+        renderDigestPerformanceChart(digests, metrics);
         renderTokenChart(metrics);
-        renderPipelineMini(feeds, metrics);
         renderArticles(articles);
         renderPipeline(feeds);
         renderCapex(capex);
@@ -239,6 +277,7 @@
         document.getElementById('liveIndicator').innerHTML =
           `<span class="status-dot live"></span> ${new Date().toLocaleTimeString('en-MY',{timeZone:'Asia/Kuala_Lumpur'})} MYT`;
       } catch(e) {
+        clearTimeout(slowTimer);
         loading.style.display = 'none';
         content.style.display = 'block';
         document.getElementById('statsGrid').innerHTML = `
@@ -251,6 +290,14 @@
       }
     }
 
+    function renderAllCharts() {
+      // Re-render charts from DOM without re-fetching from Supabase
+      // Just re-render the existing chart canvases with new theme colors
+      // The data is already in the DOM, we just call render with empty data
+      // and let the chart functions access the cached variables
+      loadDashboard();
+    }
+
     // ─── Stats ──
     function renderStats(digests, sectors, metrics) {
       const totalDigests = digests.length;
@@ -261,9 +308,19 @@
       const totalTokens = digests.reduce((s,d)=>s+(d.total_tokens_used||0),0);
       const latest = digests[0];
       const lastRun = latest ? fmtDate(latest.run_date) : '—';
+
+      // Trend calculation (compare last run to average)
+      let digestTrend = '';
+      if (digests.length >= 2) {
+        const last = digests[0]?.articles_processed||0;
+        const avg = digests.slice(1).reduce((s,d)=>s+(d.articles_processed||0),0)/(digests.length-1);
+        const diff = last - avg;
+        digestTrend = ` <span class="${trClass(diff)}">${diff>=0?'↑':'↓'}${Math.abs(diff)} vs avg</span>`;
+      }
+
       document.getElementById('statsGrid').innerHTML = `
         <div class="stat-card"><div class="label">Digest Runs</div><div class="value">${totalDigests}</div><div class="sub">${successful} success · ${failed} failed</div></div>
-        <div class="stat-card"><div class="label">Articles Analyzed</div><div class="value">${fmtNum(totalArticles)}</div><div class="sub">Last run: ${lastRun}</div></div>
+        <div class="stat-card"><div class="label">Articles Analyzed</div><div class="value">${fmtNum(totalArticles)}</div><div class="sub">Last run: ${lastRun}${digestTrend}</div></div>
         <div class="stat-card"><div class="label">Sectors Active</div><div class="value">${activeSectors}</div><div class="sub">Out of 10 total</div></div>
         <div class="stat-card"><div class="label">Stocks Tracked</div><div class="value">${latest?.total_stocks_tracked||'—'}</div><div class="sub">Per digest run</div></div>
         <div class="stat-card"><div class="label">AI Tokens Used</div><div class="value">${fmtNum(totalTokens)}</div><div class="sub">Est. cost: $${(totalTokens*0.00000015).toFixed(4)}</div></div>
@@ -271,7 +328,7 @@
       `;
     }
 
-    // ─── Sector Chart ──
+    // ─── Sector Chart (bar — total per sector) ──
     function renderSectorChart(sectors) {
       if(charts.sector) charts.sector.destroy();
       const g={}; sectors.forEach(s=>{if(!g[s.sector])g[s.sector]=0;g[s.sector]+=s.article_count||0;});
@@ -279,10 +336,11 @@
       if(!labels.length) return;
       const ctx=document.getElementById('sectorChart').getContext('2d');
       const c=isDark?'#94a3b8':'#64748b';
-      charts.sector=new Chart(ctx,{type:'bar',data:{labels,datasets:[{label:'Articles',data,backgroundColor:['#22d3ee','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316','#6366f1','#06b6d4'],borderRadius:4}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{ticks:{color:c,maxRotation:45}},y:{ticks:{color:c},beginAtZero:true}}}});
+      const colors=['#22d3ee','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316','#6366f1','#06b6d4'];
+      charts.sector=new Chart(ctx,{type:'bar',data:{labels,datasets:[{label:'Articles',data,backgroundColor:colors.slice(0,labels.length),borderRadius:4}]},options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{afterLabel:(ctx)=>{const s=sectors.filter(x=>x.sector===ctx.label);if(s.length){return`Avg score: ${s[s.length-1]?.avg_impact_score||'—'}/10`}}}}},scales:{x:{ticks:{color:c,maxRotation:45}},y:{ticks:{color:c},beginAtZero:true}}}});
     }
 
-    // ─── Stock Chart ──
+    // ─── Stock Chart (bar — top movers) ──
     function renderStockChart(stocks) {
       if(charts.stock) charts.stock.destroy();
       const top=stocks.slice(0,10);
@@ -293,6 +351,261 @@
       charts.stock=new Chart(ctx,{type:'bar',data:{labels:top.map(s=>s.ticker),datasets:[{label:'Price Change %',data:prices,backgroundColor:prices.map(p=>p>=0?'#22c55e':'#ef4444'),borderRadius:4}]},options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{afterLabel:(ctx)=>{const s=top[ctx.dataIndex];return `Mentions: ${s.mention_count}\nSentiment: ${(s.avg_sentiment||0).toFixed(2)}`}}}},scales:{x:{ticks:{color:c}},y:{ticks:{color:c},beginAtZero:true}}}});
     }
 
+    // ─── Stock Price History Chart (multi-line) ──
+    function renderStockPriceChart(prices) {
+      if(charts.stockPrice) charts.stockPrice.destroy();
+      if(!prices.length) return;
+
+      // Group by ticker
+      const byTicker = {};
+      prices.forEach(p => {
+        if(!byTicker[p.ticker]) byTicker[p.ticker] = [];
+        byTicker[p.ticker].push(p);
+      });
+
+      const tickers = Object.keys(byTicker).sort();
+      if(!tickers.length) return;
+
+      // Build ticker toggle buttons
+      const toggleEl = document.getElementById('tickerToggle');
+      const selectedTickers = JSON.parse(localStorage.getItem('selectedTickers') || '[]');
+      // Default: show top 5 most-frequent tickers
+      const defaultTickers = tickers
+        .map(t => ({ ticker: t, count: byTicker[t].length }))
+        .sort((a,b) => b.count - a.count)
+        .slice(0, 5)
+        .map(t => t.ticker);
+
+      const activeTickers = selectedTickers.length ? selectedTickers : defaultTickers;
+      localStorage.setItem('selectedTickers', JSON.stringify(activeTickers));
+
+      toggleEl.innerHTML = tickers.map(t => {
+        const active = activeTickers.includes(t);
+        const idx = tickers.indexOf(t);
+        return `<button onclick="toggleTicker('${t}')" style="padding:3px 10px;border-radius:4px;border:1px solid ${active?TICKER_COLORS[idx%TICKER_COLORS.length]:'var(--border)'};background:${active?TICKER_COLORS[idx%TICKER_COLORS.length]+'22':'transparent'};color:${active?TICKER_COLORS[idx%TICKER_COLORS.length]:'var(--text-dim)'};font-size:11px;font-weight:${active?'600':'400'};cursor:pointer;transition:all.2s">${t}</button>`;
+      }).join('');
+
+      document.getElementById('tickerBadge').textContent = `${activeTickers.length} shown`;
+
+      // Build datasets for selected tickers only
+      // Get all unique dates sorted
+      const allDates = [...new Set(prices.map(p => p.date))].sort();
+      if(!allDates.length) return;
+
+      const datasets = [];
+      activeTickers.forEach((ticker, i) => {
+        const tickerPrices = byTicker[ticker] || [];
+        const priceMap = {};
+        tickerPrices.forEach(p => { priceMap[p.date] = p.price; });
+
+        const data = allDates.map(d => priceMap[d] !== undefined ? priceMap[d] : null);
+
+        datasets.push({
+          label: ticker,
+          data,
+          borderColor: TICKER_COLORS[i % TICKER_COLORS.length],
+          backgroundColor: TICKER_COLORS[i % TICKER_COLORS.length] + '11',
+          fill: false,
+          tension: 0.3,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+          spanGaps: true,
+        });
+      });
+
+      const ctx = document.getElementById('stockPriceChart').getContext('2d');
+      const c = isDark?'#94a3b8':'#64748b';
+      charts.stockPrice = new Chart(ctx, {
+        type: 'line',
+        data: { labels: allDates.map(d => fmtShortDate(d)), datasets },
+        options: {
+          responsive: true,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { labels: { color: c, boxWidth: 12, padding: 12 } },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => {
+                  const val = ctx.raw;
+                  if (val === null) return `${ctx.dataset.label}: —`;
+                  return `${ctx.dataset.label}: $${Number(val).toFixed(2)}`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: { ticks: { color: c, maxTicksLimit: 10, maxRotation: 45 } },
+            y: {
+              ticks: { color: c, callback: (v) => '$' + v.toFixed(0) },
+              beginAtZero: false,
+            }
+          }
+        }
+      });
+    }
+
+    // Toggle ticker visibility in stock price chart
+    function toggleTicker(ticker) {
+      const selected = JSON.parse(localStorage.getItem('selectedTickers') || '[]');
+      const idx = selected.indexOf(ticker);
+      if (idx >= 0) {
+        selected.splice(idx, 1);
+      } else {
+        selected.push(ticker);
+      }
+      localStorage.setItem('selectedTickers', JSON.stringify(selected));
+      if(charts.stockPrice) charts.stockPrice.destroy();
+      renderStockPriceChart(stockPriceDataCache);
+    }
+
+    // ─── Sector Trend Chart (stacked area) ──
+    function renderSectorTrendChart(sectors) {
+      if(charts.sectorTrend) charts.sectorTrend.destroy();
+      if(!sectors.length) return;
+
+      // Group by date and sector
+      const byDate = {};
+      const allSectors = [...new Set(sectors.map(s => s.sector))].sort();
+      sectors.forEach(s => {
+        if(!byDate[s.date]) byDate[s.date] = {};
+        byDate[s.date][s.sector] = (byDate[s.date][s.sector] || 0) + (s.article_count || 0);
+      });
+
+      const dates = Object.keys(byDate).sort();
+      if(!dates.length) return;
+
+      const sectorColors = {
+        'Chips & GPUs': '#22d3ee', 'Cloud & Hyperscalers': '#10b981',
+        'Datacenters': '#f59e0b', 'Networking': '#ef4444',
+        'Power & Utilities': '#8b5cf6', 'Cooling Infrastructure': '#ec4899',
+        'AI Models & Labs': '#14b8a6', 'Semiconductor Manufacturing': '#f97316',
+        'M&A and Partnerships': '#6366f1', 'Earnings & Guidance': '#06b6d4',
+      };
+
+      const datasets = allSectors.map((sector, i) => {
+        const colors = Object.values(sectorColors);
+        const color = sectorColors[sector] || colors[i % colors.length];
+        return {
+          label: sector,
+          data: dates.map(d => byDate[d][sector] || 0),
+          backgroundColor: color + '66',
+          borderColor: color,
+          borderWidth: 1,
+          fill: true,
+          tension: 0.3,
+          pointRadius: 0,
+        };
+      });
+
+      const ctx = document.getElementById('sectorTrendChart').getContext('2d');
+      const c = isDark?'#94a3b8':'#64748b';
+      charts.sectorTrend = new Chart(ctx, {
+        type: 'line',
+        data: { labels: dates.map(d => fmtShortDate(d)), datasets },
+        options: {
+          responsive: true,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { position: 'bottom', labels: { color: c, boxWidth: 12, padding: 10, font: { size: 10 } } },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => {
+                  const total = ctx.chart.data.datasets.reduce((s, ds) => s + (ds.data[ctx.dataIndex] || 0), 0);
+                  const pct = total > 0 ? ((ctx.raw / total) * 100).toFixed(0) : 0;
+                  return `${ctx.dataset.label}: ${ctx.raw} articles (${pct}%)`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: { ticks: { color: c, maxTicksLimit: 8, maxRotation: 45 } },
+            y: { stacked: true, ticks: { color: c, beginAtZero: true } }
+          }
+        }
+      });
+    }
+
+    // ─── Digest Performance Chart (multi-line) ──
+    function renderDigestPerformanceChart(digests, metrics) {
+      if(charts.digestPerf) charts.digestPerf.destroy();
+      if(!digests.length) return;
+
+      const sorted = [...digests].sort((a,b) => a.run_date.localeCompare(b.run_date));
+      const dates = sorted.map(d => fmtShortDate(d.run_date));
+
+      const ctx = document.getElementById('digestPerfChart').getContext('2d');
+      const c = isDark?'#94a3b8':'#64748b';
+
+      charts.digestPerf = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: dates,
+          datasets: [
+            {
+              label: 'Articles Processed',
+              data: sorted.map(d => d.articles_processed || 0),
+              borderColor: '#22d3ee',
+              backgroundColor: 'rgba(34,211,238,0.1)',
+              fill: true,
+              tension: 0.3,
+              pointRadius: 3,
+              yAxisID: 'y',
+            },
+            {
+              label: 'Tokens Used (÷1000)',
+              data: sorted.map(d => (d.total_tokens_used || 0) / 1000),
+              borderColor: '#f59e0b',
+              backgroundColor: 'rgba(245,158,11,0.1)',
+              fill: true,
+              tension: 0.3,
+              pointRadius: 3,
+              yAxisID: 'y1',
+            },
+            {
+              label: 'Duration (s)',
+              data: sorted.map(d => d.duration_seconds || 0),
+              borderColor: '#10b981',
+              backgroundColor: 'rgba(16,185,129,0.1)',
+              fill: true,
+              tension: 0.3,
+              pointRadius: 3,
+              yAxisID: 'y1',
+            },
+          ]
+        },
+        options: {
+          responsive: true,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { labels: { color: c, boxWidth: 12, padding: 12, font: { size: 11 } } },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => {
+                  if (ctx.datasetIndex === 0) return `${ctx.raw} articles`;
+                  if (ctx.datasetIndex === 1) return `${(ctx.raw * 1000).toFixed(0)} tokens`;
+                  return `${ctx.raw}s duration`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: { ticks: { color: c, maxTicksLimit: 8, maxRotation: 45 } },
+            y: {
+              type: 'linear', display: true, position: 'left',
+              ticks: { color: c, beginAtZero: true },
+              title: { display: true, text: 'Articles', color: c }
+            },
+            y1: {
+              type: 'linear', display: true, position: 'right',
+              ticks: { color: c, beginAtZero: true },
+              title: { display: true, text: 'Tokens (K) / Seconds', color: c },
+              grid: { drawOnChartArea: false },
+            }
+          }
+        }
+      });
+    }
+
     // ─── Token Chart ──
     function renderTokenChart(metrics) {
       if(charts.token) charts.token.destroy();
@@ -301,21 +614,6 @@
       const ctx=document.getElementById('tokenChart').getContext('2d');
       const c=isDark?'#94a3b8':'#64748b';
       charts.token=new Chart(ctx,{type:'line',data:{labels:recent.map(m=>fmtDate(m.date)),datasets:[{label:'Tokens',data:recent.map(m=>m.total_tokens_used||0),borderColor:'#22d3ee',backgroundColor:'rgba(34,211,238,0.1)',fill:true,tension:.3,pointRadius:3}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{ticks:{color:c,maxTicksLimit:7}},y:{ticks:{color:c},beginAtZero:true}}}});
-    }
-
-    // ─── Pipeline Mini ──
-    function renderPipelineMini(feeds, metrics) {
-      const el=document.getElementById('pipelineMini');
-      const m=metrics?metrics[0]:null;
-      if(m) {
-        el.innerHTML=`<div style="font-size:28px;font-weight:700">${m.feeds_healthy||0}/${(m.feeds_healthy||0)+(m.feeds_failing||0)}</div><div style="font-size:12px;color:var(--text-dim)">healthy feeds · ${m.feeds_failing||0} failing</div>`;
-      } else if(feeds.length) {
-        const healthy=feeds.filter(f=>f.status==='success').length;
-        const total=feeds.length;
-        el.innerHTML=`<div style="font-size:28px;font-weight:700">${healthy}/${total}</div><div style="font-size:12px;color:var(--text-dim)">${total-healthy} feeds failing</div>`;
-      } else {
-        el.innerHTML=`<div style="color:var(--text-dim);padding:20px 0">No pipeline data yet</div>`;
-      }
     }
 
     // ─── Articles ──
@@ -355,9 +653,9 @@
           <p style="font-size:14px;line-height:1.6;margin-bottom:16px">
             <strong>Fix:</strong> Run this command in your terminal to serve the dashboard locally:
           </p>
-          <pre style="background:var(--bg);padding:12px;border-radius:8px;font-size:13px;text-align:left;overflow-x:auto;margin-bottom:16px;border:1px solid var(--border)">cd ai-infra-digest && npx serve dashboard</pre>
+          <pre style="background:var(--bg);padding:12px;border-radius:8px;font-size:13px;text-align:left;overflow-x:auto;margin-bottom:16px;border:1px solid var(--border)">cd ai-infra-digest && node dashboard/server.js</pre>
           <p style="font-size:13px;color:var(--text-dim);line-height:1.5">
-            Then open <strong>http://localhost:3000</strong> in your browser.<br>
+            Then open <strong>http://localhost:8080</strong> in your browser.<br>
             Your credentials are saved in localStorage — they'll work immediately.
           </p>
           <button onclick="document.getElementById('configPanel').style.display='none'" style="margin-top:16px;background:var(--bg-hover);color:var(--text);border:1px solid var(--border);padding:8px 20px;border-radius:8px;cursor:pointer">Dismiss</button>

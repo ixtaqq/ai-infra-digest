@@ -141,6 +141,22 @@ CREATE TABLE daily_metrics (
 
 CREATE INDEX idx_daily_metrics_date ON daily_metrics(date DESC);
 
+-- 9. STOCK PRICES — Daily price snapshots for tracked tickers (from Yahoo Finance)
+CREATE TABLE stock_prices (
+  id BIGSERIAL PRIMARY KEY,
+  date DATE NOT NULL DEFAULT CURRENT_DATE,
+  ticker TEXT NOT NULL,
+  price NUMERIC(10,2),
+  change NUMERIC(10,2),
+  change_percent NUMERIC(6,2),
+  previous_close NUMERIC(10,2),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(date, ticker)
+);
+
+CREATE INDEX idx_stock_prices_date ON stock_prices(date DESC);
+CREATE INDEX idx_stock_prices_ticker ON stock_prices(ticker);
+
 -- Enable Row Level Security (optional - for authenticated access)
 ALTER TABLE digest_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE articles ENABLE ROW LEVEL SECURITY;
@@ -150,6 +166,7 @@ ALTER TABLE pipeline_health ENABLE ROW LEVEL SECURITY;
 ALTER TABLE capex_tracking ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_usage ENABLE ROW LEVEL SECURITY;
 ALTER TABLE daily_metrics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stock_prices ENABLE ROW LEVEL SECURITY;
 
 -- Allow public read access (for dashboard) - adjust as needed
 CREATE POLICY "Allow public read access" ON digest_runs FOR SELECT USING (true);
@@ -160,6 +177,7 @@ CREATE POLICY "Allow public read access" ON pipeline_health FOR SELECT USING (tr
 CREATE POLICY "Allow public read access" ON capex_tracking FOR SELECT USING (true);
 CREATE POLICY "Allow public read access" ON ai_usage FOR SELECT USING (true);
 CREATE POLICY "Allow public read access" ON daily_metrics FOR SELECT USING (true);
+CREATE POLICY "Allow public read access" ON stock_prices FOR SELECT USING (true);
 
 -- Allow service_role full access (for pipeline writes)
 CREATE POLICY "Allow service full access" ON digest_runs FOR ALL USING (true) WITH CHECK (true);
@@ -170,3 +188,4 @@ CREATE POLICY "Allow service full access" ON pipeline_health FOR ALL USING (true
 CREATE POLICY "Allow service full access" ON capex_tracking FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow service full access" ON ai_usage FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow service full access" ON daily_metrics FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow service full access" ON stock_prices FOR ALL USING (true) WITH CHECK (true);

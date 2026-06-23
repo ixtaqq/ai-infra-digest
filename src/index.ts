@@ -179,6 +179,18 @@ async function main() {
         }))
       );
 
+      // Stock prices
+      await supabase.insertStockPrices(
+        [...stockPrices.values()].map((sp) => ({
+          date: runDate,
+          ticker: sp.ticker,
+          price: Math.round(sp.price * 100) / 100,
+          change: Math.round(sp.change * 100) / 100,
+          change_percent: Math.round(sp.changePercent * 100) / 100,
+          previous_close: Math.round(sp.previousClose * 100) / 100,
+        }))
+      );
+
       // Daily metrics
       const healthyFeeds = feedStatuses.filter((f) => f.status === "success").length;
       const failingFeeds = feedStatuses.filter((f) => f.status === "failed").length;
