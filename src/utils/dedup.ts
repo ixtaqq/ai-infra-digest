@@ -13,6 +13,35 @@ interface CacheData {
   entries: CacheEntry[];
 }
 
+// ─── Jaccard Similarity ────────────────────────────────
+
+/** Tokenize a string into a set of lower-cased words (3+ chars). */
+function tokenize(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, "")
+      .split(/\s+/)
+      .filter((t) => t.length >= 3)
+  );
+}
+
+/**
+ * Compute Jaccard similarity between two strings.
+ * Returns a value in [0, 1] where 1 = identical sets.
+ */
+export function jaccardSimilarity(a: string, b: string): number {
+  const setA = tokenize(a);
+  const setB = tokenize(b);
+  if (setA.size === 0 && setB.size === 0) return 0;
+  let intersection = 0;
+  for (const token of setA) {
+    if (setB.has(token)) intersection++;
+  }
+  const union = setA.size + setB.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
 function getCachePath(): string {
   const dir = config.app.cacheDir;
   if (!fs.existsSync(dir)) {
@@ -66,11 +95,21 @@ export function deduplicateArticles<T extends { url: string; title: string }>(
 
   // Build set of seen URLs
   const seenUrls = new Set(cache.entries.map((e) => e.url));
+  const seenTitles = cache.entries.map((e) => e.title);
 
-  // Filter new articles
+  // Filter new articles (URL dedup + Jaccard similarity check)
+  const SIMILARITY_THRESHOLD = 0.65;
   const newArticles = articles.filter((a) => {
     if (!a.url) return true; // Keep articles without URLs
-    return !seenUrls.has(a.url);
+
+    // Exact URL match
+    if (seenUrls.has(a.url)) return false;
+
+    // Jaccard similarity check — are we covering the same story from a different source?
+    const titleSim = seenTitles.some((stored) => jaccardSimilarity(a.title, stored) >= SIMILARITY_THRESHOLD);
+    if (titleSim) return false;
+
+    return true;
   });
 
   // Add new articles to cache
@@ -85,7 +124,7 @@ export function deduplicateArticles<T extends { url: string; title: string }>(
 
   const skipped = articles.length - newArticles.length;
   if (skipped > 0) {
-    logger.info(`Dedup: skipped ${skipped} already-processed articles`);
+    logger.info(`Dedup: skipped ${skipped} articles (URL match + Jaccard similarity)`);
   }
 
   return newArticles;

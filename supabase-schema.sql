@@ -157,6 +157,24 @@ CREATE TABLE stock_prices (
 CREATE INDEX idx_stock_prices_date ON stock_prices(date DESC);
 CREATE INDEX idx_stock_prices_ticker ON stock_prices(ticker);
 
+-- 10. USER PREFERENCES — Interactive Telegram bot user settings
+CREATE TABLE user_preferences (
+  id BIGSERIAL PRIMARY KEY,
+  chat_id BIGINT NOT NULL UNIQUE,
+  username TEXT,
+  first_name TEXT,
+  watchlist TEXT[] DEFAULT '{}',
+  preferred_time TEXT DEFAULT '08:00',
+  timezone TEXT DEFAULT 'Asia/Kuala_Lumpur',
+  categories_enabled TEXT[] DEFAULT '{}',
+  min_impact_score INT DEFAULT 0 CHECK (min_impact_score >= 0 AND min_impact_score <= 10),
+  is_active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_user_preferences_chat ON user_preferences(chat_id);
+
 -- Enable Row Level Security (optional - for authenticated access)
 ALTER TABLE digest_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE articles ENABLE ROW LEVEL SECURITY;
@@ -167,6 +185,7 @@ ALTER TABLE capex_tracking ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_usage ENABLE ROW LEVEL SECURITY;
 ALTER TABLE daily_metrics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE stock_prices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
 
 -- Allow public read access (for dashboard) - adjust as needed
 CREATE POLICY "Allow public read access" ON digest_runs FOR SELECT USING (true);
@@ -178,6 +197,7 @@ CREATE POLICY "Allow public read access" ON capex_tracking FOR SELECT USING (tru
 CREATE POLICY "Allow public read access" ON ai_usage FOR SELECT USING (true);
 CREATE POLICY "Allow public read access" ON daily_metrics FOR SELECT USING (true);
 CREATE POLICY "Allow public read access" ON stock_prices FOR SELECT USING (true);
+CREATE POLICY "Allow public read access" ON user_preferences FOR SELECT USING (true);
 
 -- Allow service_role full access (for pipeline writes)
 CREATE POLICY "Allow service full access" ON digest_runs FOR ALL USING (true) WITH CHECK (true);
@@ -189,3 +209,4 @@ CREATE POLICY "Allow service full access" ON capex_tracking FOR ALL USING (true)
 CREATE POLICY "Allow service full access" ON ai_usage FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow service full access" ON daily_metrics FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow service full access" ON stock_prices FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow service full access" ON user_preferences FOR ALL USING (true) WITH CHECK (true);

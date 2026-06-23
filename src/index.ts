@@ -1,26 +1,39 @@
+import { config } from "./config";
 import { logger } from "./utils/logger";
 import { collectArticles } from "./collector/rss";
 import { processArticles, NEWS_CATEGORIES } from "./processor/ai";
 import { formatDigestTelegram } from "./formatter/telegram";
-import { sendDigestMessage } from "./sender/telegram";
+import {
+  sendDigestMessage,
+  startInteractiveBot,
+  registerCommand,
+} from "./sender/telegram";
 import { deduplicateArticles } from "./utils/dedup";
 import { fetchStockPrices } from "./utils/stocks";
 import { supabase } from "./utils/supabase";
 import type { Article } from "./collector/rss";
+import type { FeedResult } from "./collector/rss";
 
 const MAX_ARTICLES_FOR_AI = 35;
 
-async function main() {
-  logger.info("🚀 AI Infrastructure Daily Digest — Starting");
+async function main() {    logger.info("🚀 AI Infrastructure Daily Digest — Starting");
 
   const startTime = Date.now();
   const runDate = new Date().toISOString().split("T")[0];
   let digestRunId: number | null = null;
 
+  // Start interactive bot (registers /start, /help, etc.)
+  startInteractiveBot();
+
   try {
     // ─── Step 1: Collect News ────────────────────
     logger.info("Step 1/4: Collecting news from RSS feeds...");
     const { articles, feedStatuses } = await collectArticles();
+
+    // ─── Health Alert: Check feed failure rate ────
+    if (supabase.isConfigured()) {
+      await checkFeedHealth(feedStatuses);
+    }
 
     if (articles.length === 0) {
       logger.warn("No articles collected. Sending alert...");
@@ -216,6 +229,9 @@ async function main() {
       logger.info("✅ Metrics written to Supabase");
     }
 
+    // Exit cleanly so the polling loop doesn't keep the process alive in CI
+    process.exit(0);
+
   } catch (error) {
     logger.error("Digest generation failed", {
       error: (error as Error).message,
@@ -251,7 +267,152 @@ async function main() {
   }
 }
 
+// ─── Feed Health Monitoring ────────────────────────────
+
+/** Send an alert if >20% of RSS feeds are failing. */
+async function checkFeedHealth(feedStatuses: FeedResult[]): Promise<void> {
+  const total = feedStatuses.length;
+  const failed = feedStatuses.filter((f) => f.status === "failed").length;
+  const failRate = total > 0 ? failed / total : 0;
+
+  if (failRate > 0.2) {
+    const failedFeeds = feedStatuses
+      .filter((f) => f.status === "failed")
+      .slice(0, 10)
+      .map((f) => `• <code>${f.name}</code>: ${f.error || "unknown error"}`)
+      .join("\n");
+
+    const alertText =
+      `⚠️ <b>Feed Health Alert</b>\n\n` +
+      `${failed}/${total} RSS feeds failed (${Math.round(failRate * 100)}%).\n\n` +
+      `Failed feeds:\n${failedFeeds}\n\n` +
+      `<i>Check the pipeline health dashboard for details.</i>`;
+
+    await sendDigestMessage(alertText);
+    logger.warn(`Feed health alert sent: ${failed}/${total} feeds failing`);
+  }
+}
+
+// ─── Command Handlers (Interactive Bot) ───────────────
+
+/** Register /digest, /sources, /last handlers for the interactive bot. */
+export function registerDigestCommands(): void {
+  registerCommand("digest", async () => {
+    return "⏳ Run the daily digest via the GitHub Actions workflow or use <code>npm run dev</code> locally.\n\nUse /last to see the most recent digest summary.";
+  });
+
+  registerCommand("sources", async () => {
+    // Use cached feed list from Supabase if available, otherwise show static list
+    if (supabase.isConfigured()) {
+      try {
+        const healthUrl = `${config.app.supabaseUrl}/rest/v1/pipeline_health?select=feed_name,status,fetch_count,error_message&order=run_date.desc&limit=100`;
+        const response = await fetch(healthUrl, {
+          headers: {
+            apikey: config.app.supabaseServiceKey!,
+            Authorization: `Bearer ${config.app.supabaseServiceKey!}`,
+          },
+        });
+        if (response.ok) {
+          const data = (await response.json()) as { feed_name: string; status: string }[];
+          // Count unique feed statuses (last seen for each)
+          const feedMap = new Map<string, string>();
+          for (const row of data) {
+            if (!feedMap.has(row.feed_name)) {
+              feedMap.set(row.feed_name, row.status);
+            }
+          }
+          const healthy = [...feedMap.values()].filter((s) => s === "success").length;
+          const failing = feedMap.size - healthy;
+          return {
+            text:
+              `📡 <b>RSS Feeds (${feedMap.size})</b>\n\n` +
+              `✅ Healthy: ${healthy}\n` +
+              `❌ Failing: ${failing}\n\n` +
+              `Tracked feeds cover: NVIDIA, AMD, Broadcom, Microsoft, Amazon, ` +
+              `Google, Meta, TSMC, Intel, and 49 more across 10 sectors.\n\n` +
+              `<i>Last checked: daily at 8 AM MYT</i>`,
+          };
+        }
+      } catch {
+        // Fall through to static list
+      }
+    }
+
+    // Static fallback
+    return {
+      text:
+        `📡 <b>RSS Feeds (57 tracked)</b>\n\n` +
+        `<b>Tier 1 — Major Cos & Financial News (37):</b>\n` +
+        `NVIDIA, AMD, Broadcom, Microsoft, Amazon, Google, Meta, TSMC, Intel, ` +
+        `Qualcomm, Oracle, IBM, Micron, ASML, Super Micro, Dell, ARM, Arista, ` +
+        `Cisco, Marvell, Applied Materials, Lam Research, KLA, Tokyo Electron, ` +
+        `Digital Realty, Equinix, Constellation Energy, Vistra, GE Vernova, ` +
+        `Siemens Energy, Vertiv, Schneider Electric, Eaton, Anthropic, xAI, ` +
+        `Mistral AI, Cohere\n\n` +
+        `<b>Tier 2 — Industry News (20):</b>\n` +
+        `Tom's Hardware, AnandTech, Ars Technica, TechCrunch, The Verge, ` +
+        `Seeking Alpha, SemiAnalysis, The Register, Datacenter Dynamics, ` +
+        `Semiconductor Engineering, Google AI Blog, OpenAI, AWS AI, VentureBeat, ` +
+        `AI News, Medium AI, AI Business, ZDNet AI\n\n` +
+        `<b>Financial News:</b> MarketWatch, Yahoo Finance, CNBC, Reuters, ` +
+        `Bloomberg Tech, FT Tech, Barron's, WSJ Markets, IBD, SEC Filings\n\n` +
+        `<i>Feeds are checked daily at 8 AM MYT</i>`,
+    };
+  });
+
+  registerCommand("last", async () => {
+    if (!supabase.isConfigured()) {
+      return "Supabase not configured. Run the digest locally with <code>npm run dev</code> to see results.";
+    }
+
+    const cfg = getSupabaseConfig();
+    if (!cfg) return "Database not available.";
+
+    try {
+      const response = await fetch(
+        `${cfg.url}/rest/v1/digest_runs?order=run_date.desc&limit=1&select=*`,
+        {
+          headers: {
+            apikey: cfg.key,
+            Authorization: `Bearer ${cfg.key}`,
+          },
+        }
+      );
+      if (!response.ok) return "Could not fetch latest digest.";
+      const runs = (await response.json()) as Record<string, unknown>[];
+      if (!runs?.length) return "No digest runs found yet.";
+
+      const run = runs[0];
+      const date = run.run_date as string;
+      const status = run.status as string;
+      const articles = run.articles_processed as number;
+      const tokens = run.total_tokens_used as number;
+      const duration = run.duration_seconds as number;
+
+      return {
+        text:
+          `📋 <b>Latest Digest</b>\n\n` +
+          `Date: ${date}\n` +
+          `Status: ${status === "success" ? "✅ Success" : "❌ Failed"}\n` +
+          `Articles processed: ${articles}\n` +
+          `Tokens used: ${tokens?.toLocaleString() || "N/A"}\n` +
+          `Duration: ${duration?.toFixed(1) || "N/A"}s\n\n` +
+          `<i>Run /digest to generate a new one</i>`,
+      };
+    } catch {
+      return "Could not connect to database.";
+    }
+  });
+}
+
+function getSupabaseConfig(): { url: string; key: string } | null {
+  const url = config.app.supabaseUrl;
+  const key = config.app.supabaseServiceKey;
+  return url && key ? { url, key } : null;
+}
+
 if (require.main === module) {
+  registerDigestCommands();
   main().catch((error) => {
     console.error("Fatal error:", error);
     process.exit(1);
@@ -259,3 +420,4 @@ if (require.main === module) {
 }
 
 export { main };
+export type { FeedResult };

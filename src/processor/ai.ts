@@ -172,36 +172,65 @@ export interface CallAIResult {
   };
 }
 
+/** Sleep helper */
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Exponential backoff with full jitter.
+ * Waits in [0, baseDelay * 2^attempt) ms, then reports the sleep duration.
+ */
+async function backoff(attempt: number, baseDelayMs = 2000): Promise<void> {
+  const maxDelay = baseDelayMs * Math.pow(2, attempt);
+  const waitMs = Math.random() * maxDelay;
+  logger.debug(`Backoff: waiting ${Math.round(waitMs)}ms after attempt ${attempt}`);
+  await sleep(waitMs);
+}
+
 // ─── Call AI with Retry ──────────────────────────────
 async function callAI(client: OpenAI, prompt: string): Promise<CallAIResult> {
-  const response = await client.chat.completions.create({
-    model: config.ai.model,
-    messages: [
-      {
-        role: "system",
-        content: "You are an equity research AI. Always respond with valid JSON only.",
-      },
-      { role: "user", content: prompt },
-    ],
-    temperature: 0.3,
-    max_tokens: 2048,
-    ...(config.ai.provider !== "custom"
-      ? { response_format: { type: "json_object" as const } }
-      : {}),
-  });
+  let lastError: Error | null = null;
+  const maxRetries = 3;
 
-  const content = response.choices[0]?.message?.content;
-  if (!content) throw new Error("Empty AI response");
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await client.chat.completions.create({
+        model: config.ai.model,
+        messages: [
+          {
+            role: "system",
+            content: "You are an equity research AI. Always respond with valid JSON only.",
+          },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.3,
+        max_tokens: 2048,
+        ...(config.ai.provider !== "custom"
+          ? { response_format: { type: "json_object" as const } }
+          : {}),
+      });
 
-  const usage = response.usage;
-  return {
-    content,
-    usage: {
-      totalTokens: usage?.total_tokens ?? 0,
-      promptTokens: usage?.prompt_tokens ?? 0,
-      completionTokens: usage?.completion_tokens ?? 0,
-    },
-  };
+      const content = response.choices[0]?.message?.content;
+      if (!content) throw new Error("Empty AI response");
+
+      const usage = response.usage;
+      return {
+        content,
+        usage: {
+          totalTokens: usage?.total_tokens ?? 0,
+          promptTokens: usage?.prompt_tokens ?? 0,
+          completionTokens: usage?.completion_tokens ?? 0,
+        },
+      };
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (attempt < maxRetries) {
+        logger.warn(`AI call attempt ${attempt + 1}/${maxRetries + 1} failed: ${lastError.message}. Retrying...`);
+        await backoff(attempt);
+      }
+    }
+  }
+
+  throw lastError ?? new Error("AI call failed after all retries");
 }
 
 interface BatchResult {

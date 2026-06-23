@@ -63,6 +63,18 @@ export interface CapexData {
   source_name?: string;
 }
 
+export interface UserPreferencesData {
+  chat_id: number;
+  username?: string;
+  first_name?: string;
+  watchlist?: string[];
+  preferred_time?: string;
+  timezone?: string;
+  categories_enabled?: string[];
+  min_impact_score?: number;
+  is_active?: boolean;
+}
+
 export interface AIUsageData {
   provider: string;
   model: string;
@@ -295,6 +307,85 @@ export const supabase = {
     }
     logger.info(`Supabase: stored ${prices.length} stock prices`);
     return success;
+  },
+
+  // ─── User Management ────────────────────────────────
+
+  async upsertUserPreferences(
+    data: UserPreferencesData
+  ): Promise<boolean> {
+    const cfg = getConfig();
+    if (!cfg) return false;
+
+    try {
+      const response = await fetch(
+        `${cfg.url}/rest/v1/user_preferences?on_conflict=chat_id`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": cfg.key,
+            "Authorization": `Bearer ${cfg.key}`,
+            "Prefer": "return=minimal,resolution=merge-duplicates",
+          },
+          body: JSON.stringify({
+            ...data,
+            updated_at: new Date().toISOString(),
+          }),
+        }
+      );
+      return response.ok || response.status === 201;
+    } catch (error) {
+      logger.warn(`Supabase upsertUserPreferences: ${(error as Error).message}`);
+      return false;
+    }
+  },
+
+  async getUserPreferences(
+    chatId: number
+  ): Promise<UserPreferencesData | null> {
+    const cfg = getConfig();
+    if (!cfg) return null;
+
+    try {
+      const response = await fetch(
+        `${cfg.url}/rest/v1/user_preferences?chat_id=eq.${chatId}&select=*`,
+        {
+          headers: {
+            "apikey": cfg.key,
+            "Authorization": `Bearer ${cfg.key}`,
+          },
+        }
+      );
+      if (!response.ok) return null;
+      const data = (await response.json()) as UserPreferencesData[];
+      return data?.[0] ?? null;
+    } catch (error) {
+      logger.warn(`Supabase getUserPreferences: ${(error as Error).message}`);
+      return null;
+    }
+  },
+
+  async getAllActiveUsers(): Promise<UserPreferencesData[]> {
+    const cfg = getConfig();
+    if (!cfg) return [];
+
+    try {
+      const response = await fetch(
+        `${cfg.url}/rest/v1/user_preferences?is_active=eq.true&select=*`,
+        {
+          headers: {
+            "apikey": cfg.key,
+            "Authorization": `Bearer ${cfg.key}`,
+          },
+        }
+      );
+      if (!response.ok) return [];
+      return (await response.json()) as UserPreferencesData[];
+    } catch (error) {
+      logger.warn(`Supabase getAllActiveUsers: ${(error as Error).message}`);
+      return [];
+    }
   },
 
   // Quick helper to check if the database is reachable
