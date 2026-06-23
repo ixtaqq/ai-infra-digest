@@ -20,8 +20,11 @@ import {
 } from "./utils/metrics";
 import { collectSECFilings, getTopFilings } from "./collector/sec";
 import { analyzeSECFilings } from "./processor/sec";
+import { collectEarningsTranscripts } from "./collector/earnings";
+import { analyzeEarningsTranscripts } from "./processor/earnings";
 import type { Article, FeedResult } from "./collector/rss";
 import type { SECFinancialExtract } from "./processor/sec";
+import type { EarningsAnalysis } from "./processor/earnings";
 
 const MAX_ARTICLES_FOR_AI = 35;
 
@@ -169,7 +172,30 @@ export async function runPipeline(targetChatId?: number): Promise<boolean> {
       await sendHighImpactAlerts(digest.articles);
     }
 
-    // ─── Step 2b: Fetch Stock Prices ────────────
+    // ─── Step 2b: Earnings Transcript Mining ─────
+    let earningsAnalyses: EarningsAnalysis[] = [];
+    const apiKey = config.app.roicAiApiKey;
+    if (apiKey) {
+      try {
+        logger.info("Step 2b: Mining earnings call transcripts...");
+        const earningsResult = await collectEarningsTranscripts();
+        if (earningsResult.transcripts.length > 0) {
+          const analysisResult = await analyzeEarningsTranscripts(earningsResult.transcripts);
+          earningsAnalyses = analysisResult.analyses;
+          logger.info(`Earnings analysis: ${earningsAnalyses.length} transcripts analyzed (${analysisResult.totalTokens} tokens)`);
+        } else {
+          logger.info("Earnings: No transcripts available for current quarter");
+        }
+      } catch (earningsError) {
+        logger.warn(`Earnings transcript mining failed: ${(earningsError as Error).message}`);
+        emitError("earnings", "error", `Earnings transcript mining failed: ${(earningsError as Error).message}`,
+          undefined, "Earnings transcript API (Roic.ai) may be rate-limiting or temporarily unavailable.");
+      }
+    } else {
+      logger.info("Step 2b: Skipping earnings transcript mining (ROIC_AI_API_KEY not configured)");
+    }
+
+    // ─── Step 2c: Fetch Stock Prices ────────────
     const allTickers = [
       ...new Set([
         ...digest.articles.flatMap((a) => a.affectedStocks),
@@ -205,6 +231,7 @@ export async function runPipeline(targetChatId?: number): Promise<boolean> {
     const formattedMessage = formatDigestTelegram(digest, {
       stockPrices,
       secExtracts: secExtracts.length > 0 ? secExtracts : undefined,
+      earningsAnalyses: earningsAnalyses.length > 0 ? earningsAnalyses : undefined,
     });
 
     // ─── Step 4: Send to Telegram ───────────────

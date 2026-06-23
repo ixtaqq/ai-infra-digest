@@ -54,9 +54,12 @@ function escapeHtml(text: string): string {
     .replace(/'/g, "&#39;");
 }
 
+import type { EarningsAnalysis } from "../processor/earnings";
+
 export interface FormatOptions {
   stockPrices?: Map<string, StockPrice>;
   secExtracts?: SECFinancialExtract[];
+  earningsAnalyses?: EarningsAnalysis[];
 }
 
 export function formatDigestTelegram(
@@ -162,6 +165,55 @@ export function formatDigestTelegram(
     lines.push("");
     lines.push(escapeHtml(digest.summary));
     lines.push("");
+  }
+
+  // ─── 🎙️ Earnings Watch ────────────────────────────
+  const earnings = options?.earningsAnalyses;
+  if (earnings && earnings.length > 0) {
+    lines.push("🎙️ <b>EARNINGS WATCH</b>");
+    lines.push("");
+    for (const analysis of earnings.slice(0, 3)) {
+      const toneEmoji = analysis.tone.overall === "bullish" ? "🟢" :
+        analysis.tone.overall === "cautious" ? "🟡" :
+        analysis.tone.overall === "bearish" ? "🔴" : "⚪";
+      lines.push(`  ${toneEmoji} <b>${escapeHtml(analysis.companyName)} (${analysis.ticker})</b> — Q${analysis.quarter} ${analysis.year}`);
+
+      const dataParts: string[] = [];
+      if (analysis.metrics.revenueGuidance !== null) dataParts.push(`🎯 Rev Guide: $${analysis.metrics.revenueGuidance.toFixed(0)}M`);
+      if (analysis.metrics.capexGuidance !== null) dataParts.push(`💰 Capex Guide: $${analysis.metrics.capexGuidance.toFixed(0)}M`);
+      if (analysis.metrics.aiRevenueMentioned !== null) dataParts.push(`🤖 AI Rev: $${analysis.metrics.aiRevenueMentioned.toFixed(0)}M`);
+      if (analysis.metrics.capexSpend !== null) dataParts.push(`📊 Capex: $${analysis.metrics.capexSpend.toFixed(0)}M`);
+
+      if (dataParts.length > 0) {
+        lines.push(`    ${dataParts.join(" · ")}`);
+      }
+
+      // Show guidance delta
+      if (analysis.delta) {
+        const deltaParts: string[] = [];
+        if (analysis.delta.revenueGuidanceChangePct !== null) {
+          const arrow = analysis.delta.revenueGuidanceChangePct >= 0 ? "▲" : "▼";
+          deltaParts.push(`Rev ${arrow} ${analysis.delta.revenueGuidanceChangePct >= 0 ? "+" : ""}${analysis.delta.revenueGuidanceChangePct.toFixed(1)}%`);
+        }
+        if (analysis.delta.capexGuidanceChangePct !== null) {
+          const arrow = analysis.delta.capexGuidanceChangePct >= 0 ? "▲" : "▼";
+          deltaParts.push(`Capex ${arrow} ${analysis.delta.capexGuidanceChangePct >= 0 ? "+" : ""}${analysis.delta.capexGuidanceChangePct.toFixed(1)}%`);
+        }
+        if (deltaParts.length > 0) {
+          const dirEmoji = analysis.delta.toneDirection === "improving" ? "📈" :
+            analysis.delta.toneDirection === "worsening" ? "📉" : "➡️";
+          lines.push(`    ${dirEmoji} <b>Delta:</b> ${deltaParts.join(" · ")}`);
+        }
+      }
+
+      // Tone
+      lines.push(`    ${toneEmoji} <b>Tone:</b> ${analysis.tone.overall.charAt(0).toUpperCase() + analysis.tone.overall.slice(1)} (${analysis.tone.confidence}/10)`);
+      if (analysis.tone.keyPhrase) {
+        lines.push(`    <i>"${escapeHtml(analysis.tone.keyPhrase.slice(0, 120))}"</i>`);
+      }
+
+      lines.push("");
+    }
   }
 
   // ─── SEC Filing Highlights (top 1-2 most impactful) ─

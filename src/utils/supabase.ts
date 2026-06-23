@@ -447,6 +447,64 @@ export const supabase = {
     }
   },
 
+  // ─── Earnings Transcripts ───────────────────────────
+
+  async upsertEarningsTranscript(data: Record<string, unknown>): Promise<boolean> {
+    const cfg = getConfig();
+    if (!cfg) return false;
+    try {
+      const response = await fetch(
+        `${cfg.url}/rest/v1/earnings_transcripts?on_conflict=ticker,year,quarter`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": cfg.key,
+            "Authorization": `Bearer ${cfg.key}`,
+            "Prefer": "return=minimal,resolution=merge-duplicates",
+          },
+          body: JSON.stringify({
+            ...data,
+            segments: data.segments ? JSON.stringify(data.segments) : null,
+            risks_mentioned: data.risks_mentioned || [],
+            key_takeaways: data.key_takeaways || [],
+            updated_at: new Date().toISOString(),
+          }),
+        }
+      );
+      return response.ok || response.status === 201;
+    } catch (error) {
+      logger.warn(`Supabase upsertEarningsTranscript: ${(error as Error).message}`);
+      return false;
+    }
+  },
+
+  async getEarningsTranscript(
+    ticker: string,
+    year: number,
+    quarter: number
+  ): Promise<Record<string, unknown> | null> {
+    const cfg = getConfig();
+    if (!cfg) return null;
+    try {
+      const response = await fetch(
+        `${cfg.url}/rest/v1/earnings_transcripts?ticker=eq.${ticker}&year=eq.${year}&quarter=eq.${quarter}&select=*`,
+        {
+          headers: {
+            "apikey": cfg.key,
+            "Authorization": `Bearer ${cfg.key}`,
+          },
+        }
+      );
+      if (!response.ok) return null;
+      const data = (await response.json()) as Record<string, unknown>[];
+      return data?.[0] ?? null;
+    } catch (error) {
+      logger.warn(`Supabase getEarningsTranscript: ${(error as Error).message}`);
+      return null;
+    }
+  },
+
   // Quick helper to check if the database is reachable
   async healthCheck(): Promise<boolean> {
     const cfg = getConfig();

@@ -21,6 +21,7 @@ export interface Config {
     maxArticlesPerSource: number;
     supabaseUrl?: string;
     supabaseServiceKey?: string;
+    roicAiApiKey?: string;
   };
 }
 
@@ -70,6 +71,7 @@ function loadConfig(): Config {
       maxArticlesPerSource: 5,
       supabaseUrl: process.env.SUPABASE_URL || undefined,
       supabaseServiceKey: process.env.SUPABASE_SERVICE_KEY || undefined,
+      roicAiApiKey: process.env.ROIC_AI_API_KEY || undefined,
     },
   };
 }

@@ -224,6 +224,56 @@ CREATE TABLE user_preferences (
 
 CREATE INDEX idx_user_preferences_chat ON user_preferences(chat_id);
 
+-- 12. EARNINGS TRANSCRIPTS — Analyzed earnings call transcript data
+CREATE TABLE earnings_transcripts (
+  id BIGSERIAL PRIMARY KEY,
+  ticker TEXT NOT NULL,
+  company_name TEXT NOT NULL,
+  year INT NOT NULL,
+  quarter INT NOT NULL CHECK (quarter >= 1 AND quarter <= 4),
+  filing_date DATE,
+
+  -- Extracted financial data
+  revenue_guidance NUMERIC(15,2),
+  eps_guidance NUMERIC(10,4),
+  capex_guidance NUMERIC(15,2),
+  ai_revenue_mentioned NUMERIC(15,2),
+  ai_revenue_growth_pct NUMERIC(6,2),
+  capex_spend NUMERIC(15,2),
+
+  -- Management tone
+  management_tone TEXT CHECK (management_tone IN ('bullish', 'cautious', 'neutral', 'bearish')),
+  tone_confidence INT CHECK (tone_confidence >= 1 AND tone_confidence <= 10),
+  tone_key_phrase TEXT,
+  risks_mentioned TEXT[] DEFAULT '{}',
+
+  -- Analysis results
+  key_takeaways TEXT[],
+  segments JSONB,
+  summary TEXT,
+
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(ticker, year, quarter)
+);
+
+CREATE INDEX idx_earnings_ticker ON earnings_transcripts(ticker);
+CREATE INDEX idx_earnings_date ON earnings_transcripts(filing_date DESC);
+CREATE INDEX idx_earnings_ticker_q ON earnings_transcripts(ticker, year DESC, quarter DESC);
+
+-- 13. USER DELIVERY LOG — Per-user digest delivery tracking
+CREATE TABLE user_delivery_log (
+  id BIGSERIAL PRIMARY KEY,
+  chat_id BIGINT NOT NULL,
+  run_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  status TEXT NOT NULL CHECK (status IN ('success', 'failed')),
+  details TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(chat_id, run_date)
+);
+
+CREATE INDEX idx_delivery_chat_date ON user_delivery_log(chat_id, run_date DESC);
+
 -- Enable Row Level Security (optional - for authenticated access)
 ALTER TABLE digest_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE articles ENABLE ROW LEVEL SECURITY;
