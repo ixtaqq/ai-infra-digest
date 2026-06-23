@@ -355,9 +355,115 @@ function splitMessage(text: string, maxLen: number): string[] {
   return chunks;
 }
 
+// ─── Webhook Support ────────────────────────────────────
+
+/**
+ * Set up a Telegram webhook instead of long polling.
+ *
+ * Webhook is more reliable at scale and recommended for production bots.
+ * Requires a public HTTPS endpoint (e.g., via Railway, Render, or your own server).
+ *
+ * Usage:
+ *   const bot = getBot();
+ *   await setupWebhook(bot, "https://your-domain.com/webhook");
+ *
+ * Then create an Express/Fastify server that receives POST /webhook
+ * and calls bot.processUpdate(req.body).
+ */
+export async function setupWebhook(
+  webhookUrl: string,
+  options?: {
+    maxConnections?: number;
+    allowedUpdates?: string[];
+    secretToken?: string;
+  }
+): Promise<boolean> {
+  try {
+    const b = getBot();
+    // Stop polling if it was running
+    await b.deleteWebHook();
+    await b.setWebHook(webhookUrl, {
+      max_connections: options?.maxConnections ?? 40,
+      allowed_updates: options?.allowedUpdates ?? ["message", "callback_query"],
+      secret_token: options?.secretToken,
+    });
+
+    const info = await b.getWebHookInfo();
+    if (info.url === webhookUrl) {
+      logger.info(`Telegram webhook set to ${webhookUrl} (${info.pending_update_count} pending)`);
+      return true;
+    }
+    logger.warn(`Webhook set but URL mismatch: expected ${webhookUrl}, got ${info.url}`);
+    return false;
+  } catch (error) {
+    logger.error(`Failed to set Telegram webhook: ${(error as Error).message}`);
+    return false;
+  }
+}
+
+/**
+ * Switch from webhook back to polling (useful for local development).
+ */
+export async function switchToPolling(): Promise<void> {
+  try {
+    const b = getBot();
+    await b.deleteWebHook();
+    // The bot was already created with polling: true, so it will resume polling
+    // after the webhook is deleted. We just need to wait a moment.
+    await new Promise((r) => setTimeout(r, 1000));
+    logger.info("Switched back to long polling mode");
+  } catch (error) {
+    logger.error(`Failed to switch to polling: ${(error as Error).message}`);
+  }
+}
+
+/**
+ * Get current webhook info for diagnostics.
+ */
+export async function getWebhookInfo(): Promise<{
+  url: string;
+  pendingUpdates: number;
+  lastError?: string;
+}> {
+  const b = getBot();
+  const info = await b.getWebHookInfo();
+  return {
+    url: info.url || "",
+    pendingUpdates: info.pending_update_count || 0,
+    lastError: info.last_error_message || undefined,
+  };
+}
+
 // ─── Init ──────────────────────────────────────────────
 
 /** Call once at startup to enable interactive commands. */
 export function startInteractiveBot(): void {
   initCommands();
+}
+
+/**
+ * Start the bot with webhook mode instead of polling.
+ * Useful for production deployments where polling may be unreliable.
+ *
+ * @param webhookUrl - Public HTTPS URL where Telegram sends updates
+ * @param options - Optional configuration
+ */
+export async function startWebhookBot(
+  webhookUrl: string,
+  options?: {
+    maxConnections?: number;
+    allowedUpdates?: string[];
+    secretToken?: string;
+  }
+): Promise<void> {
+  // Register commands first
+  initCommands();
+
+  // Then set up webhook
+  const ok = await setupWebhook(webhookUrl, options);
+  if (ok) {
+    logger.info(`Webhook bot started at ${webhookUrl}`);
+  } else {
+    logger.warn("Webhook setup failed, falling back to polling");
+  }
 }

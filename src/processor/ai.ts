@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { config } from "../config";
 import { logger } from "../utils/logger";
+import { sleep } from "../utils/helpers";
 import type { Article } from "../collector/rss";
 
 // ─── AI Infrastructure News Categories ───────────────
@@ -45,9 +46,23 @@ export interface DigestResult {
   summary: string;
   categories: Record<NewsCategory, ProcessedArticle[]>;
   usage: AIUsage;
+  batchesRun: number;
 }
 
-const BATCH_SIZE = 10;
+/**
+ * Calculate dynamic batch size based on article count.
+ * - Fewer articles → smaller batches (cheaper)
+ * - More articles → larger batches (more efficient)
+ * Target: aim for ceil(articles / 4) batches, min 5, max 15 articles per batch.
+ */
+function getBatchSize(articleCount: number): number {
+  // Aim for roughly 4 batches for typical volumes
+  const targetBatches = 4;
+  const computed = Math.ceil(articleCount / targetBatches);
+  // Clamp between 5 and 15
+  return Math.max(5, Math.min(15, computed));
+}
+
 const CATEGORIES_LIST = NEWS_CATEGORIES.map((c, i) => `${i + 1}. ${c}`).join("\n");
 
 // ─── AI Client Setup ──────────────────────────────────
@@ -172,9 +187,6 @@ export interface CallAIResult {
   };
 }
 
-/** Sleep helper */
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 /**
  * Exponential backoff with full jitter.
  * Waits in [0, baseDelay * 2^attempt) ms, then reports the sleep duration.
@@ -280,6 +292,7 @@ async function processBatch(
 export async function processArticles(
   articles: Article[]
 ): Promise<DigestResult> {
+  const BATCH_SIZE = getBatchSize(articles.length);
   logger.info(
     `Processing ${articles.length} articles with ${config.ai.provider} AI ` +
       `(batch size: ${BATCH_SIZE})...`
@@ -293,7 +306,8 @@ export async function processArticles(
     batches.push(articles.slice(i, i + BATCH_SIZE));
   }
 
-  logger.info(`Split into ${batches.length} batches`);
+  const totalBatches = batches.length;
+  logger.info(`Split into ${totalBatches} batches`);
 
   // Process all batches
   const allBatchResults: ProcessedArticle[] = [];
@@ -370,5 +384,6 @@ export async function processArticles(
       promptTokens: totalPromptTokens,
       completionTokens: totalCompletionTokens,
     },
+    batchesRun: totalBatches,
   };
 }

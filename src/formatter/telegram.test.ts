@@ -27,6 +27,7 @@ describe("formatDigestTelegram", () => {
       summary: "Test summary.",
       categories: emptyCategories(),
       usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 },
+      batchesRun: 0,
     });
     expect(result).toContain("AI Infra Morning Digest");
     expect(result).toContain("MARKET OUTLOOK");
@@ -70,6 +71,7 @@ describe("formatDigestTelegram", () => {
       summary: "NVIDIA announced a new chip.",
       categories: cat,
       usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 },
+      batchesRun: 0,
     });
     expect(result).toContain("NVIDIA");
     expect(result).toContain("NVDA");
@@ -98,6 +100,7 @@ describe("formatDigestTelegram", () => {
         summary: "Test.",
         categories: emptyCategories(),
         usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 },
+        batchesRun: 0,
       },
       { stockPrices }
     );
@@ -141,6 +144,7 @@ describe("formatDigestTelegram", () => {
       summary: "Test.",
       categories: cat,
       usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 },
+      batchesRun: 0,
     });
     expect(result).toContain("VALUE CHAIN");
     expect(result).toContain("Chips");
@@ -155,6 +159,7 @@ describe("formatDigestTelegram", () => {
       summary: "No news today.",
       categories: emptyCategories(),
       usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 },
+      batchesRun: 0,
     });
     expect(result).toContain("AI Infra Morning Digest");
     expect(result).toContain("Quiet day.");

@@ -1,6 +1,7 @@
 import Parser from "rss-parser";
 import { logger } from "../utils/logger";
 import { config } from "../config";
+import { sleep } from "../utils/helpers";
 
 const parser = new Parser({
   timeout: 15000,
@@ -8,6 +9,16 @@ const parser = new Parser({
     "User-Agent": "AI-Infra-Digest/1.0",
   },
 });
+
+/**
+ * Exponential backoff with full jitter for RSS fetch retries.
+ * Waits in [0, baseDelay * 2^attempt) ms, then reports the sleep duration.
+ */
+async function rssBackoff(attempt: number, baseDelayMs = 2000): Promise<void> {
+  const maxDelay = baseDelayMs * Math.pow(2, attempt);
+  const waitMs = Math.random() * maxDelay;
+  await sleep(waitMs);
+}
 
 // ─── Tier 1: Major company news + Financial news ───────
 const TIER_1_FEEDS = [
@@ -167,6 +178,7 @@ export interface FeedResult {
   articlesFetched: number;
   articles: Article[];
   error?: string;
+  response_time_ms?: number;
 }
 
 // ─── Fetch with status tracking ────────────────────────
@@ -175,8 +187,14 @@ async function fetchFeedWithStatus(
   maxArticles: number
 ): Promise<FeedResult> {
   const startTime = Date.now();
-  try {
-    const result = await parser.parseURL(feed.url);
+
+  // Retry loop with exponential backoff
+  const maxRetries = 2;
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const result = await parser.parseURL(feed.url);
     const articles: Article[] = [];
 
     for (const item of result.items) {
@@ -205,17 +223,25 @@ async function fetchFeedWithStatus(
       articlesFetched: articles.length,
       articles,
     };
-  } catch (error) {
-    logger.warn(`Failed to fetch ${feed.name}: ${(error as Error).message}`);
-    return {
-      name: feed.name,
-      url: feed.url,
-      status: "failed",
-      articlesFetched: 0,
-      articles: [],
-      error: (error as Error).message,
-    };
+  } catch (error) {      lastError = error instanceof Error ? error : new Error(String(error));
+      if (attempt < maxRetries) {
+        logger.warn(`RSS retry ${attempt + 1}/${maxRetries} for ${feed.name}: ${lastError.message}`);
+        await rssBackoff(attempt);
+      }
+    }
   }
+
+  // All retries exhausted
+  logger.warn(`Failed to fetch ${feed.name} after ${maxRetries + 1} attempts: ${lastError?.message}`);
+  return {
+    name: feed.name,
+    url: feed.url,
+    status: "failed",
+    articlesFetched: 0,
+    articles: [],
+    error: lastError?.message || "Unknown error",
+    response_time_ms: Date.now() - startTime,
+  };
 }
 
 // ─── Main collection ──────────────────────────────────

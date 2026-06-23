@@ -452,9 +452,12 @@
           </div>
           <input class="filter-search" id="filterSearch" placeholder="Search articles..." oninput="onSearchChange()">
           <button class="filter-clear" id="filterClear" onclick="clearFilters()" style="display:none">✕ Clear</button>
-        </div>
-        <table><thead><tr><th>Title</th><th>Category</th><th>Impact</th><th>Score</th><th>Stocks</th></tr></thead><tbody id="articlesBody"></tbody></table>
+        </div>          <table><thead><tr><th>Title</th><th>Category</th><th>Impact</th><th>Score</th><th>Stocks</th></tr></thead><tbody id="articlesBody"></tbody></table>
         <div id="articlesCount" style="margin-top:10px;font-size:12px;color:var(--text-muted)"></div>
+        <div id="paginationControls" style="margin-top:12px;display:flex;align-items:center;gap:10px">
+          <button id="loadMoreBtn" onclick="loadMoreArticles()" style="background:var(--bg-hover);border:1px solid var(--border);color:var(--text);padding:8px 18px;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:500;font-family:'Inter',sans-serif;transition:all 0.2s var(--transition);display:none" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">⬇️ Load More</button>
+          <span id="paginationInfo" style="font-size:11px;color:var(--text-muted)"></span>
+        </div>
       </div>
       <div class="table-card"><h3>🔌 Feed Health</h3><div id="pipelineHealth"></div></div>
       <div class="table-card"><h3>💰 Capex Announcements</h3><table><thead><tr><th>Company</th><th>Amount</th><th>Category</th><th>Description</th></tr></thead><tbody id="capexBody"></tbody></table></div>
@@ -617,6 +620,8 @@
 
         // Cache articles and sectors for filtering
         allArticlesCache = articles;
+        allFetchedArticles = articles;
+        hasMoreArticles = articles.length === 20; // if we got a full page, there might be more
         allSectors = [...new Set(sectors.map(s => s.sector))];
 
         renderStats(digests, sectors, metrics);
@@ -630,6 +635,18 @@
         applyFilters();
         renderPipeline(feeds);
         renderCapex(capex);
+
+        // Show Load More if we have a full initial page
+        const btn = document.getElementById('loadMoreBtn');
+        const info = document.getElementById('paginationInfo');
+        if (btn) {
+          btn.style.display = hasMoreArticles ? 'inline-flex' : 'none';
+          btn.disabled = false;
+          btn.textContent = '⬇️ Load More';
+        }
+        if (info) {
+          info.textContent = hasMoreArticles ? `Showing ${articles.length} articles` : `${articles.length} articles`;
+        }
 
         document.getElementById('liveIndicator').innerHTML = `
           <span class="status-dot live"></span>
@@ -1000,11 +1017,77 @@
       tbody.innerHTML=capex.map(c=>`<tr><td><strong>${c.company}</strong></td><td><span style="font-family:'JetBrains Mono',monospace;font-weight:600">${c.amount||'—'}</span></td><td><span style="font-size:11px;background:var(--bg-hover);padding:2px 8px;border-radius:20px">${c.category||'—'}</span></td><td style="color:var(--text-dim);font-size:12px">${c.description||''}</td></tr>`).join('');
     }
 
+    // ─── Pagination State ──
+    let articlePage = 0;
+    const ARTICLES_PAGE_SIZE = 20;
+    let allFetchedArticles = [];
+    let hasMoreArticles = true;
+
+    async function loadMoreArticles() {
+      const btn = document.getElementById('loadMoreBtn');
+      const info = document.getElementById('paginationInfo');
+      btn.disabled = true;
+      btn.textContent = '⏳ Loading...';
+
+      articlePage++;
+      const offset = articlePage * ARTICLES_PAGE_SIZE;
+
+      try {
+        const rangeStart = offset;
+        const rangeEnd = offset + ARTICLES_PAGE_SIZE - 1;
+        const url = `${SUPABASE_URL}/rest/v1/articles?select=title,url,source,impact,impact_score,category,affected_stocks,summary,created_at&order=impact_score.desc&limit=${ARTICLES_PAGE_SIZE}&offset=${offset}`;
+        const res = await fetch(url, {
+          headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+        });
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const newArticles = await res.json();
+
+        if (newArticles.length === 0) {
+          hasMoreArticles = false;
+          btn.style.display = 'none';
+          info.textContent = 'All articles loaded';
+          btn.disabled = false;
+          btn.textContent = '⬇️ Load More';
+          return;
+        }
+
+        // Dedup by URL and append
+        const existingUrls = new Set(allFetchedArticles.map(a => a.url));
+        for (const a of newArticles) {
+          if (!existingUrls.has(a.url)) {
+            allFetchedArticles.push(a);
+            existingUrls.add(a.url);
+          }
+        }
+        allArticlesCache = allFetchedArticles;
+        renderArticles(allFetchedArticles, false);
+
+        if (newArticles.length < ARTICLES_PAGE_SIZE) {
+          hasMoreArticles = false;
+          btn.style.display = 'none';
+          info.textContent = `${allFetchedArticles.length} articles — all loaded`;
+        } else {
+          info.textContent = `Showing ${allFetchedArticles.length} articles`;
+        }
+      } catch(e) {
+        info.textContent = `Error: ${e.message}`;
+        info.style.color = 'var(--danger)';
+      }
+
+      btn.disabled = false;
+      btn.textContent = '⬇️ Load More';
+    }
+
     // ─── Full-Text Search ──
     async function doFullTextSearch() {
       const input = document.getElementById('fullTextSearch');
       const status = document.getElementById('searchStatus');
       const query = input.value.trim();
+
+      // Reset pagination state — search replaces the result set
+      hasMoreArticles = false;
+      document.getElementById('loadMoreBtn').style.display = 'none';
 
       if (!query || query.length < 2) {
         status.textContent = 'Type at least 2 characters';

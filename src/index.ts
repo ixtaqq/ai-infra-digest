@@ -146,7 +146,7 @@ async function main() {    logger.info("🚀 AI Infrastructure Daily Digest — 
         status: sendResult.success ? "success" : "failed",
         articles_collected: articles.length,
         articles_processed: digest.articles.length,
-        batches_run: Math.ceil(articlesToProcess.length / 10),
+        batches_run: digest.batchesRun,
         ai_provider: "groq",
         ai_model: "llama-3.3-70b-versatile",
         total_tokens_used: digest.usage.totalTokens,
