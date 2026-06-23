@@ -406,70 +406,88 @@
     }
     .tech-chip .chip-icon { font-size: 13px; }
 
-    /* ─── Roadmap ── */
-    .roadmap {
-      max-width: 720px;
-      width: 100%;
-      margin: 0 auto;
+    /* ─── Roadmap (4-column horizontal) ── */
+    .roadmap-wrap {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg);
+      overflow: hidden;
     }
-    .roadmap-header {
-      margin-bottom: 36px;
-      padding-bottom: 20px;
-      text-align: left;
+    .roadmap-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 24px 28px 20px;
       border-bottom: 1px solid var(--border);
     }
-    .roadmap-header h2 {
-      font-size: clamp(20px, 3vw, 28px);
+    .roadmap-top h2 {
+      font-size: clamp(20px, 2.5vw, 26px);
       font-weight: 700;
       letter-spacing: -0.5px;
       color: var(--text);
       line-height: 1.15;
-      margin-bottom: 4px;
     }
-    .roadmap-header h2 span { color: var(--text-muted); font-weight: 400; }
-    .roadmap-header .sub {
-      font-size: 10px;
-      font-weight: 500;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      color: var(--text-muted);
+    .roadmap-top h2 span { color: var(--text-muted); font-weight: 400; }
+    .roadmap-top .catalyst-label {
       font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      color: var(--accent);
+      text-transform: uppercase;
+      flex-shrink: 0;
     }
-    .phase {
-      margin-top: 28px;
-      padding-left: 20px;
+
+    .roadmap-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+    }
+    .roadmap-grid > * + * {
+      border-left: 1px solid var(--border);
+    }
+
+    .phase-card {
+      padding: 24px 22px;
       position: relative;
-      text-align: left;
+      transition: all 0.3s var(--transition);
     }
-    .phase::before {
+    .phase-card:hover {
+      background: rgba(255,107,44,0.02);
+    }
+    .phase-card::after {
       content: '';
       position: absolute;
-      left: 0; top: 2px; bottom: 2px;
-      width: 1.5px;
-      border-radius: 2px;
-      opacity: 0.5;
+      inset: 0;
+      opacity: 0;
       transition: opacity 0.3s;
+      border-radius: var(--radius);
+      pointer-events: none;
+      box-shadow: inset 0 0 0 1px transparent;
     }
-    .phase:hover::before { opacity: 1; }
-    .phase.status-live::before { background: var(--accent); box-shadow: 0 0 8px rgba(255,107,44,0.2); }
-    .phase.status-building::before { background: var(--accent2); box-shadow: 0 0 8px rgba(163,255,18,0.15); }
-    .phase.status-future::before { background: var(--text-muted); }
-    .phase-top {
+    .phase-card.status-live::after { box-shadow: inset 0 0 0 1px rgba(255,107,44,0.3); }
+    .phase-card.status-live:hover::after { opacity: 1; box-shadow: inset 0 0 0 1px rgba(255,107,44,0.5), 0 0 30px rgba(255,107,44,0.06); }
+    .phase-card.status-next::after { box-shadow: inset 0 0 0 1px rgba(163,255,18,0.2); }
+    .phase-card.status-next:hover::after { opacity: 1; box-shadow: inset 0 0 0 1px rgba(163,255,18,0.4), 0 0 30px rgba(163,255,18,0.05); }
+    .phase-card.status-future::after { box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06); }
+    .phase-card.status-future:hover::after { opacity: 1; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12), 0 0 20px rgba(255,255,255,0.02); }
+
+    .phase-card .phase-top {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       flex-wrap: wrap;
       margin-bottom: 10px;
     }
-    .phase-title {
+    .phase-card .phase-num {
+      font-family: 'JetBrains Mono', monospace;
       font-size: 10px;
       font-weight: 600;
       letter-spacing: 1.5px;
       text-transform: uppercase;
       color: var(--text-dim);
-      font-family: 'JetBrains Mono', monospace;
     }
-    .badge {
+    .phase-card .badge {
       display: inline-block;
       font-size: 8px;
       font-weight: 700;
@@ -478,57 +496,70 @@
       padding: 2px 10px;
       border-radius: 2px;
     }
-    .badge-live { background: rgba(255,107,44,0.1); color: var(--accent); border: 1px solid rgba(255,107,44,0.2); }
-    .badge-building { background: rgba(163,255,18,0.08); color: var(--accent2); border: 1px solid rgba(163,255,18,0.15); }
-    .badge-future { background: rgba(255,255,255,0.03); color: var(--text-muted); border: 1px solid var(--border); }
-    .feature-list { list-style: none; margin: 0; padding: 0; }
-    .feature-list li {
-      font-size: 12px;
+    .phase-card .badge-live {
+      background: rgba(255,107,44,0.1);
+      color: var(--accent);
+      border: 1px solid rgba(255,107,44,0.2);
+    }
+    .phase-card .badge-next {
+      background: rgba(163,255,18,0.08);
+      color: var(--accent2);
+      border: 1px solid rgba(163,255,18,0.15);
+    }
+    .phase-card .badge-future {
+      background: rgba(255,255,255,0.03);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+
+    .phase-card .phase-title-text {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      color: var(--text);
+      margin-bottom: 10px;
+      line-height: 1.2;
+    }
+
+    .phase-card .feature-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .phase-card .feature-list li {
+      font-size: 11.5px;
       font-weight: 400;
       color: var(--text-dim);
-      padding: 4px 0 4px 16px;
+      padding: 4px 0 4px 14px;
       position: relative;
       line-height: 1.6;
       transition: color 0.2s;
     }
-    .feature-list li:hover { color: var(--text); }
-    .feature-list li::before {
+    .phase-card .feature-list li:hover { color: var(--text); }
+    .phase-card .feature-list li::before {
       content: '';
       position: absolute;
-      left: 2px;
+      left: 1px;
       top: 12px;
       width: 3px;
       height: 3px;
       border-radius: 50%;
       background: var(--text-muted);
     }
-    .feature-list li .version-tag {
-      display: inline-block;
-      font-size: 9px;
-      font-weight: 500;
-      letter-spacing: 0.3px;
-      padding: 1px 8px;
-      border-radius: 2px;
-      background: rgba(255,107,44,0.06);
-      color: rgba(255,107,44,0.5);
-      margin-right: 6px;
-      vertical-align: middle;
-      font-family: 'JetBrains Mono', monospace;
-      transition: background 0.2s, color 0.2s;
+
+    /* ─── Responsive ── */
+    @media (max-width: 900px) {
+      .roadmap-grid { grid-template-columns: repeat(2, 1fr); }
+      .roadmap-grid > *:nth-child(2) { border-left: none; }
+      .roadmap-grid > *:nth-child(1),
+      .roadmap-grid > *:nth-child(2) { border-bottom: 1px solid var(--border); }
     }
-    .feature-list li:hover .version-tag {
-      background: rgba(255,107,44,0.1);
-      color: var(--accent);
-    }
-    .phase-divider {
-      margin: 24px 0 4px 0;
-      border: 0;
-      height: 1px;
-      background: linear-gradient(to right, rgba(255,255,255,0.04), transparent);
-    }
-    @media (max-width: 600px) {
-      .phase { padding-left: 14px; margin-top: 24px; }
-      .feature-list li { font-size: 11px; padding-left: 12px; }
+    @media (max-width: 560px) {
+      .roadmap-grid { grid-template-columns: 1fr; }
+      .roadmap-grid > * { border-left: none !important; }
+      .roadmap-grid > * + * { border-top: 1px solid var(--border); }
+      .roadmap-top { flex-direction: column; align-items: flex-start; gap: 6px; }
+      .phase-card { padding: 20px 18px; }
     }
 
     /* ─── Terminal Block ── */
@@ -911,53 +942,73 @@
 
   <!-- Roadmap -->
   <section id="roadmap">
-    <div class="container section-center">
-      <div class="roadmap animate">
-        <div class="roadmap-header">
+    <div class="container">
+      <div class="roadmap-wrap animate">
+        <div class="roadmap-top">
           <h2>What ships <span>next.</span></h2>
-          <div class="sub">AI Infra Digest · Version Roadmap</div>
+          <span class="catalyst-label">Catalysts</span>
         </div>
 
-        <div class="phase status-live">
-          <div class="phase-top">
-            <span class="phase-title">Phase I · Shipped</span>
-            <span class="badge badge-live">Live</span>
+        <div class="roadmap-grid">
+          <!-- Phase I -->
+          <div class="phase-card status-live delay-1">
+            <div class="phase-top">
+              <span class="phase-num">Phase I</span>
+              <span class="badge badge-live">Live</span>
+            </div>
+            <div class="phase-title-text">Foundation.</div>
+            <ul class="feature-list">
+              <li>57 RSS feeds across 10 sectors — conditional GET caching, 304 responses</li>
+              <li>Smart dedup — URL hash + Jaccard similarity (0.65 threshold)</li>
+              <li>Keyword filtering &amp; categorization with ticker extraction</li>
+              <li>58 unit tests passing — Vitest, integration, and E2E coverage</li>
+            </ul>
           </div>
-          <ul class="feature-list">
-            <li><span class="version-tag">v1</span>Core pipeline — RSS → AI → Telegram → GitHub Actions cron. 57 feeds, 10 sectors, keyword filtering, conditional GET caching</li>
-            <li><span class="version-tag">v1.1</span>Supabase metrics, stock prices (Yahoo Finance), premium glassmorphism dashboard, URL + Jaccard dedup</li>
-            <li><span class="version-tag">v1.2</span>Token tracking, 58 unit tests (Vitest), dashboard upgrades with shimmer loading animations</li>
-            <li><span class="version-tag">v1.3</span>Interactive Telegram commands, user management, health alerts, exponential backoff, Jaccard dedup v2</li>
-            <li><span class="version-tag">v2.0</span>Watchlist filtering, alert system (on/off/threshold), dashboard search + pagination, conditional RSS fetching</li>
-            <li><span class="version-tag">v2.1</span>NDJSON structured logging, enhanced error alerts with recovery actions, production webhook support</li>
-            <li><span class="version-tag">v2.2</span>Feedback with inline keyboard, trending (7-day rolling), per-user scheduled delivery, idempotent delivery log</li>
-          </ul>
-        </div>
 
-        <hr class="phase-divider" />
-
-        <div class="phase status-building">
-          <div class="phase-top">
-            <span class="phase-title">Phase II · Building</span>
-            <span class="badge badge-building">Next</span>
+          <!-- Phase II -->
+          <div class="phase-card status-live delay-2">
+            <div class="phase-top">
+              <span class="phase-num">Phase II</span>
+              <span class="badge badge-live">Live</span>
+            </div>
+            <div class="phase-title-text">Intelligence.</div>
+            <ul class="feature-list">
+              <li>AI analysis via Llama 3.3 (Groq) — 5-15 article dynamic batches</li>
+              <li>Impact scoring, sentiment analysis, &amp; sector classification</li>
+              <li>SEC EDGAR integration — 35 companies, 8-K/10-K/10-Q extraction</li>
+              <li>Yahoo Finance snapshots — 30 tickers tracked with price deltas</li>
+            </ul>
           </div>
-          <ul class="feature-list">
-            <li><span class="version-tag">v3</span>SEC filing deep analysis — parse 8-K, 10-K, 10-Q filings for 35 companies. Extract Capex, AI Revenue, Margins, Inventory, forward guidance</li>
-            <li><span class="version-tag">v3</span>Earnings transcript parsing — download and analyze calls. Extract Capex guidance, AI revenue mentions, management tone signals</li>
-          </ul>
-        </div>
 
-        <hr class="phase-divider" />
-
-        <div class="phase status-future">
-          <div class="phase-top">
-            <span class="phase-title">Phase III · Future</span>
-            <span class="badge badge-future">Planned</span>
+          <!-- Phase III -->
+          <div class="phase-card status-next delay-2">
+            <div class="phase-top">
+              <span class="phase-num">Phase III</span>
+              <span class="badge badge-next">Next</span>
+            </div>
+            <div class="phase-title-text">Interaction.</div>
+            <ul class="feature-list">
+              <li>Telegram bot — /digest, /trending, /watchlist, /alert, /sec, /feedback</li>
+              <li>Watchlist filtering &amp; price threshold alert system</li>
+              <li>Premium live dashboard — 6 charts, search, pagination, dark mode</li>
+              <li>Per-user scheduled delivery with timezone-aware cron</li>
+            </ul>
           </div>
-          <ul class="feature-list">
-            <li><span class="version-tag">v4</span>Article archival &amp; historical trend analysis across sectors and tickers. Price threshold alerts</li>
-            <li><span class="version-tag">v5</span>Bull/bear thesis generation per ticker, competitive landscape analysis, personal portfolio tracking with P&amp;L</li>
-          </ul>
+
+          <!-- Phase IV -->
+          <div class="phase-card status-future delay-3">
+            <div class="phase-top">
+              <span class="phase-num">Phase IV</span>
+              <span class="badge badge-future">Future</span>
+            </div>
+            <div class="phase-title-text">Research.</div>
+            <ul class="feature-list">
+              <li>Deep SEC analysis — Capex, AI Revenue, Margins, Inventory, forward guidance</li>
+              <li>Historical trend analysis across sectors &amp; tickers with price alerts</li>
+              <li>Earnings transcript parsing — management tone &amp; Capex guidance signals</li>
+              <li>Bull/bear thesis generation &amp; personal portfolio tracking with P&amp;L</li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>
