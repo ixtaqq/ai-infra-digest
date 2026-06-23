@@ -1,0 +1,1550 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Infra Dashboard — Live Analytics</title>
+  <meta name="description" content="Live analytics dashboard for AI Infra Digest — stock prices, sector trends, SEC filings, and more.">
+  <meta property="og:title" content="AI Infra Dashboard">
+  <meta property="og:description" content="Live analytics dashboard for AI Infrastructure intelligence.">
+  <meta property="og:type" content="website">
+  <meta name="theme-color" content="#22d3ee">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    /* ─── Premium Design System ─────────────────────────── */
+    :root {
+      /* Dark theme — deep space */
+      --bg: #080b16; --bg-subtle: #0d1225; --bg-card: rgba(17,24,39,0.7);
+      --bg-hover: rgba(31,41,55,0.5); --bg-glass: rgba(17,24,39,0.6);
+      --text: #f1f5f9; --text-dim: #94a3b8; --text-muted: #64748b;
+      --border: rgba(51,65,85,0.4); --border-light: rgba(51,65,85,0.2);
+      --accent: #22d3ee; --accent2: #10b981; --danger: #ef4444; --warn: #f59e0b;
+      --bullish: #22c55e; --bearish: #ef4444; --neutral: #94a3b8;
+      --glow-cyan: rgba(34,211,238,0.15); --glow-green: rgba(16,185,129,0.15);
+      --gradient-1: linear-gradient(135deg, #22d3ee 0%, #06b6d4 100%);
+      --gradient-2: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      --gradient-3: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      --gradient-card: linear-gradient(145deg, rgba(17,24,39,0.9) 0%, rgba(17,24,39,0.5) 100%);
+      --shadow-card: 0 8px 32px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.2);
+      --shadow-hover: 0 12px 48px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.3);
+      --shadow-glow: 0 0 20px var(--glow-cyan), 0 0 60px var(--glow-cyan);
+      --radius: 14px; --radius-sm: 8px; --radius-lg: 20px;
+      --transition: cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    [data-theme="light"] {
+      --bg: #f0f4f8; --bg-subtle: #e2e8f0; --bg-card: rgba(255,255,255,0.75);
+      --bg-hover: rgba(226,232,240,0.6); --bg-glass: rgba(255,255,255,0.7);
+      --text: #0f172a; --text-dim: #475569; --text-muted: #94a3b8;
+      --border: rgba(203,213,225,0.5); --border-light: rgba(203,213,225,0.3);
+      --glow-cyan: rgba(34,211,238,0.08); --glow-green: rgba(16,185,129,0.08);
+      --gradient-card: linear-gradient(145deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.7) 100%);
+      --shadow-card: 0 2px 12px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
+      --shadow-hover: 0 8px 24px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.05);
+      --shadow-glow: 0 0 30px rgba(34,211,238,0.1);
+    }
+
+    * { margin:0; padding:0; box-sizing:border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg); color: var(--text);
+      min-height: 100vh; overflow-x: hidden;
+      -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* ─── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+    /* ─── Background effects ── */
+    .bg-glow {
+      position: fixed; top: -40%; left: -20%; width: 80%; height: 80%;
+      background: radial-gradient(ellipse, var(--glow-cyan) 0%, transparent 70%);
+      pointer-events: none; z-index: 0; opacity: 0.6;
+      transition: opacity 0.6s var(--transition);
+    }
+    .bg-glow-2 {
+      position: fixed; bottom: -30%; right: -15%; width: 60%; height: 60%;
+      background: radial-gradient(ellipse, var(--glow-green) 0%, transparent 70%);
+      pointer-events: none; z-index: 0; opacity: 0.4;
+    }
+
+    /* ─── Header ── */
+    .header {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--bg-glass); backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 28px; display: flex; justify-content: space-between;
+      align-items: center; flex-wrap: wrap; gap: 12px;
+      transition: background 0.3s var(--transition);
+    }
+    .header::after {
+      content: ''; position: absolute; bottom: -1px; left: 10%; right: 10%;
+      height: 1px; background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0.5;
+    }
+    .header h1 {
+      font-size: 20px; font-weight: 800; display: flex; align-items: center; gap: 10px;
+      background: var(--gradient-1); -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent; background-clip: text;
+      letter-spacing: -0.3px;
+    }
+    .header h1 .logo-icon {
+      background: var(--gradient-1); border-radius: 8px; padding: 4px;
+      font-size: 16px; -webkit-text-fill-color: white; line-height: 1;
+    }
+    .header-controls { display: flex; align-items: center; gap: 8px; }
+    .header-controls select, .header-controls button {
+      background: var(--bg-card); color: var(--text);
+      border: 1px solid var(--border); padding: 7px 14px;
+      border-radius: var(--radius-sm); font-size: 12px; font-weight: 500;
+      cursor: pointer; transition: all 0.2s var(--transition);
+      font-family: 'Inter', sans-serif; backdrop-filter: blur(8px);
+    }
+    .header-controls select:hover, .header-controls button:hover {
+      border-color: var(--accent); background: var(--bg-hover);
+      transform: translateY(-1px); box-shadow: 0 4px 12px rgba(34,211,238,0.15);
+    }
+    .header-controls button:active { transform: translateY(0); }
+    .back-link {
+      font-size: 12px; color: var(--text-dim); text-decoration: none;
+      display: flex; align-items: center; gap: 4px; font-weight: 500;
+      transition: color 0.2s; margin-right: 8px;
+    }
+    .back-link:hover { color: var(--accent); }
+
+    /* ─── Container ── */
+    .container { max-width: 1480px; margin: 0 auto; padding: 28px; position: relative; z-index: 1; }
+
+    /* ─── Loading skeleton ── */
+    .loading { padding: 40px 20px; }
+    .skeleton-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .skeleton-card {
+      background: var(--gradient-card); border-radius: var(--radius);
+      padding: 24px; position: relative; overflow: hidden;
+      border: 1px solid var(--border-light);
+    }
+    .skeleton-card::after {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent);
+      animation: shimmer 2s infinite; transform: translateX(-100%);
+    }
+    @keyframes shimmer { 100% { transform: translateX(100%); } }
+    .skeleton-card .bar { height: 12px; background: var(--border); border-radius: 6px; margin-bottom: 10px; width: 60%; }
+    .skeleton-card .bar-lg { height: 28px; background: var(--border); border-radius: 6px; width: 45%; }
+    .skeleton-card .bar-sm { height: 10px; background: var(--border-light); border-radius: 6px; width: 80%; }
+    .skeleton-chart { height: 240px; background: var(--gradient-card); border-radius: var(--radius); margin-bottom: 16px; border: 1px solid var(--border-light); position: relative; overflow: hidden; }
+    .skeleton-chart::after {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent);
+      animation: shimmer 2s infinite; transform: translateX(-100%);
+    }
+    .skeleton-title { width: 40%; margin-bottom: 16px; }
+
+    /* ─── Stats Grid ── */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; margin-bottom: 28px; }
+    .stat-card {
+      background: var(--gradient-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 22px 24px;
+      transition: all 0.3s var(--transition);
+      position: relative; overflow: hidden;
+      backdrop-filter: blur(12px);
+    }
+    .stat-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0; transition: opacity 0.3s var(--transition);
+    }
+    .stat-card:hover::before { opacity: 1; }
+    .stat-card:hover {
+      transform: translateY(-3px); border-color: var(--border);
+      box-shadow: var(--shadow-hover);
+    }
+    .stat-card:nth-child(2)::before { background: linear-gradient(90deg, transparent, var(--accent2), transparent); }
+    .stat-card:nth-child(3)::before { background: linear-gradient(90deg, transparent, var(--warn), transparent); }
+    .stat-card:nth-child(4)::before { background: linear-gradient(90deg, transparent, #8b5cf6, transparent); }
+    .stat-card:nth-child(5)::before { background: linear-gradient(90deg, transparent, #ec4899, transparent); }
+    .stat-card:nth-child(6)::before { background: linear-gradient(90deg, transparent, #f97316, transparent); }
+    .stat-card .label {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+      color: var(--text-muted); margin-bottom: 6px; font-weight: 600;
+    }
+    .stat-card .value { font-size: 30px; font-weight: 800; line-height: 1.1; letter-spacing: -1px; }
+    .stat-card .sub { font-size: 12px; color: var(--text-dim); margin-top: 6px; display: flex; align-items: center; gap: 4px; }
+
+    /* ─── Charts Grid ── */
+    .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 18px; margin-bottom: 28px; }
+    .chart-card {
+      background: var(--gradient-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 22px 24px 18px;
+      transition: all 0.3s var(--transition);
+      backdrop-filter: blur(12px); position: relative;
+    }
+    .chart-card:hover { border-color: var(--border); box-shadow: var(--shadow-hover); }
+    .chart-card h3 {
+      font-size: 13px; font-weight: 600; margin-bottom: 14px;
+      color: var(--text-dim); display: flex; align-items: center; gap: 8px;
+      letter-spacing: 0.3px; text-transform: uppercase;
+    }
+    .chart-card h3 .badge {
+      font-size: 10px; background: var(--bg-hover); padding: 2px 10px;
+      border-radius: 20px; color: var(--text-muted); font-weight: 500;
+      letter-spacing: 0; text-transform: none;
+    }
+    .chart-card canvas { max-height: 250px; }
+
+    /* ─── Ticker toggles ── */
+    .ticker-toggle {
+      display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 12px;
+    }
+    .ticker-toggle button {
+      padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border);
+      background: transparent; font-size: 11px; font-weight: 500;
+      cursor: pointer; transition: all 0.2s var(--transition);
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .ticker-toggle button:hover { transform: translateY(-1px); }
+
+    /* ─── Tables ── */
+    .table-card {
+      background: var(--gradient-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 22px 24px;
+      margin-bottom: 18px; overflow-x: auto;
+      backdrop-filter: blur(12px); transition: all 0.3s var(--transition);
+    }
+    .table-card:hover { box-shadow: var(--shadow-hover); }
+    .table-card h3 {
+      font-size: 13px; font-weight: 600; margin-bottom: 14px;
+      color: var(--text-dim); letter-spacing: 0.3px; text-transform: uppercase;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th {
+      text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border);
+      color: var(--text-muted); font-weight: 600; text-transform: uppercase;
+      font-size: 10px; letter-spacing: 1px; white-space: nowrap;
+    }
+    tbody td { padding: 10px 12px; border-bottom: 1px solid var(--border-light); transition: background 0.2s; }
+    tbody tr { transition: background 0.2s; }
+    tbody tr:hover { background: var(--bg-hover); }
+    tbody tr:last-child td { border-bottom: none; }
+    a { color: var(--accent); text-decoration: none; transition: color 0.2s; }
+    a:hover { color: #67e8f9; text-decoration: underline; }
+
+    /* ─── Filter Bar ── */
+    .filter-bar { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+    .filter-group { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+    .filter-label { font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 4px; }
+    .filter-pill {
+      padding: 4px 12px; border-radius: 20px; border: 1px solid var(--border);
+      background: transparent; color: var(--text-dim); font-size: 11px; font-weight: 500;
+      cursor: pointer; transition: all 0.2s var(--transition);
+      font-family: 'Inter', sans-serif; white-space: nowrap;
+    }
+    .filter-pill:hover { border-color: var(--accent); color: var(--text); }
+    .filter-pill.active {
+      background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600;
+    }
+    .filter-pill.impact-bullish.active { background: var(--bullish); border-color: var(--bullish); color: #000; }
+    .filter-pill.impact-bearish.active { background: var(--bearish); border-color: var(--bearish); color: #fff; }
+    .filter-pill.impact-neutral.active { background: var(--text-muted); border-color: var(--text-muted); color: #fff; }
+    .filter-search {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 20px;
+      padding: 5px 14px; color: var(--text); font-size: 12px; font-family: 'Inter', sans-serif;
+      width: 180px; outline: none; transition: border-color 0.2s;
+    }
+    .filter-search:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--glow-cyan); }
+    .filter-search::placeholder { color: var(--text-muted); }
+    .filter-clear {
+      font-size: 11px; color: var(--text-muted); cursor: pointer;
+      padding: 4px 10px; border-radius: 20px; border: 1px dashed var(--border);
+      background: transparent; transition: all 0.2s; font-family: 'Inter', sans-serif;
+    }
+    .filter-clear:hover { border-color: var(--danger); color: var(--danger); }
+    .filter-count {
+      font-size: 10px; background: var(--accent); color: #000;
+      padding: 1px 8px; border-radius: 20px; font-weight: 700;
+    }
+
+    /* ─── Sentiment ── */
+    .sentiment-bullish { color: var(--bullish); font-weight: 600; }
+    .sentiment-bearish { color: var(--bearish); font-weight: 600; }
+    .sentiment-neutral { color: var(--neutral); }
+    .trend-up { color: var(--bullish); } .trend-down { color: var(--bearish); } .trend-flat { color: var(--neutral); }
+
+    /* ─── Pipeline ── */
+    .feed-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border-light); font-size: 13px; }
+    .feed-row:last-child { border: none; }
+    .feed-status { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .feed-status.success { background: var(--accent2); }
+    .feed-status.failed { background: var(--danger); }
+
+    /* ─── Error box ── */
+    .error-box {
+      background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.3);
+      border-radius: var(--radius); padding: 28px; text-align: center;
+      backdrop-filter: blur(8px);
+    }
+    .error-box button {
+      background: var(--gradient-1); color: #000; border: none;
+      padding: 9px 22px; border-radius: var(--radius-sm); cursor: pointer;
+      font-weight: 600; font-size: 13px; margin-top: 10px;
+      transition: all 0.2s var(--transition);
+    }
+    .error-box button:hover { transform: translateY(-1px); box-shadow: var(--shadow-glow); }
+
+    /* ─── Config form ── */
+    .config-form {
+      max-width: 480px; margin: 30px auto;
+      background: var(--gradient-card); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 32px;
+      backdrop-filter: blur(16px);
+    }
+    .config-form h2 { margin-bottom: 18px; font-size: 18px; font-weight: 700; }
+    .config-form label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 4px; font-weight: 600; letter-spacing: 0.5px; }
+    .config-form input {
+      width: 100%; padding: 10px 14px; background: var(--bg);
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      color: var(--text); font-size: 13px; margin-bottom: 16px;
+      font-family: 'JetBrains Mono', monospace; transition: border-color 0.2s;
+    }
+    .config-form input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--glow-cyan); }
+    .config-form button {
+      background: var(--gradient-1); color: #000; border: none;
+      padding: 10px 24px; border-radius: var(--radius-sm); cursor: pointer;
+      font-weight: 600; font-size: 14px; width: 100%;
+      transition: all 0.2s var(--transition);
+    }
+    .config-form button:hover { transform: translateY(-1px); box-shadow: var(--shadow-glow); }
+    .config-form .note { font-size: 12px; color: var(--text-dim); margin-top: 10px; }
+
+    /* ─── No data ── */
+    .no-data-card {
+      grid-column: 1/-1; text-align: center; padding: 40px;
+      background: var(--gradient-card); border: 1px dashed var(--border);
+      border-radius: var(--radius);
+    }
+    .no-data-card code {
+      background: var(--bg-hover); padding: 3px 10px; border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace; font-size: 13px;
+    }
+
+    /* ─── Animations ── */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .stat-card { animation: fadeInUp 0.5s var(--transition) both; }
+    .stat-card:nth-child(1) { animation-delay: 0.02s; }
+    .stat-card:nth-child(2) { animation-delay: 0.05s; }
+    .stat-card:nth-child(3) { animation-delay: 0.08s; }
+    .stat-card:nth-child(4) { animation-delay: 0.11s; }
+    .stat-card:nth-child(5) { animation-delay: 0.14s; }
+    .stat-card:nth-child(6) { animation-delay: 0.17s; }
+    .chart-card, .table-card { animation: fadeInUp 0.5s var(--transition) both; animation-delay: 0.2s; }
+
+    /* ─── Responsive ── */
+    @media (max-width: 768px) {
+      .container { padding: 14px; }
+      .charts-grid { grid-template-columns: 1fr; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .header { padding: 12px 16px; }
+      .header h1 { font-size: 16px; }
+      .header-controls select, .header-controls button { font-size: 11px; padding: 6px 10px; }
+      .stat-card .value { font-size: 24px; }
+      .stat-card { padding: 16px 18px; }
+    }
+    @media (max-width: 480px) {
+      .stats-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Ambient background glow effects -->
+  <div class="bg-glow" id="bgGlow"></div>
+  <div class="bg-glow-2"></div>
+
+  <!-- Header -->
+  <div class="header">
+    <h1>
+      <a href="/" class="back-link">←</a>
+      <span class="logo-icon">🚀</span> AI Infra Dashboard
+    </h1>
+    <div class="header-controls">
+      <a href="/" class="back-link" style="font-size:12px;margin-right:4px">🏠 Home</a>
+      <span class="live-indicator" id="liveIndicator">
+        <span class="status-dot live"></span> Live
+      </span>
+      <select id="rangeSelect" onchange="loadDashboard()">
+        <option value="7">7 days</option>
+        <option value="14">14 days</option>
+        <option value="30" selected>30 days</option>
+        <option value="90">90 days</option>
+      </select>
+      <button onclick="toggleTheme()" id="themeBtn">☀️ Light</button>
+      <button onclick="showConfig()">⚙️ Config</button>
+      <button onclick="loadDashboard()">🔄 Refresh</button>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="container" id="app">
+    <div id="configPanel" style="display:none"></div>
+
+    <!-- Loading Skeleton -->
+    <div class="loading" id="loading">
+      <div class="skeleton-grid">
+        <div class="skeleton-card"><div class="bar"></div><div class="bar-lg"></div><div class="bar-sm"></div></div>
+        <div class="skeleton-card"><div class="bar"></div><div class="bar-lg"></div><div class="bar-sm"></div></div>
+        <div class="skeleton-card"><div class="bar"></div><div class="bar-lg"></div><div class="bar-sm"></div></div>
+        <div class="skeleton-card"><div class="bar"></div><div class="bar-lg"></div><div class="bar-sm"></div></div>
+        <div class="skeleton-card"><div class="bar"></div><div class="bar-lg"></div><div class="bar-sm"></div></div>
+        <div class="skeleton-card"><div class="bar"></div><div class="bar-lg"></div><div class="bar-sm"></div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:18px">
+        <div class="skeleton-chart"><div class="skeleton-card skeleton-title" style="margin:20px;height:14px;width:40%"></div></div>
+        <div class="skeleton-chart"><div class="skeleton-card skeleton-title" style="margin:20px;height:14px;width:40%"></div></div>
+      </div>
+      <div style="text-align:center;padding:10px;color:var(--text-muted);font-size:13px;font-weight:500" id="loadingMsg">Loading dashboard data...</div>
+    </div>
+
+    <!-- Content -->
+    <div id="content" style="display:none">
+      <div class="stats-grid" id="statsGrid"></div>
+
+      <div class="charts-grid">
+        <div class="chart-card"><h3>📊 Sector Activity</h3><canvas id="sectorChart"></canvas></div>
+        <div class="chart-card"><h3>📈 Top Stock Movers</h3><canvas id="stockChart"></canvas></div>
+      </div>
+
+      <div class="charts-grid">
+        <div class="chart-card" id="stockPriceCard">
+          <h3>💹 Stock Price History <span class="badge" id="tickerBadge">top 5</span></h3>
+          <div class="ticker-toggle" id="tickerToggle"></div>
+          <canvas id="stockPriceChart"></canvas>
+        </div>
+        <div class="chart-card"><h3>📅 Sector Trend Over Time</h3><canvas id="sectorTrendChart"></canvas></div>
+      </div>
+
+      <div class="charts-grid">
+        <div class="chart-card"><h3>💸 Capex & AI Spending <span class="badge" id="capexBadge">from SEC filings</span></h3><canvas id="capexChart"></canvas></div>
+        <div class="chart-card"><h3>⭐ Feedback Pulse <span class="badge" id="feedbackBadge">over time</span></h3><canvas id="feedbackChart"></canvas></div>
+      </div>
+
+      <div class="charts-grid">
+        <div class="chart-card"><h3>⚡ Digest Run Performance</h3><canvas id="digestPerfChart"></canvas></div>
+        <div class="chart-card"><h3>🔬 AI Token Usage</h3><canvas id="tokenChart"></canvas></div>
+      </div>
+
+      <div class="table-card">
+        <h3>📰 Latest Articles</h3>
+        <div class="filter-bar" style="margin-bottom:8px">
+          <span class="filter-label">Search</span>
+          <input class="filter-search" id="fullTextSearch" placeholder="Full-text search articles..." style="width:260px" onkeydown="if(event.key==='Enter')doFullTextSearch()">
+          <button class="filter-pill" onclick="doFullTextSearch()" style="background:var(--accent);color:#000;border-color:var(--accent);font-weight:600">🔍 Search DB</button>
+          <span id="searchStatus" style="font-size:11px;color:var(--text-muted)"></span>
+        </div>
+        <div class="filter-bar" id="filterBar">
+          <span class="filter-label">Sector</span>
+          <div class="filter-group" id="sectorFilters"></div>
+          <span class="filter-label">Impact</span>
+          <div class="filter-group">
+            <button class="filter-pill impact-bullish" data-impact="Bullish" onclick="setFilter('impact','Bullish')">▲ Bullish</button>
+            <button class="filter-pill impact-bearish" data-impact="Bearish" onclick="setFilter('impact','Bearish')">▼ Bearish</button>
+            <button class="filter-pill impact-neutral" data-impact="Neutral" onclick="setFilter('impact','Neutral')">▬ Neutral</button>
+          </div>
+          <input class="filter-search" id="filterSearch" placeholder="Search articles..." oninput="onSearchChange()">
+          <button class="filter-clear" id="filterClear" onclick="clearFilters()" style="display:none">✕ Clear</button>
+        </div>          <table><thead><tr><th>Title</th><th>Category</th><th>Impact</th><th>Score</th><th>Stocks</th><th></th></tr></thead><tbody id="articlesBody"></tbody></table>
+        <div id="articlesCount" style="margin-top:10px;font-size:12px;color:var(--text-muted)"></div>
+        <div id="paginationControls" style="margin-top:12px;display:flex;align-items:center;gap:10px">
+          <button id="loadMoreBtn" onclick="loadMoreArticles()" style="background:var(--bg-hover);border:1px solid var(--border);color:var(--text);padding:8px 18px;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:500;font-family:'Inter',sans-serif;transition:all 0.2s var(--transition);display:none" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">⬇️ Load More</button>
+          <button onclick="exportCSV()" style="background:var(--bg-hover);border:1px solid var(--border);color:var(--text);padding:8px 18px;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:500;font-family:'Inter',sans-serif;transition:all 0.2s var(--transition)" onmouseover="this.style.borderColor='var(--accent2)'" onmouseout="this.style.borderColor='var(--border)'">📥 Export CSV</button>
+          <span id="paginationInfo" style="font-size:11px;color:var(--text-muted)"></span>
+        </div>
+      </div>
+      <div class="table-card"><h3>🔌 Feed Health</h3><div id="pipelineHealth"></div></div>
+
+      <div class="table-card"><h3>📈 Trending Now</h3><div id="trendingSection"></div></div>
+
+      <div class="table-card"><h3>💬 User Feedback</h3><div id="feedbackSection"></div></div>
+
+      <div class="table-card"><h3>📬 Delivery Log</h3><div id="deliverySection"></div></div>
+
+      <div class="table-card"><h3>📜 SEC Filings</h3><div id="secSection"></div></div>
+
+      <div class="table-card"><h3>💰 Capex Announcements</h3><table><thead><tr><th>Company</th><th>Amount</th><th>Category</th><th>Description</th></tr></thead><tbody id="capexBody"></tbody></table></div>
+    </div>
+  </div>
+
+  <script>
+    // ─── Config ──
+    let SUPABASE_URL = localStorage.getItem('supabase_url') || '';
+    let SUPABASE_ANON_KEY = localStorage.getItem('supabase_anon_key') || '';
+    let charts = {};
+    let isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    let stockPriceDataCache = [];
+
+    // ─── Filter State (persisted in localStorage) ──
+    function loadSavedFilters() {
+      try {
+        const saved = JSON.parse(localStorage.getItem('savedFilters') || '{}');
+        return { sector: saved.sector || null, impact: saved.impact || null, search: saved.search || '' };
+      } catch { return { sector: null, impact: null, search: '' }; }
+    }
+    function saveFilters() {
+      try { localStorage.setItem('savedFilters', JSON.stringify(activeFilters)); } catch {}
+    }
+    let activeFilters = loadSavedFilters();
+    let allArticlesCache = [];
+    let allSectors = [];
+    let searchDebounceTimer = null;
+
+    const TICKER_COLORS = [
+      '#22d3ee', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899',
+      '#ef4444', '#06b6d4', '#f97316', '#6366f1', '#14b8a6',
+      '#84cc16', '#a78bfa', '#fb923c', '#2dd4bf', '#e879f9',
+    ];
+
+    const SECTOR_COLORS = {
+      'Chips & GPUs': '#22d3ee', 'Cloud & Hyperscalers': '#10b981',
+      'Datacenters': '#f59e0b', 'Networking': '#ef4444',
+      'Power & Utilities': '#8b5cf6', 'Cooling Infrastructure': '#ec4899',
+      'AI Models & Labs': '#14b8a6', 'Semiconductor Manufacturing': '#f97316',
+      'M&A and Partnerships': '#6366f1', 'Earnings & Guidance': '#06b6d4',
+    };
+
+    // ─── Chart.js defaults for premium look ──
+    Chart.defaults.font.family = 'Inter, sans-serif';
+    Chart.defaults.font.size = 11;
+
+    function toggleTheme() {
+      isDark = !isDark;
+      document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+      document.getElementById('themeBtn').textContent = isDark ? '☀️ Light' : '🌙 Dark';
+      Object.values(charts).forEach(c => { if(c) c.destroy(); });
+      charts = {};
+      loadDashboard();
+    }
+
+    function showConfig() {
+      const panel = document.getElementById('configPanel');
+      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+      panel.innerHTML = `
+        <div class="config-form">
+          <h2>⚙️ Configuration</h2>
+          <label>Supabase URL</label>
+          <input id="cfgUrl" value="${SUPABASE_URL}" placeholder="https://xxx.supabase.co" spellcheck="false">
+          <label>Anon Public Key</label>
+          <input id="cfgKey" value="${SUPABASE_ANON_KEY}" placeholder="eyJhbGciOiJ..." spellcheck="false">
+          <button onclick="saveConfig()">Save & Reload</button>
+          <p class="note">Find these in Supabase Dashboard → Settings → API</p>
+        </div>
+      `;
+    }
+
+    function saveConfig() {
+      SUPABASE_URL = document.getElementById('cfgUrl').value.trim();
+      SUPABASE_ANON_KEY = document.getElementById('cfgKey').value.trim();
+      localStorage.setItem('supabase_url', SUPABASE_URL);
+      localStorage.setItem('supabase_anon_key', SUPABASE_ANON_KEY);
+      document.getElementById('configPanel').style.display = 'none';
+      loadDashboard();
+    }
+
+    // ─── Supabase REST API with timeout ──
+    async function supabaseQuery(table, opts = {}) {
+      if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return [];
+      let url = `${SUPABASE_URL}/rest/v1/${table}?select=${opts.select || '*'}`;
+      if (opts.order) url += `&order=${opts.order}.${opts.ascending === false ? 'asc' : 'desc'}`;
+      if (opts.limit) url += `&limit=${opts.limit}`;
+      if (opts.range) {
+        const col = opts.rangeColumn || 'date';
+        url += `&${col}=gte.${opts.range}`;
+      }
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      try {
+        const res = await fetch(url, {
+          headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+        return await res.json();
+      } catch(e) {
+        clearTimeout(timeout);
+        console.error(`Supabase query error (${table}):`, e.message);
+        throw e;
+      }
+    }
+
+    // ─── Formatting ──
+    function fmtNum(n) { return (n||0).toLocaleString(); }
+    function fmtDate(d) { try { return new Date(d).toLocaleDateString('en-MY',{timeZone:'Asia/Kuala_Lumpur'}); } catch { return d; } }
+    function fmtShortDate(d) { try { const dt=new Date(d); return dt.toLocaleDateString('en-MY',{timeZone:'Asia/Kuala_Lumpur',month:'short',day:'numeric'}); } catch { return d; } }
+    function sentimentClass(i) { return i==='Bullish'?'sentiment-bullish':i==='Bearish'?'sentiment-bearish':'sentiment-neutral'; }
+    function sentimentArrow(i) { return i==='Bullish'?'▲':i==='Bearish'?'▼':'▬'; }
+    function fmtPct(n) { return (n>=0?'+':'')+(n||0).toFixed(1)+'%'; }
+    function trClass(n) { return n>0?'trend-up':n<0?'trend-down':'trend-flat'; }
+    function escapeHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;'); }
+
+    // ─── Load ──
+    async function loadDashboard() {
+      const loading = document.getElementById('loading');
+      const content = document.getElementById('content');
+      const msg = document.getElementById('loadingMsg');
+
+      if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+        loading.style.display = 'block';
+        msg.innerHTML = '⚠️ Supabase not configured. Click ⚙️ Config to add your credentials.';
+        content.style.display = 'none';
+        return;
+      }
+
+      loading.style.display = 'block';
+      msg.textContent = 'Loading dashboard data...';
+      content.style.display = 'none';
+
+      const days = parseInt(document.getElementById('rangeSelect').value);
+      const rangeDate = new Date(Date.now()-days*86400000).toISOString().split('T')[0];
+
+      let slowTimer = setTimeout(() => {
+        msg.innerHTML = '⏳ Still connecting... (make sure your Supabase project is active)';
+      }, 8000);
+
+      try {
+        const [digests, sectors, stocks, articles, feeds, capex, metrics, prices, deliveries, secFilings] = await Promise.all([
+          supabaseQuery('digest_runs', { order: 'run_date', limit: 60, rangeColumn: 'run_date', range: rangeDate }).catch(()=>[]),
+          supabaseQuery('sector_activity', { select: 'date,sector,article_count,avg_impact_score', order: 'date', range: rangeDate }).catch(()=>[]),
+          supabaseQuery('stock_mentions', { order: 'mention_count', limit: 10, range: rangeDate }).catch(()=>[]),
+          supabaseQuery('articles', { order: 'impact_score', limit: 20 }).catch(()=>[]),
+          supabaseQuery('pipeline_health', { order: 'created_at', limit: 50 }).catch(()=>[]),
+          supabaseQuery('capex_tracking', { order: 'date', limit: 10 }).catch(()=>[]),
+          supabaseQuery('daily_metrics', { order: 'date', limit: 30, range: rangeDate }).catch(()=>[]),
+          supabaseQuery('stock_prices', { order: 'date', limit: 500, range: rangeDate }).catch(()=>[]),
+          supabaseQuery('user_delivery_log', { order: 'delivered_at', limit: 100, range: rangeDate, rangeColumn: 'run_date' }).catch(()=>[]),
+          supabaseQuery('sec_filings', { order: 'filing_date', limit: 50, range: rangeDate, rangeColumn: 'filing_date' }).catch(()=>[]),
+        ]);
+
+        clearTimeout(slowTimer);
+        loading.style.display = 'none';
+        content.style.display = 'block';
+        stockPriceDataCache = prices;
+
+        const hasData = digests.length > 0 || articles.length > 0;
+        if (!hasData) {
+          document.getElementById('statsGrid').innerHTML = `
+            <div class="no-data-card">
+              <div style="font-size:38px;margin-bottom:10px">📡</div>
+              <div style="font-size:18px;font-weight:700;margin-bottom:6px">No Data Yet</div>
+              <div style="font-size:14px;color:var(--text-dim)">Run the digest pipeline first to populate the dashboard</div>
+            </div>
+          `;
+        }
+
+        // Cache articles and sectors for filtering
+        allArticlesCache = articles;
+        allFetchedArticles = articles;
+        hasMoreArticles = articles.length === 20; // if we got a full page, there might be more
+        allSectors = [...new Set(sectors.map(s => s.sector))];
+
+        renderStats(digests, sectors, metrics);
+        renderSectorChart(sectors);
+        renderStockChart(stocks);
+        renderStockPriceChart(prices);
+        renderSectorTrendChart(sectors);
+        renderCapexChart(metrics);
+        renderFeedbackChart(metrics);
+        renderDigestPerformanceChart(digests, metrics);
+        renderTokenChart(metrics);
+        renderFilterBar();
+        applyFilters();
+        renderPipeline(feeds);
+        renderTrendingSection(metrics);
+        renderFeedbackSection(metrics);
+        renderDeliverySection(deliveries);
+        renderSECSection(secFilings);
+        renderCapex(capex);
+
+        // Show Load More if we have a full initial page
+        const btn = document.getElementById('loadMoreBtn');
+        const info = document.getElementById('paginationInfo');
+        if (btn) {
+          btn.style.display = hasMoreArticles ? 'inline-flex' : 'none';
+          btn.disabled = false;
+          btn.textContent = '⬇️ Load More';
+        }
+        if (info) {
+          info.textContent = hasMoreArticles ? `Showing ${articles.length} articles` : `${articles.length} articles`;
+        }
+
+        document.getElementById('liveIndicator').innerHTML = `
+          <span class="status-dot live"></span>
+          ${new Date().toLocaleTimeString('en-MY',{timeZone:'Asia/Kuala_Lumpur'})} MYT
+        `;
+
+        // Trigger bg glow animation
+        const glow = document.getElementById('bgGlow');
+        glow.style.opacity = '0.3';
+        setTimeout(() => { glow.style.opacity = '0.6'; }, 100);
+
+      } catch(e) {
+        clearTimeout(slowTimer);
+        loading.style.display = 'none';
+        content.style.display = 'block';
+        document.getElementById('statsGrid').innerHTML = `
+          <div class="error-box">
+            <p style="font-size:16px;margin-bottom:4px">❌ Connection Error</p>
+            <p style="font-size:13px;color:var(--text-dim);margin-bottom:12px">${e.message}</p>
+            <button onclick="loadDashboard()">Retry</button>
+            <button onclick="showConfig()" style="margin-left:8px;background:var(--gradient-card);color:var(--text);border:1px solid var(--border)">⚙️ Fix Config</button>
+          </div>
+        `;
+      }
+    }
+
+    // ─── Capex & AI Spending Chart ──
+    function renderCapexChart(metrics) {
+      if(charts.capex) charts.capex.destroy();
+      const sorted = (metrics||[]).filter(m => (m.sec_capex_total || m.sec_ai_revenue_total || m.total_capex_announced)).sort((a,b) => a.date.localeCompare(b.date));
+      if(!sorted.length) return;
+      const dates = sorted.map(m => fmtShortDate(m.date));
+      const capexData = sorted.map(m => (m.sec_capex_total || m.total_capex_announced || 0));
+      const aiRevData = sorted.map(m => (m.sec_ai_revenue_total || 0));
+      const ctx=document.getElementById('capexChart').getContext('2d');
+      const c=chartTextColor(),gc=chartGridColor();
+      const badge=document.getElementById('capexBadge');
+      if(badge) badge.textContent=`${sorted.length} days tracked`;
+      charts.capex = new Chart(ctx, {
+        type:'bar', data:{
+          labels: dates,
+          datasets: [
+            { label:'Capex ($M)', data:capexData, backgroundColor:'rgba(34,211,238,0.7)', borderColor:'#22d3ee', borderWidth:1, borderRadius:4, borderSkipped:false, yAxisID:'y' },
+            { label:'AI Revenue ($M)', data:aiRevData, backgroundColor:'rgba(16,185,129,0.7)', borderColor:'#10b981', borderWidth:1, borderRadius:4, borderSkipped:false, yAxisID:'y' },
+          ]
+        },
+        options:{
+          responsive:true, interaction:{mode:'index',intersect:false},
+          plugins:{
+            legend:{labels:{color:c,boxWidth:12,padding:14,usePointStyle:true,pointStyle:'circle',font:{size:11}}},
+            tooltip:{backgroundColor:isDark?'rgba(17,24,39,0.95)':'rgba(255,255,255,0.95)',titleColor:isDark?'#f1f5f9':'#0f172a',bodyColor:c,borderColor:isDark?'rgba(51,65,85,0.5)':'rgba(203,213,225,0.5)',borderWidth:1,padding:12,cornerRadius:8,callbacks:{label:(ctx)=>`${ctx.dataset.label}: $${Number(ctx.raw).toLocaleString()}M`}}
+          },
+          scales:{
+            x:{ticks:{color:c,maxTicksLimit:8,maxRotation:45},grid:{color:gc}},
+            y:{ticks:{color:c,callback:(v)=>'$'+v.toFixed(0)+'M'},grid:{color:gc},beginAtZero:true}
+          }
+        }
+      });
+    }
+
+    // ─── Feedback Pulse Chart ──
+    function renderFeedbackChart(metrics) {
+      if(charts.feedback) charts.feedback.destroy();
+      const sorted = (metrics||[]).filter(m => m.feedback_ratings).sort((a,b) => a.date.localeCompare(b.date));
+      if(!sorted.length) return;
+      const dates = sorted.map(m => fmtShortDate(m.date));
+      const avgRatings = sorted.map(m => {
+        try {
+          const p = JSON.parse(m.feedback_ratings);
+          if(p.ratings && p.ratings.length) return p.ratings.reduce((s,r)=>s+r,0)/p.ratings.length;
+        } catch {}
+        return null;
+      });
+      const voteCounts = sorted.map(m => {
+        try {
+          const p = JSON.parse(m.feedback_ratings);
+          return p.ratings ? p.ratings.length : 0;
+        } catch { return 0; }
+      });
+      // Only keep days with actual ratings
+      const valid = dates.map((d,i) => ({date:d, avg:avgRatings[i], votes:voteCounts[i]})).filter(v => v.avg !== null);
+      if(valid.length < 2) return;
+      const badge=document.getElementById('feedbackBadge');
+      if(badge) badge.textContent=`${valid.reduce((s,v)=>s+v.votes,0)} votes`;
+      const ctx=document.getElementById('feedbackChart').getContext('2d');
+      const c=chartTextColor(),gc=chartGridColor();
+      charts.feedback = new Chart(ctx, {
+        type:'line', data:{
+          labels: valid.map(v => v.date),
+          datasets: [
+            { label:'Avg Rating', data:valid.map(v => v.avg), borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.08)', fill:true, tension:0.35, pointRadius:4, pointHoverRadius:7, borderWidth:2 },
+            { label:'Votes', data:valid.map(v => v.votes), borderColor:'#8b5cf6', backgroundColor:'rgba(139,92,246,0.08)', fill:true, tension:0.35, pointRadius:3, pointHoverRadius:6, borderWidth:1, yAxisID:'y1' },
+          ]
+        },
+        options:{
+          responsive:true, interaction:{mode:'index',intersect:false},
+          plugins:{
+            legend:{labels:{color:c,boxWidth:12,padding:14,usePointStyle:true,pointStyle:'circle',font:{size:11}}},
+            tooltip:{backgroundColor:isDark?'rgba(17,24,39,0.95)':'rgba(255,255,255,0.95)',titleColor:isDark?'#f1f5f9':'#0f172a',bodyColor:c,borderColor:isDark?'rgba(51,65,85,0.5)':'rgba(203,213,225,0.5)',borderWidth:1,padding:12,cornerRadius:8,callbacks:{label:(ctx)=>{if(ctx.datasetIndex===0)return`${'⭐'.repeat(Math.round(ctx.raw))} ${ctx.raw.toFixed(2)}`;return`${ctx.raw} votes`}}}
+          },
+          scales:{
+            x:{ticks:{color:c,maxTicksLimit:7,maxRotation:45},grid:{color:gc}},
+            y:{ticks:{color:c,min:1,max:5},grid:{color:gc},beginAtZero:false},
+            y1:{type:'linear',display:true,position:'right',ticks:{color:c},grid:{drawOnChartArea:false},beginAtZero:true}
+          }
+        }
+      });
+    }
+
+    // ─── Stats ──
+    function renderStats(digests, sectors, metrics) {
+      const totalDigests = digests.length;
+      const successful = digests.filter(d=>d.status==='success').length;
+      const failed = digests.filter(d=>d.status==='failed').length;
+      const totalArticles = digests.reduce((s,d)=>s+(d.articles_processed||0),0);
+      const activeSectors = new Set(sectors.map(s=>s.sector)).size;
+      const totalTokens = digests.reduce((s,d)=>s+(d.total_tokens_used||0),0);
+      const latest = digests[0];
+      const lastRun = latest ? fmtDate(latest.run_date) : '—';
+
+      let digestTrend = '';
+      if (digests.length >= 2) {
+        const last = digests[0]?.articles_processed||0;
+        const avg = digests.slice(1).reduce((s,d)=>s+(d.articles_processed||0),0)/(digests.length-1)||1;
+        const diff = last - avg;
+        const pct = Math.round((diff / avg) * 100);
+        digestTrend = ` <span class="${trClass(diff)}">${diff>=0?'↑':'↓'} ${Math.abs(pct)}% vs avg</span>`;
+      }
+
+      // Calculate average feedback rating across all days
+      let totalSum = 0;
+      let totalVotes = 0;
+      for (const m of (metrics || [])) {
+        if (m.feedback_ratings) {
+          try {
+            const parsed = JSON.parse(m.feedback_ratings);
+            if (parsed.ratings && parsed.ratings.length) {
+              totalSum += parsed.ratings.reduce((s, r) => s + r, 0);
+              totalVotes += parsed.ratings.length;
+            }
+          } catch {}
+        }
+      }
+      const avgRating = totalVotes > 0 ? (totalSum / totalVotes).toFixed(1) : '—';
+
+      document.getElementById('statsGrid').innerHTML = `
+        <div class="stat-card"><div class="label">Digest Runs</div><div class="value">${totalDigests}</div><div class="sub"><span style="color:var(--accent2)">●</span> ${successful} success · ${failed} failed</div></div>
+        <div class="stat-card"><div class="label">Articles Analyzed</div><div class="value">${fmtNum(totalArticles)}</div><div class="sub">Last run: ${lastRun}${digestTrend}</div></div>
+        <div class="stat-card"><div class="label">Sectors Active</div><div class="value">${activeSectors}</div><div class="sub">Out of 10 total</div></div>
+        <div class="stat-card"><div class="label">Stocks Tracked</div><div class="value">${latest?.total_stocks_tracked||'—'}</div><div class="sub">Per digest run</div></div>
+        <div class="stat-card"><div class="label">AI Tokens Used</div><div class="value">${fmtNum(totalTokens)}</div><div class="sub">Est. cost: <span style="font-family:'JetBrains Mono',monospace">$${(totalTokens*0.00000015).toFixed(4)}</span></div></div>
+        <div class="stat-card"><div class="label">User Feedback</div><div class="value">${avgRating !== '—' ? avgRating : '—'}</div><div class="sub">${totalVotes > 0 ? `⭐ ${totalVotes} vote${totalVotes !== 1 ? 's' : ''}` : 'No ratings yet'}</div></div>
+      `;
+    }
+
+    // ─── Chart helpers ──
+    function chartGridColor() { return isDark ? 'rgba(51,65,85,0.3)' : 'rgba(203,213,225,0.5)'; }
+    function chartTextColor() { return isDark ? '#94a3b8' : '#64748b'; }
+
+    // ─── Sector Chart (bar) ──
+    function renderSectorChart(sectors) {
+      if(charts.sector) charts.sector.destroy();
+      const g={}; sectors.forEach(s=>{if(!g[s.sector])g[s.sector]=0;g[s.sector]+=s.article_count||0;});
+      const labels=Object.keys(g),data=Object.values(g);
+      if(!labels.length) return;
+      const ctx=document.getElementById('sectorChart').getContext('2d');
+      const c=chartTextColor(),gc=chartGridColor();
+      const colors=Object.values(SECTOR_COLORS);
+      const chartLabels = labels; // captured in onClick closure
+      charts.sector = new Chart(ctx, {
+        type:'bar', data:{labels,datasets:[{label:'Articles',data,backgroundColor:colors.slice(0,labels.length),borderRadius:6,borderSkipped:false}]},
+        options:{responsive:true,onClick:(e,els)=>{if(els.length>0){const label=chartLabels[els[0].index];if(label)setFilter('sector',label);}},plugins:{legend:{display:false},tooltip:{backgroundColor:isDark?'rgba(17,24,39,0.95)':'rgba(255,255,255,0.95)',titleColor:isDark?'#f1f5f9':'#0f172a',bodyColor:c,borderColor:isDark?'rgba(51,65,85,0.5)':'rgba(203,213,225,0.5)',borderWidth:1,padding:12,cornerRadius:8,displayColors:true,callbacks:{label:(ctx)=>{return`${ctx.raw} articles`},afterLabel:(ctx)=>{const s=sectors.filter(x=>x.sector===ctx.label);return s.length?`Avg score: ${s[s.length-1]?.avg_impact_score||'—'}/10`:''}}}},scales:{x:{ticks:{color:c,maxRotation:45},grid:{color:gc}},y:{ticks:{color:c},grid:{color:gc},beginAtZero:true}}}
+      });
+    }
+
+    // ─── Stock Chart (bar) ──
+    function renderStockChart(stocks) {
+      if(charts.stock) charts.stock.destroy();
+      const top=stocks.slice(0,10);
+      if(!top.length) return;
+      const ctx=document.getElementById('stockChart').getContext('2d');
+      const c=chartTextColor(),gc=chartGridColor();
+      const prices=top.map(s=>s.price_change_percent||0);
+      charts.stock = new Chart(ctx, {
+        type:'bar', data:{labels:top.map(s=>s.ticker),datasets:[{label:'Price Change %',data:prices,backgroundColor:prices.map(p=>p>=0?'rgba(34,197,94,0.7)':'rgba(239,68,68,0.7)'),borderColor:prices.map(p=>p>=0?'#22c55e':'#ef4444'),borderWidth:1,borderRadius:6,borderSkipped:false}]},
+        options:{responsive:true,plugins:{legend:{display:false},tooltip:{backgroundColor:isDark?'rgba(17,24,39,0.95)':'rgba(255,255,255,0.95)',titleColor:isDark?'#f1f5f9':'#0f172a',bodyColor:c,borderColor:isDark?'rgba(51,65,85,0.5)':'rgba(203,213,225,0.5)',borderWidth:1,padding:12,cornerRadius:8,callbacks:{afterLabel:(ctx)=>{const s=top[ctx.dataIndex];return`Mentions: ${s.mention_count}\\nSentiment: ${(s.avg_sentiment||0).toFixed(2)}`}}}},scales:{x:{ticks:{color:c,font:{weight:'600'}},grid:{color:gc}},y:{ticks:{color:c,callback:(v)=>v.toFixed(1)+'%'},grid:{color:gc},beginAtZero:true}}}
+      });
+    }
+
+    // ─── Stock Price History ──
+    function renderStockPriceChart(prices) {
+      if(charts.stockPrice) charts.stockPrice.destroy();
+      if(!prices.length) return;
+      const byTicker = {};
+      prices.forEach(p => { if(!byTicker[p.ticker]) byTicker[p.ticker] = []; byTicker[p.ticker].push(p); });
+      const tickers = Object.keys(byTicker).sort();
+      if(!tickers.length) return;
+
+      const toggleEl = document.getElementById('tickerToggle');
+      const selectedTickers = JSON.parse(localStorage.getItem('selectedTickers') || '[]');
+      const defaultTickers = tickers.map(t => ({ ticker: t, count: byTicker[t].length })).sort((a,b) => b.count - a.count).slice(0,5).map(t=>t.ticker);
+      const activeTickers = selectedTickers.length ? selectedTickers : defaultTickers;
+      localStorage.setItem('selectedTickers', JSON.stringify(activeTickers));
+
+      toggleEl.innerHTML = tickers.map(t => {
+        const active = activeTickers.includes(t);
+        const idx = tickers.indexOf(t);
+        const color = TICKER_COLORS[idx % TICKER_COLORS.length];
+        return `<button onclick="toggleTicker('${t}')" style="border-color:${active?color:'var(--border)'};background:${active?color+'22':'transparent'};color:${active?color:'var(--text-dim)'};font-weight:${active?'600':'500'}">${t}</button>`;
+      }).join('');
+
+      document.getElementById('tickerBadge').textContent = `${activeTickers.length} shown`;
+
+      const allDates = [...new Set(prices.map(p => p.date))].sort();
+      if(!allDates.length) return;
+
+      const datasets = [];
+      activeTickers.forEach((ticker, i) => {
+        const tickerPrices = byTicker[ticker] || [];
+        const priceMap = {};
+        tickerPrices.forEach(p => { priceMap[p.date] = p.price; });
+        const data = allDates.map(d => priceMap[d] !== undefined ? priceMap[d] : null);
+        const color = TICKER_COLORS[i % TICKER_COLORS.length];
+        datasets.push({
+          label: ticker, data, spanGaps: true,
+          borderColor: color, backgroundColor: color + '11',
+          fill: false, tension: 0.35, pointRadius: 3, pointHoverRadius: 6,
+          pointBackgroundColor: color + '33', pointBorderColor: color, pointBorderWidth: 1,
+        });
+      });
+
+      const ctx = document.getElementById('stockPriceChart').getContext('2d');
+      const c = chartTextColor(), gc = chartGridColor();
+      charts.stockPrice = new Chart(ctx, {
+        type: 'line', data: { labels: allDates.map(d => fmtShortDate(d)), datasets },
+        options: {
+          responsive: true, interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { labels: { color: c, boxWidth: 12, padding: 14, usePointStyle: true, pointStyle: 'circle', font: { size: 11 } } },
+            tooltip: { backgroundColor: isDark?'rgba(17,24,39,0.95)':'rgba(255,255,255,0.95)', titleColor: isDark?'#f1f5f9':'#0f172a', bodyColor: c, borderColor: isDark?'rgba(51,65,85,0.5)':'rgba(203,213,225,0.5)', borderWidth: 1, padding: 12, cornerRadius: 8, callbacks: { label: (ctx) => ctx.raw === null ? `${ctx.dataset.label}: —` : `${ctx.dataset.label}: $${Number(ctx.raw).toFixed(2)}` } }
+          },
+          scales: {
+            x: { ticks: { color: c, maxTicksLimit: 10, maxRotation: 45 }, grid: { color: gc } },
+            y: { ticks: { color: c, callback: (v) => '$' + v.toFixed(0) }, grid: { color: gc } }
+          }
+        }
+      });
+    }
+
+    function toggleTicker(ticker) {
+      const selected = JSON.parse(localStorage.getItem('selectedTickers') || '[]');
+      const idx = selected.indexOf(ticker);
+      if (idx >= 0) selected.splice(idx, 1); else selected.push(ticker);
+      localStorage.setItem('selectedTickers', JSON.stringify(selected));
+      if(charts.stockPrice) charts.stockPrice.destroy();
+      renderStockPriceChart(stockPriceDataCache);
+    }
+
+    // ─── Sector Trend (stacked area) ──
+    function renderSectorTrendChart(sectors) {
+      if(charts.sectorTrend) charts.sectorTrend.destroy();
+      if(!sectors.length) return;
+      const byDate = {};
+      const allSectors = [...new Set(sectors.map(s=>s.sector))].sort();
+      sectors.forEach(s => { if(!byDate[s.date]) byDate[s.date] = {}; byDate[s.date][s.sector] = (byDate[s.date][s.sector]||0)+(s.article_count||0); });
+      const dates = Object.keys(byDate).sort();
+      if(!dates.length) return;
+
+      const datasets = allSectors.map(sector => {
+        const color = SECTOR_COLORS[sector] || '#6366f1';
+        return { label: sector, data: dates.map(d => byDate[d][sector]||0), backgroundColor: color + '55', borderColor: color, borderWidth: 1, fill: true, tension: 0.3, pointRadius: 0 };
+      });
+
+      const ctx = document.getElementById('sectorTrendChart').getContext('2d');
+      const c = chartTextColor(), gc = chartGridColor();
+      charts.sectorTrend = new Chart(ctx, {
+        type: 'line', data: { labels: dates.map(d => fmtShortDate(d)), datasets },
+        options: {
+          responsive: true, interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { position: 'bottom', labels: { color: c, boxWidth: 12, padding: 10, font: { size: 10 }, usePointStyle: true, pointStyle: 'circle' } },
+            tooltip: { backgroundColor: isDark?'rgba(17,24,39,0.95)':'rgba(255,255,255,0.95)', titleColor: isDark?'#f1f5f9':'#0f172a', bodyColor: c, borderColor: isDark?'rgba(51,65,85,0.5)':'rgba(203,213,225,0.5)', borderWidth: 1, padding: 12, cornerRadius: 8, callbacks: { label: (ctx) => { const total = ctx.chart.data.datasets.reduce((s,ds) => s+(ds.data[ctx.dataIndex]||0),0); const pct = total>0?((ctx.raw/total)*100).toFixed(0):0; return `${ctx.dataset.label}: ${ctx.raw} articles (${pct}%)`; } } }
+          },
+          scales: {
+            x: { ticks: { color: c, maxTicksLimit: 8, maxRotation: 45 }, grid: { color: gc } },
+            y: { stacked: true, ticks: { color: c }, grid: { color: gc }, beginAtZero: true }
+          }
+        }
+      });
+    }
+
+    // ─── Digest Performance ──
+    function renderDigestPerformanceChart(digests, metrics) {
+      if(charts.digestPerf) charts.digestPerf.destroy();
+      if(!digests.length) return;
+      const sorted = [...digests].sort((a,b) => a.run_date.localeCompare(b.run_date));
+      const dates = sorted.map(d => fmtShortDate(d.run_date));
+      const ctx = document.getElementById('digestPerfChart').getContext('2d');
+      const c = chartTextColor(), gc = chartGridColor();
+
+      charts.digestPerf = new Chart(ctx, {
+        type: 'line', data: {
+          labels: dates,
+          datasets: [
+            { label: 'Articles', data: sorted.map(d => d.articles_processed||0), borderColor: '#22d3ee', backgroundColor: 'rgba(34,211,238,0.08)', fill: true, tension: 0.35, pointRadius: 3, pointHoverRadius: 6, yAxisID: 'y' },
+            { label: 'Tokens (K)', data: sorted.map(d => (d.total_tokens_used||0)/1000), borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.08)', fill: true, tension: 0.35, pointRadius: 3, pointHoverRadius: 6, yAxisID: 'y1' },
+            { label: 'Duration (s)', data: sorted.map(d => d.duration_seconds||0), borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.08)', fill: true, tension: 0.35, pointRadius: 3, pointHoverRadius: 6, yAxisID: 'y1' },
+          ]
+        },
+        options: {
+          responsive: true, interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { labels: { color: c, boxWidth: 12, padding: 14, usePointStyle: true, pointStyle: 'circle', font: { size: 11 } } },
+            tooltip: { backgroundColor: isDark?'rgba(17,24,39,0.95)':'rgba(255,255,255,0.95)', titleColor: isDark?'#f1f5f9':'#0f172a', bodyColor: c, borderColor: isDark?'rgba(51,65,85,0.5)':'rgba(203,213,225,0.5)', borderWidth: 1, padding: 12, cornerRadius: 8, callbacks: { label: (ctx) => { if(ctx.datasetIndex===0) return `${ctx.raw} articles`; if(ctx.datasetIndex===1) return `${(ctx.raw*1000).toFixed(0)} tokens`; return `${ctx.raw}s duration`; } } }
+          },
+          scales: {
+            x: { ticks: { color: c, maxTicksLimit: 8, maxRotation: 45 }, grid: { color: gc } },
+            y: { type: 'linear', display: true, position: 'left', ticks: { color: c }, grid: { color: gc }, beginAtZero: true, title: { display: true, text: 'Articles', color: c, font: { size: 10 } } },
+            y1: { type: 'linear', display: true, position: 'right', ticks: { color: c }, grid: { drawOnChartArea: false }, beginAtZero: true, title: { display: true, text: 'Tokens (K) / Seconds', color: c, font: { size: 10 } } }
+          }
+        }
+      });
+    }
+
+    // ─── Token Chart ──
+    function renderTokenChart(metrics) {
+      if(charts.token) charts.token.destroy();
+      const recent=(metrics||[]).slice(-14);
+      if(!recent.length) return;
+      const ctx=document.getElementById('tokenChart').getContext('2d');
+      const c=chartTextColor(),gc=chartGridColor();
+      charts.token = new Chart(ctx, {
+        type:'line', data:{labels:recent.map(m=>fmtDate(m.date)),datasets:[{label:'Tokens',data:recent.map(m=>m.total_tokens_used||0),borderColor:'#22d3ee',backgroundColor:'rgba(34,211,238,0.08)',fill:true,tension:0.35,pointRadius:3,pointHoverRadius:6,borderWidth:2}]},
+        options:{responsive:true,plugins:{legend:{display:false},tooltip:{backgroundColor:isDark?'rgba(17,24,39,0.95)':'rgba(255,255,255,0.95)',titleColor:isDark?'#f1f5f9':'#0f172a',bodyColor:c,borderColor:isDark?'rgba(51,65,85,0.5)':'rgba(203,213,225,0.5)',borderWidth:1,padding:12,cornerRadius:8,callbacks:{label:(ctx)=>`${Number(ctx.raw).toLocaleString()} tokens`}}},scales:{x:{ticks:{color:c,maxTicksLimit:7,font:{size:10}},grid:{color:gc}},y:{ticks:{color:c},grid:{color:gc},beginAtZero:true}}}
+      });
+    }
+
+    // ─── Filter Functions ──
+    function renderFilterBar() {
+      const el = document.getElementById('sectorFilters');
+      if (!el) return;
+
+      // Build sector pills from all available sectors
+      const sorted = [...allSectors].sort();
+      el.innerHTML = sorted.map(s => {
+        const active = activeFilters.sector === s;
+        const color = SECTOR_COLORS[s] || 'var(--text-dim)';
+        return `<button class="filter-pill ${active?'active':''}" onclick="setFilter('sector','${s.replace(/'/g,"\\'")}')" style="${active?`background:${color};border-color:${color};color:#000`:'--filter-color:'+color}">${active?'✓ ':''}${s}</button>`;
+      }).join('');
+
+      // Show/hide clear button
+      const hasFilters = activeFilters.sector || activeFilters.impact || activeFilters.search;
+      document.getElementById('filterClear').style.display = hasFilters ? 'inline-block' : 'none';
+
+      // Update search input value
+      const searchInput = document.getElementById('filterSearch');
+      if (searchInput.value !== activeFilters.search) {
+        searchInput.value = activeFilters.search;
+      }
+
+      // Update impact pill active states using data-impact attribute
+      document.querySelectorAll('.filter-pill.impact-bullish, .filter-pill.impact-bearish, .filter-pill.impact-neutral').forEach(btn => {
+        const impact = btn.dataset.impact;
+        btn.classList.toggle('active', activeFilters.impact === impact);
+      });
+    }
+
+    function setFilter(type, value) {
+      if (activeFilters[type] === value) {
+        activeFilters[type] = null;
+      } else {
+        activeFilters[type] = value;
+      }
+      saveFilters();
+      applyFilters();
+    }
+
+    function clearFilters() {
+      activeFilters = { sector: null, impact: null, search: '' };
+      localStorage.removeItem('savedFilters');
+      document.getElementById('filterSearch').value = '';
+      applyFilters();
+    }
+
+    function onSearchChange() {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => {
+        activeFilters.search = document.getElementById('filterSearch').value.toLowerCase().trim();
+        saveFilters();
+        applyFilters();
+      }, 250);
+    }
+
+    function applyFilters() {
+      renderFilterBar();
+
+      // Filter articles from cache
+      let filtered = allArticlesCache;
+
+      if (activeFilters.sector) {
+        filtered = filtered.filter(a => a.category === activeFilters.sector);
+      }
+      if (activeFilters.impact) {
+        filtered = filtered.filter(a => a.impact === activeFilters.impact);
+      }
+      if (activeFilters.search) {
+        const q = activeFilters.search;
+        filtered = filtered.filter(a =>
+          (a.title||'').toLowerCase().includes(q) ||
+          (a.affected_stocks||[]).some(s => s.toLowerCase().includes(q)) ||
+          (a.category||'').toLowerCase().includes(q)
+        );
+      }
+
+      renderArticles(filtered, true);
+    }
+
+    // ─── CSV Export ──
+    function exportCSV() {
+      const data = allFetchedArticles.length > 0 ? allFetchedArticles : allArticlesCache;
+      if (!data.length) return;
+      const headers = ['title','source','category','impact','impact_score','affected_stocks','summary','url'];
+      const rows = data.map(a => headers.map(h => {
+        const v = a[h] || '';
+        const s = Array.isArray(v) ? v.join('; ') : String(v);
+        return '"' + s.replace(/"/g,'""') + '"';
+      }).join(','));
+      const csv = [headers.join(','), ...rows].join('\\n');
+      const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `articles-${new Date().toISOString().split('T')[0]}.csv`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    }
+
+    // ─── Articles ──
+    function renderArticles(articles, filtered = false) {
+      const tbody = document.getElementById('articlesBody');
+      const countEl = document.getElementById('articlesCount');
+
+      if (!articles.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--text-dim)">' +
+          (filtered ? 'No articles match your filters' : 'No articles yet — run the digest first') +
+          '</td></tr>';
+        if (countEl) countEl.textContent = '';
+        return;
+      }
+
+      const show = articles.slice(0, 20);
+      tbody.innerHTML = show.map(a =>
+        `<tr><td><a href="${a.url||'#'}" target="_blank" rel="noopener">${a.title}</a></td>` +
+        `<td><span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:${SECTOR_COLORS[a.category]||'var(--text-dim)'};display:inline-block"></span>${a.category||'—'}</span></td>` +
+        `<td class="${sentimentClass(a.impact)}">${sentimentArrow(a.impact)} ${a.impact||'—'}</td>` +
+        `<td><span style="font-weight:600;font-family:'JetBrains Mono',monospace">${a.impact_score||'—'}</span><span style="color:var(--text-muted)\">/10</span></td>` +
+        `<td>${(a.affected_stocks||[]).map(s => `<span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:var(--bg-hover);padding:1px 6px;border-radius:4px;margin:0 2px">${s}</span>`).join('')||'—'}</td>` +
+        `<td><a href="${a.url||'#'}" target="_blank" style="font-size:11px;color:var(--accent)">🔗</a></td></tr>`
+      ).join('');
+
+      if (countEl && filtered) {
+        const total = allArticlesCache.length;
+        countEl.textContent = filtered ? `Showing ${show.length} of ${articles.length} filtered from ${total} articles` : `${articles.length} articles`;
+      }
+    }
+
+    // ─── Pipeline ──
+    function renderPipeline(feeds) {
+      const el=document.getElementById('pipelineHealth');
+      if(!feeds.length) { el.innerHTML='<p style="color:var(--text-dim);padding:12px 0">No pipeline data yet</p>'; return; }
+      const latest={};
+      feeds.forEach(f=>{if(!latest[f.feed_name]||f.created_at>latest[f.feed_name].created_at)latest[f.feed_name]=f;});
+      const entries=Object.values(latest);
+      const healthy=entries.filter(e=>e.status==='success').length;
+      const failing=entries.filter(e=>e.status==='failed').length;
+      el.innerHTML=`
+        <div style="display:flex;gap:16px;margin-bottom:14px;flex-wrap:wrap">
+          <span style="font-size:13px;display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:var(--accent2);display:inline-block"></span>${healthy} healthy</span>
+          <span style="font-size:13px;display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:var(--danger);display:inline-block"></span>${failing} failing</span>
+          <span style="font-size:13px;color:var(--text-dim)\">${entries.length} total feeds</span>
+        </div>
+        ${entries.slice(0,40).map(f=>`<div class="feed-row"><span class="feed-status ${f.status}"></span><span style="flex:1;font-weight:500">${f.feed_name}</span><span style="color:var(--text-muted);font-size:12px;font-family:'JetBrains Mono',monospace">${f.articles_fetched||0}</span>${f.status==='failed'?`<span style="color:var(--danger);font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(f.error_message||'').slice(0,60)}</span>`:''}</div>`).join('')}
+      `;
+    }
+
+    // ─── SEC Filings ──
+    function renderSECSection(filings) {
+      const el = document.getElementById('secSection');
+      if (!filings.length) {
+        el.innerHTML = '<p style="color:var(--text-dim);padding:12px 0">No SEC filings analyzed yet — run the daily digest</p>';
+        return;
+      }
+
+      // Show summary stats at top
+      const totalFilings = filings.length;
+      const eightKs = filings.filter(f => f.form_type === '8-K').length;
+      const highImpact = filings.filter(f => (f.impact_score || 0) >= 8).length;
+
+      // Cache unique tickers for filter
+      const uniqueTickers = [...new Set(filings.map(f => f.ticker))];
+
+      let html = `<div style="display:flex;gap:20px;margin-bottom:14px;flex-wrap:wrap">
+        <span style="font-size:13px;display:flex;align-items:center;gap:6px">📜 ${totalFilings} filings</span>
+        <span style="font-size:13px;color:var(--text-dim)">${eightKs} 8-Ks</span>
+        <span style="font-size:13px;color:var(--text-dim)">${uniqueTickers.length} companies</span>
+        <span style="font-size:13px;display:flex;align-items:center;gap:6px">
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--danger);display:inline-block"></span>
+          ${highImpact} high-impact (8+)
+        </span>
+      </div>`;
+
+      html += `<table><thead><tr><th>Company</th><th>Form</th><th>Date</th><th>Capex</th><th>AI Revenue</th><th>Margins</th><th>Guide</th><th>Impact</th></tr></thead><tbody>`;
+
+      for (const f of filings.slice(0, 20)) {
+        const formColor = f.form_type === '8-K' ? 'var(--warn)' : f.form_type === '10-Q' ? 'var(--accent)' : 'var(--accent2)';
+        const impactColor = (f.impact_score || 0) >= 8 ? 'var(--danger)' : (f.impact_score || 0) >= 6 ? 'var(--warn)' : 'var(--text-muted)';
+
+        // Format financial data with tooltips
+        const fmtCapex = f.capex !== null && f.capex !== undefined ? `$${f.capex.toLocaleString()}M` : '—';
+        const fmtAiRev = f.ai_revenue !== null && f.ai_revenue !== undefined ? `$${f.ai_revenue.toLocaleString()}M` : '—';
+        const fmtMargins = [];
+        if (f.gross_margin !== null && f.gross_margin !== undefined) fmtMargins.push(`GM:${f.gross_margin}%`);
+        if (f.operating_margin !== null && f.operating_margin !== undefined) fmtMargins.push(`OM:${f.operating_margin}%`);
+        const marginStr = fmtMargins.length > 0 ? fmtMargins.join(' ') : '—';
+        const fmtGuide = f.revenue_guidance !== null && f.revenue_guidance !== undefined ? `$${f.revenue_guidance.toLocaleString()}M` : '—';
+
+        html += `<tr>
+          <td><strong>${escapeHtml(f.ticker)}</strong><br><span style="font-size:10px;color:var(--text-muted)">${escapeHtml(f.company_name?.slice(0, 30) || '')}</span></td>
+          <td><span style="font-size:11px;background:${formColor}22;color:${formColor};padding:2px 8px;border-radius:4px;font-weight:600">${escapeHtml(f.form_type)}</span></td>
+          <td style="font-size:12px;color:var(--text-dim);font-family:'JetBrains Mono',monospace">${fmtDate(f.filing_date) || f.filing_date}</td>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${fmtCapex}</td>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${fmtAiRev}</td>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim)">${marginStr}</td>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${fmtGuide}</td>
+          <td><span style="color:${impactColor};font-weight:600">${escapeHtml(f.impact_score || '—')}</span><span style="color:var(--text-muted);font-size:10px">/10</span></td>
+        </tr>`;
+      }
+
+      html += `</tbody></table>`;
+
+      if (filings.length > 20) {
+        html += `<div style="margin-top:10px;font-size:11px;color:var(--text-muted)">Showing 20 of ${filings.length} filings</div>`;
+      }
+
+      el.innerHTML = html;
+    }
+
+    // ─── Capex ──
+    function renderCapex(capex) {
+      const tbody=document.getElementById('capexBody');
+      if(!capex.length) { tbody.innerHTML='<tr><td colspan="4" style="padding:24px;text-align:center;color:var(--text-dim)">No capex tracked yet</td></tr>'; return; }
+      tbody.innerHTML=capex.map(c=>`<tr><td><strong>${c.company}</strong></td><td><span style="font-family:'JetBrains Mono',monospace;font-weight:600">${c.amount||'—'}</span></td><td><span style="font-size:11px;background:var(--bg-hover);padding:2px 8px;border-radius:20px">${c.category||'—'}</span></td><td style="color:var(--text-dim);font-size:12px">${c.description||''}</td></tr>`).join('');
+    }
+
+    // ─── Trending Now ──
+    function renderTrendingSection(metrics) {
+      const el = document.getElementById('trendingSection');
+      if (!metrics.length) {
+        el.innerHTML = '<p style="color:var(--text-dim);padding:12px 0">No trending data yet — run the daily digest</p>';
+        return;
+      }
+
+      // Find the most recent day with trending_json
+      const latestWithTrending = metrics.find(m => m.trending_json);
+      if (!latestWithTrending) {
+        el.innerHTML = '<p style="color:var(--text-dim);padding:12px 0">No trending data available yet</p>';
+        return;
+      }
+
+      let trendingItems = [];
+      try {
+        trendingItems = JSON.parse(latestWithTrending.trending_json);
+      } catch {
+        el.innerHTML = '<p style="color:var(--text-dim);padding:12px 0">Could not parse trending data</p>';
+        return;
+      }
+
+      if (!trendingItems.length) {
+        el.innerHTML = '<p style="color:var(--text-dim);padding:12px 0">No trending entities found</p>';
+        return;
+      }
+
+      const date = latestWithTrending.date;
+
+      let html = `<div style="display:flex;gap:16px;margin-bottom:14px;flex-wrap:wrap">
+        <span style="font-size:13px;display:flex;align-items:center;gap:6px">🔥 ${trendingItems.length} trending entities</span>
+        <span style="font-size:13px;color:var(--text-dim)">Based on ${date}</span>
+      </div>`;
+
+      for (const item of trendingItems.slice(0, 8)) {
+        const typeEmoji = item.type === 'ticker' ? '📈' : item.type === 'sector' ? '📊' : item.type === 'company' ? '🏢' : '🔑';
+        const sentimentEmoji = item.dominantSentiment === 'positive' ? '🟢' : item.dominantSentiment === 'negative' ? '🔴' : '⚪';
+        const sentimentColor = item.dominantSentiment === 'positive' ? 'var(--bullish)' : item.dominantSentiment === 'negative' ? 'var(--bearish)' : 'var(--neutral)';
+
+        html += `<div class="feed-row" style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border-light);font-size:13px">
+          <span style="font-size:16px">${typeEmoji}</span>
+          <span style="flex:1;font-weight:600">${item.entity}</span>
+          <span style="color:var(--text-muted);font-size:12px">${item.mentionCount} mentions</span>
+          <span style="color:var(--text-dim);font-size:12px;font-family:'JetBrains Mono',monospace">${item.avgScore}/10</span>
+          <span style="font-size:14px">${sentimentEmoji}</span>
+        </div>`;
+      }
+
+      el.innerHTML = html;
+    }
+
+    // ─── Feedback Ratings ──
+    function renderFeedbackSection(metrics) {
+      const el = document.getElementById('feedbackSection');
+      if (!metrics.length) {
+        el.innerHTML = '<p style="color:var(--text-dim);padding:12px 0">No feedback yet — users can rate via /feedback in Telegram</p>';
+        return;
+      }
+
+      // Collect all feedback across all available days
+      let allRatings = [];
+      let allComments = [];
+
+      for (const m of metrics) {
+        if (m.feedback_ratings) {
+          try {
+            const parsed = JSON.parse(m.feedback_ratings);
+            if (parsed.ratings) allRatings = allRatings.concat(parsed.ratings);
+            if (parsed.comments) allComments = allComments.concat(parsed.comments);
+          } catch { /* skip */ }
+        }
+      }
+
+      if (!allRatings.length) {
+        el.innerHTML = '<p style="color:var(--text-dim);padding:12px 0">No feedback ratings yet — users can use <code>/feedback 5</code> in Telegram</p>';
+        return;
+      }
+
+      const avg = (allRatings.reduce((s, r) => s + r, 0) / allRatings.length).toFixed(1);
+      const distribution = [0, 0, 0, 0, 0]; // 1-5 stars
+      for (const r of allRatings) {
+        if (r >= 1 && r <= 5) distribution[r - 1]++;
+      }
+      const maxDist = Math.max(...distribution, 1);
+
+      const starsStr = '⭐'.repeat(Math.round(parseFloat(avg)));
+
+      let html = `<div style="display:flex;gap:16px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+        <span style="font-size:24px">${starsStr}</span>
+        <span style="font-size:20px;font-weight:700">${avg}</span>
+        <span style="font-size:13px;color:var(--text-dim)">/ 5 · ${allRatings.length} vote${allRatings.length !== 1 ? 's' : ''}</span>
+      </div>`;
+
+      // Rating distribution bars
+      for (let i = 5; i >= 1; i--) {
+        const count = distribution[i - 1];
+        const pct = (count / allRatings.length * 100).toFixed(0);
+        const width = (count / maxDist * 100).toFixed(0);
+        html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:12px">
+          <span style="width:20px;text-align:right;color:var(--text-dim)">${i}★</span>
+          <div style="flex:1;height:10px;background:var(--border-light);border-radius:5px;overflow:hidden">
+            <div style="height:100%;width:${width}%;background:${['#ef4444','#f97316','#f59e0b','#22c55e','#22d3ee'][i-1]};border-radius:5px;transition:width 0.5s ease"></div>
+          </div>
+          <span style="width:40px;color:var(--text-muted);font-family:'JetBrains Mono',monospace">${count} (${pct}%)</span>
+        </div>`;
+      }
+
+      if (allComments.length > 0) {
+        html += `<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border-light)">`;
+        html += `<span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;font-weight:600">Recent Comments</span>`;
+        for (const comment of allComments.slice(-3).reverse()) {
+          html += `<div style="font-size:12px;color:var(--text-dim);padding:6px 0;font-style:italic">"${escapeHtml(comment)}"</div>`;
+        }
+        html += `</div>`;
+      }
+
+      el.innerHTML = html;
+    }
+
+    // ─── Delivery Log Stats ──
+    function renderDeliverySection(deliveries) {
+      const el = document.getElementById('deliverySection');
+      if (!deliveries.length) {
+        el.innerHTML = '<p style="color:var(--text-dim);padding:12px 0">No per-user deliveries yet — scheduler cron not active or no users registered</p>';
+        return;
+      }
+
+      const total = deliveries.length;
+      const successful = deliveries.filter(d => d.status === 'success').length;
+      const failed = deliveries.filter(d => d.status === 'failed').length;
+      const uniqueUsers = new Set(deliveries.map(d => d.chat_id)).size;
+
+      // Group by date
+      const byDate = {};
+      for (const d of deliveries) {
+        const date = d.run_date || 'unknown';
+        if (!byDate[date]) byDate[date] = { total: 0, success: 0, users: new Set() };
+        byDate[date].total++;
+        if (d.status === 'success') byDate[date].success++;
+        byDate[date].users.add(d.chat_id);
+      }
+
+      const dates = Object.keys(byDate).sort().reverse().slice(0, 10);
+
+      let html = `<div style="display:flex;gap:20px;margin-bottom:14px;flex-wrap:wrap">
+        <span style="font-size:13px;display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:var(--accent2);display:inline-block"></span>${successful} delivered</span>
+        <span style="font-size:13px;display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:var(--danger);display:inline-block"></span>${failed} failed</span>
+        <span style="font-size:13px;color:var(--text-dim)">${uniqueUsers} unique users · ${total} total deliveries</span>
+      </div>`;
+
+      if (dates.length > 0) {
+        html += `<table><thead><tr><th>Date</th><th>Delivered</th><th>Success Rate</th><th>Users Served</th></tr></thead><tbody>`;
+        for (const date of dates) {
+          const d = byDate[date];
+          const pct = d.total > 0 ? ((d.success / d.total) * 100).toFixed(0) : '0';
+          const pctColor = parseInt(pct) >= 80 ? 'var(--accent2)' : parseInt(pct) >= 50 ? 'var(--warn)' : 'var(--danger)';
+          html += `<tr>
+            <td style="font-weight:500">${fmtDate(date)}</td>
+            <td>${d.success}/${d.total}</td>
+            <td><span style="color:${pctColor};font-weight:600">${pct}%</span></td>
+            <td>${d.users.size}</td>
+          </tr>`;
+        }
+        html += `</tbody></table>`;
+      }
+
+      el.innerHTML = html;
+    }
+
+    // ─── Pagination State ──
+    let articlePage = 0;
+    const ARTICLES_PAGE_SIZE = 20;
+    let allFetchedArticles = [];
+    let hasMoreArticles = true;
+
+    async function loadMoreArticles() {
+      const btn = document.getElementById('loadMoreBtn');
+      const info = document.getElementById('paginationInfo');
+      btn.disabled = true;
+      btn.textContent = '⏳ Loading...';
+
+      articlePage++;
+      const offset = articlePage * ARTICLES_PAGE_SIZE;
+
+      try {
+        const rangeStart = offset;
+        const rangeEnd = offset + ARTICLES_PAGE_SIZE - 1;
+        const url = `${SUPABASE_URL}/rest/v1/articles?select=title,url,source,impact,impact_score,category,affected_stocks,summary,created_at&order=impact_score.desc&limit=${ARTICLES_PAGE_SIZE}&offset=${offset}`;
+        const res = await fetch(url, {
+          headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+        });
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const newArticles = await res.json();
+
+        if (newArticles.length === 0) {
+          hasMoreArticles = false;
+          btn.style.display = 'none';
+          info.textContent = 'All articles loaded';
+          btn.disabled = false;
+          btn.textContent = '⬇️ Load More';
+          return;
+        }
+
+        // Dedup by URL and append
+        const existingUrls = new Set(allFetchedArticles.map(a => a.url));
+        for (const a of newArticles) {
+          if (!existingUrls.has(a.url)) {
+            allFetchedArticles.push(a);
+            existingUrls.add(a.url);
+          }
+        }
+        allArticlesCache = allFetchedArticles;
+        renderArticles(allFetchedArticles, false);
+
+        if (newArticles.length < ARTICLES_PAGE_SIZE) {
+          hasMoreArticles = false;
+          btn.style.display = 'none';
+          info.textContent = `${allFetchedArticles.length} articles — all loaded`;
+        } else {
+          info.textContent = `Showing ${allFetchedArticles.length} articles`;
+        }
+      } catch(e) {
+        info.textContent = `Error: ${e.message}`;
+        info.style.color = 'var(--danger)';
+      }
+
+      btn.disabled = false;
+      btn.textContent = '⬇️ Load More';
+    }
+
+    // ─── Full-Text Search ──
+    async function doFullTextSearch() {
+      const input = document.getElementById('fullTextSearch');
+      const status = document.getElementById('searchStatus');
+      const query = input.value.trim();
+
+      // Reset pagination state — search replaces the entire result set
+      articlePage = 0;
+      hasMoreArticles = false;
+      allFetchedArticles = [];
+      const loadBtn = document.getElementById('loadMoreBtn');
+      if (loadBtn) {
+        loadBtn.style.display = 'none';
+        loadBtn.disabled = false;
+        loadBtn.textContent = '⬇️ Load More';
+      }
+      const pagInfo = document.getElementById('paginationInfo');
+      if (pagInfo) pagInfo.textContent = '';
+
+      if (!query || query.length < 2) {
+        status.textContent = 'Type at least 2 characters';
+        status.style.color = 'var(--warn)';
+        return;
+      }
+
+      status.textContent = '🔍 Searching...';
+      status.style.color = 'var(--text-dim)';
+
+      try {
+        // Use Supabase full-text search via `fts` operator on title + summary
+        const searchUrl = `${SUPABASE_URL}/rest/v1/articles?select=title,url,source,impact,impact_score,category,affected_stocks,summary,created_at&order=impact_score.desc&limit=25`;
+        const res = await fetch(searchUrl, {
+          headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+        });
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        let articles = await res.json();
+
+        // Client-side text filter (Supabase free tier may not have pgweb FTS enabled)
+        const q = query.toLowerCase();
+        articles = articles.filter(a =>
+          (a.title||'').toLowerCase().includes(q) ||
+          (a.summary||'').toLowerCase().includes(q) ||
+          (a.source||'').toLowerCase().includes(q) ||
+          (a.category||'').toLowerCase().includes(q) ||
+          (a.affected_stocks||[]).some(s => s.toLowerCase().includes(q))
+        );
+
+        if (articles.length === 0) {
+          status.textContent = '❌ No results found';
+          status.style.color = 'var(--danger)';
+          renderArticles([]);
+          return;
+        }
+
+        status.textContent = `✅ ${articles.length} results`;
+        status.style.color = 'var(--accent2)';
+
+        // Set filter state to show search results
+        activeFilters.search = query;
+        allArticlesCache = articles;
+        renderArticles(articles, true);
+
+        // Show count
+        const countEl = document.getElementById('articlesCount');
+        if (countEl) countEl.textContent = `Search: ${articles.length} results for "${query}"`;
+
+      } catch(e) {
+        status.textContent = `❌ Error: ${e.message}`;
+        status.style.color = 'var(--danger)';
+      }
+    }
+
+    // ─── Init ──
+    loadDashboard();
+    setInterval(loadDashboard, 60000);
+  </script>
+</body>
+</html>
