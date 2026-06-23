@@ -13,7 +13,12 @@
     "start:webhook": "node dist/webhook.js",
     "lint": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "db:diff": "supabase db diff",
+    "db:push": "supabase db push",
+    "db:pull": "supabase db pull",
+    "db:reset": "supabase db reset",
+    "db:status": "supabase migration list"
   },
   "keywords": [
     "ai",
@@ -32,6 +37,7 @@
   "devDependencies": {
     "@types/node": "^22.5.0",
     "@types/node-telegram-bot-api": "^0.64.7",
+    "supabase": "^2.107.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
     "vitest": "^4.1.9"
