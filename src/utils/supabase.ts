@@ -10,6 +10,7 @@ export interface DigestRunData {
   batches_run: number;
   ai_provider: string;
   ai_model: string;
+  ai_fast_model?: string;
   total_tokens_used: number;
   duration_seconds: number;
   error_message?: string;
