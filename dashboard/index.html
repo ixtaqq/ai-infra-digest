@@ -237,6 +237,41 @@
     a { color: var(--accent); text-decoration: none; transition: color 0.2s; }
     a:hover { color: #67e8f9; text-decoration: underline; }
 
+    /* ─── Filter Bar ── */
+    .filter-bar { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+    .filter-group { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+    .filter-label { font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 4px; }
+    .filter-pill {
+      padding: 4px 12px; border-radius: 20px; border: 1px solid var(--border);
+      background: transparent; color: var(--text-dim); font-size: 11px; font-weight: 500;
+      cursor: pointer; transition: all 0.2s var(--transition);
+      font-family: 'Inter', sans-serif; white-space: nowrap;
+    }
+    .filter-pill:hover { border-color: var(--accent); color: var(--text); }
+    .filter-pill.active {
+      background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600;
+    }
+    .filter-pill.impact-bullish.active { background: var(--bullish); border-color: var(--bullish); color: #000; }
+    .filter-pill.impact-bearish.active { background: var(--bearish); border-color: var(--bearish); color: #fff; }
+    .filter-pill.impact-neutral.active { background: var(--text-muted); border-color: var(--text-muted); color: #fff; }
+    .filter-search {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 20px;
+      padding: 5px 14px; color: var(--text); font-size: 12px; font-family: 'Inter', sans-serif;
+      width: 180px; outline: none; transition: border-color 0.2s;
+    }
+    .filter-search:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--glow-cyan); }
+    .filter-search::placeholder { color: var(--text-muted); }
+    .filter-clear {
+      font-size: 11px; color: var(--text-muted); cursor: pointer;
+      padding: 4px 10px; border-radius: 20px; border: 1px dashed var(--border);
+      background: transparent; transition: all 0.2s; font-family: 'Inter', sans-serif;
+    }
+    .filter-clear:hover { border-color: var(--danger); color: var(--danger); }
+    .filter-count {
+      font-size: 10px; background: var(--accent); color: #000;
+      padding: 1px 8px; border-radius: 20px; font-weight: 700;
+    }
+
     /* ─── Sentiment ── */
     .sentiment-bullish { color: var(--bullish); font-weight: 600; }
     .sentiment-bearish { color: var(--bearish); font-weight: 600; }
@@ -398,7 +433,23 @@
         <div class="chart-card"><h3>🔬 AI Token Usage</h3><canvas id="tokenChart"></canvas></div>
       </div>
 
-      <div class="table-card"><h3>📰 Latest Articles</h3><table><thead><tr><th>Title</th><th>Category</th><th>Impact</th><th>Score</th><th>Stocks</th></tr></thead><tbody id="articlesBody"></tbody></table></div>
+      <div class="table-card">
+        <h3>📰 Latest Articles</h3>
+        <div class="filter-bar" id="filterBar">
+          <span class="filter-label">Sector</span>
+          <div class="filter-group" id="sectorFilters"></div>
+          <span class="filter-label">Impact</span>
+          <div class="filter-group">
+            <button class="filter-pill impact-bullish" data-impact="Bullish" onclick="setFilter('impact','Bullish')">▲ Bullish</button>
+            <button class="filter-pill impact-bearish" data-impact="Bearish" onclick="setFilter('impact','Bearish')">▼ Bearish</button>
+            <button class="filter-pill impact-neutral" data-impact="Neutral" onclick="setFilter('impact','Neutral')">▬ Neutral</button>
+          </div>
+          <input class="filter-search" id="filterSearch" placeholder="Search articles..." oninput="onSearchChange()">
+          <button class="filter-clear" id="filterClear" onclick="clearFilters()" style="display:none">✕ Clear</button>
+        </div>
+        <table><thead><tr><th>Title</th><th>Category</th><th>Impact</th><th>Score</th><th>Stocks</th></tr></thead><tbody id="articlesBody"></tbody></table>
+        <div id="articlesCount" style="margin-top:10px;font-size:12px;color:var(--text-muted)"></div>
+      </div>
       <div class="table-card"><h3>🔌 Feed Health</h3><div id="pipelineHealth"></div></div>
       <div class="table-card"><h3>💰 Capex Announcements</h3><table><thead><tr><th>Company</th><th>Amount</th><th>Category</th><th>Description</th></tr></thead><tbody id="capexBody"></tbody></table></div>
     </div>
@@ -411,6 +462,12 @@
     let charts = {};
     let isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     let stockPriceDataCache = [];
+
+    // ─── Filter State ──
+    let activeFilters = { sector: null, impact: null, search: '' };
+    let allArticlesCache = [];
+    let allSectors = [];
+    let searchDebounceTimer = null;
 
     const TICKER_COLORS = [
       '#22d3ee', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899',
@@ -552,6 +609,10 @@
           `;
         }
 
+        // Cache articles and sectors for filtering
+        allArticlesCache = articles;
+        allSectors = [...new Set(sectors.map(s => s.sector))];
+
         renderStats(digests, sectors, metrics);
         renderSectorChart(sectors);
         renderStockChart(stocks);
@@ -559,7 +620,8 @@
         renderSectorTrendChart(sectors);
         renderDigestPerformanceChart(digests, metrics);
         renderTokenChart(metrics);
-        renderArticles(articles);
+        renderFilterBar();
+        applyFilters();
         renderPipeline(feeds);
         renderCapex(capex);
 
@@ -631,9 +693,10 @@
       const ctx=document.getElementById('sectorChart').getContext('2d');
       const c=chartTextColor(),gc=chartGridColor();
       const colors=Object.values(SECTOR_COLORS);
+      const chartLabels = labels; // captured in onClick closure
       charts.sector = new Chart(ctx, {
         type:'bar', data:{labels,datasets:[{label:'Articles',data,backgroundColor:colors.slice(0,labels.length),borderRadius:6,borderSkipped:false}]},
-        options:{responsive:true,plugins:{legend:{display:false},tooltip:{backgroundColor:isDark?'rgba(17,24,39,0.95)':'rgba(255,255,255,0.95)',titleColor:isDark?'#f1f5f9':'#0f172a',bodyColor:c,borderColor:isDark?'rgba(51,65,85,0.5)':'rgba(203,213,225,0.5)',borderWidth:1,padding:12,cornerRadius:8,displayColors:true,callbacks:{label:(ctx)=>{return `${ctx.raw} articles`},afterLabel:(ctx)=>{const s=sectors.filter(x=>x.sector===ctx.label);return s.length?`Avg score: ${s[s.length-1]?.avg_impact_score||'—'}/10`:''}}}},scales:{x:{ticks:{color:c,maxRotation:45},grid:{color:gc}},y:{ticks:{color:c},grid:{color:gc},beginAtZero:true}}}
+        options:{responsive:true,onClick:(e,els)=>{if(els.length>0){const label=chartLabels[els[0].index];if(label)setFilter('sector',label);}},plugins:{legend:{display:false},tooltip:{backgroundColor:isDark?'rgba(17,24,39,0.95)':'rgba(255,255,255,0.95)',titleColor:isDark?'#f1f5f9':'#0f172a',bodyColor:c,borderColor:isDark?'rgba(51,65,85,0.5)':'rgba(203,213,225,0.5)',borderWidth:1,padding:12,cornerRadius:8,displayColors:true,callbacks:{label:(ctx)=>{return`${ctx.raw} articles`},afterLabel:(ctx)=>{const s=sectors.filter(x=>x.sector===ctx.label);return s.length?`Avg score: ${s[s.length-1]?.avg_impact_score||'—'}/10`:''}}}},scales:{x:{ticks:{color:c,maxRotation:45},grid:{color:gc}},y:{ticks:{color:c},grid:{color:gc},beginAtZero:true}}}
       });
     }
 
@@ -799,11 +862,110 @@
       });
     }
 
+    // ─── Filter Functions ──
+    function renderFilterBar() {
+      const el = document.getElementById('sectorFilters');
+      if (!el) return;
+
+      // Build sector pills from all available sectors
+      const sorted = [...allSectors].sort();
+      el.innerHTML = sorted.map(s => {
+        const active = activeFilters.sector === s;
+        const color = SECTOR_COLORS[s] || 'var(--text-dim)';
+        return `<button class="filter-pill ${active?'active':''}" onclick="setFilter('sector','${s.replace(/'/g,"\\'")}')" style="${active?`background:${color};border-color:${color};color:#000`:'--filter-color:'+color}">${active?'✓ ':''}${s}</button>`;
+      }).join('');
+
+      // Show/hide clear button
+      const hasFilters = activeFilters.sector || activeFilters.impact || activeFilters.search;
+      document.getElementById('filterClear').style.display = hasFilters ? 'inline-block' : 'none';
+
+      // Update search input value
+      const searchInput = document.getElementById('filterSearch');
+      if (searchInput.value !== activeFilters.search) {
+        searchInput.value = activeFilters.search;
+      }
+
+      // Update impact pill active states using data-impact attribute
+      document.querySelectorAll('.filter-pill.impact-bullish, .filter-pill.impact-bearish, .filter-pill.impact-neutral').forEach(btn => {
+        const impact = btn.dataset.impact;
+        btn.classList.toggle('active', activeFilters.impact === impact);
+      });
+    }
+
+    function setFilter(type, value) {
+      // Toggle: if already active, deactivate; otherwise activate
+      if (activeFilters[type] === value) {
+        activeFilters[type] = null;
+      } else {
+        activeFilters[type] = value;
+      }
+      applyFilters();
+    }
+
+    function clearFilters() {
+      activeFilters = { sector: null, impact: null, search: '' };
+      document.getElementById('filterSearch').value = '';
+      applyFilters();
+    }
+
+    function onSearchChange() {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => {
+        activeFilters.search = document.getElementById('filterSearch').value.toLowerCase().trim();
+        applyFilters();
+      }, 250);
+    }
+
+    function applyFilters() {
+      renderFilterBar();
+
+      // Filter articles from cache
+      let filtered = allArticlesCache;
+
+      if (activeFilters.sector) {
+        filtered = filtered.filter(a => a.category === activeFilters.sector);
+      }
+      if (activeFilters.impact) {
+        filtered = filtered.filter(a => a.impact === activeFilters.impact);
+      }
+      if (activeFilters.search) {
+        const q = activeFilters.search;
+        filtered = filtered.filter(a =>
+          (a.title||'').toLowerCase().includes(q) ||
+          (a.affected_stocks||[]).some(s => s.toLowerCase().includes(q)) ||
+          (a.category||'').toLowerCase().includes(q)
+        );
+      }
+
+      renderArticles(filtered, true);
+    }
+
     // ─── Articles ──
-    function renderArticles(articles) {
-      const tbody=document.getElementById('articlesBody');
-      if(!articles.length) { tbody.innerHTML='<tr><td colspan="5" style="padding:24px;text-align:center;color:var(--text-dim)">No articles yet — run the digest first</td></tr>'; return; }
-      tbody.innerHTML=articles.slice(0,20).map(a=>`<tr><td><a href="${a.url||'#'}" target="_blank" rel="noopener">${a.title}</a></td><td><span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:${SECTOR_COLORS[a.category]||'var(--text-dim)'};display:inline-block"></span>${a.category||'—'}</span></td><td class="${sentimentClass(a.impact)}">${sentimentArrow(a.impact)} ${a.impact||'—'}</td><td><span style="font-weight:600;font-family:'JetBrains Mono',monospace">${a.impact_score||'—'}</span><span style="color:var(--text-muted)">/10</span></td><td>${(a.affected_stocks||[]).map(s=>`<span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:var(--bg-hover);padding:1px 6px;border-radius:4px;margin:0 2px">${s}</span>`).join('')||'—'}</td></tr>`).join('');
+    function renderArticles(articles, filtered = false) {
+      const tbody = document.getElementById('articlesBody');
+      const countEl = document.getElementById('articlesCount');
+
+      if (!articles.length) {
+        tbody.innerHTML = '<tr><td colspan="5" style="padding:24px;text-align:center;color:var(--text-dim)">' +
+          (filtered ? 'No articles match your filters' : 'No articles yet — run the digest first') +
+          '</td></tr>';
+        if (countEl) countEl.textContent = '';
+        return;
+      }
+
+      const show = articles.slice(0, 20);
+      tbody.innerHTML = show.map(a =>
+        `<tr><td><a href="${a.url||'#'}" target="_blank" rel="noopener">${a.title}</a></td>` +
+        `<td><span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:${SECTOR_COLORS[a.category]||'var(--text-dim)'};display:inline-block"></span>${a.category||'—'}</span></td>` +
+        `<td class="${sentimentClass(a.impact)}">${sentimentArrow(a.impact)} ${a.impact||'—'}</td>` +
+        `<td><span style="font-weight:600;font-family:'JetBrains Mono',monospace">${a.impact_score||'—'}</span><span style="color:var(--text-muted)">/10</span></td>` +
+        `<td>${(a.affected_stocks||[]).map(s => `<span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:var(--bg-hover);padding:1px 6px;border-radius:4px;margin:0 2px">${s}</span>`).join('')||'—'}</td></tr>`
+      ).join('');
+
+      if (countEl && filtered) {
+        const total = allArticlesCache.length;
+        countEl.textContent = filtered ? `Showing ${show.length} of ${articles.length} filtered from ${total} articles` : `${articles.length} articles`;
+      }
     }
 
     // ─── Pipeline ──
