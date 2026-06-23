@@ -1,6 +1,6 @@
-# 🚀 AI Infra Digest
+# 🏆 Goldirham Stack
 
-**Daily AI infrastructure intelligence** — A pipeline that collects 57+ RSS feeds, analyzes news with AI, and delivers a curated morning digest via Telegram at each user's preferred delivery time.
+**Daily intelligence for the AI infrastructure age.** — A pipeline that collects 57+ RSS feeds, analyzes news with AI, and delivers a curated morning digest via Telegram at each user's preferred delivery time.
 
 Covers the **full AI infrastructure value chain**: power generation → cooling → networking → chips → AI models.
 
