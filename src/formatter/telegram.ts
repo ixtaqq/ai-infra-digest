@@ -60,6 +60,7 @@ export interface FormatOptions {
   stockPrices?: Map<string, StockPrice>;
   secExtracts?: SECFinancialExtract[];
   earningsAnalyses?: EarningsAnalysis[];
+  personalizationNote?: string;
 }
 
 export function formatDigestTelegram(
@@ -72,6 +73,9 @@ export function formatDigestTelegram(
   // ─── Header ───────────────────────────────────────
   lines.push("🚀 <b>AI Infra Morning Digest</b>");
   lines.push(`<i>${formatDate()} • Full value chain coverage</i>`);
+  if (options?.personalizationNote) {
+    lines.push(`<i>🎯 ${options.personalizationNote}</i>`);
+  }
   lines.push("");
 
   // ─── Top Stocks with Prices (compact) ─────────────

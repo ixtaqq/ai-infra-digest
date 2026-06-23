@@ -125,7 +125,7 @@ async function schedulerMain(): Promise<void> {
 
   for (const user of pendingUsers) {
     try {
-      const result = await deliverDigest(generated, user.chat_id);
+      const result = await deliverDigest(generated, user.chat_id, user);
       if (result.success) successCount++;
       else failCount++;
     } catch (error) {

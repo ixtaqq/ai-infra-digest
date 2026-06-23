@@ -13,6 +13,7 @@ import type { SendResult } from "./sender/telegram";
 import { deduplicateArticles } from "./utils/dedup";
 import { fetchStockPrices } from "./utils/stocks";
 import { supabase } from "./utils/supabase";
+import type { UserPreferencesData } from "./utils/supabase";
 import {
   emitFeedFetch,
   emitStockFetch,
@@ -42,6 +43,7 @@ export interface GeneratedDigest {
   articlesCollected: number;
   feedStatuses: FeedResult[];
   secExtracts: SECFinancialExtract[];
+  earningsAnalyses: import("./processor/earnings").EarningsAnalysis[];
   stockPrices: Map<string, import("./utils/stocks").StockPrice>;
 }
 
@@ -262,6 +264,7 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
       articlesCollected: articles.length,
       feedStatuses,
       secExtracts,
+      earningsAnalyses,
       stockPrices,
     };
 
@@ -316,24 +319,104 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
   }
 }
 
+function buildPersonalizationNote(prefs: UserPreferencesData): string {
+  const parts: string[] = [];
+  const watchlist = prefs.watchlist ?? [];
+  const cats = prefs.categories_enabled ?? [];
+  const minScore = prefs.min_impact_score ?? 0;
+  if (watchlist.length > 0) parts.push(`watchlist: ${watchlist.join(", ")}`);
+  if (cats.length > 0) parts.push(`sectors: ${cats.join(", ")}`);
+  if (minScore > 0) parts.push(`min score: ${minScore}/10`);
+  return parts.length > 0 ? `Filtered for you — ${parts.join(" · ")}` : "";
+}
+
+/**
+ * Filter a DigestResult to match a user's preferences. Returns a new DigestResult
+ * with articles filtered by min_impact_score and categories_enabled, and watchlist
+ * tickers boosted to the front of articles and topStocks.
+ */
+export function applyUserFilter(
+  digest: import("./processor/ai").DigestResult,
+  prefs: UserPreferencesData
+): import("./processor/ai").DigestResult {
+  let articles = digest.articles;
+
+  const minScore = prefs.min_impact_score ?? 0;
+  if (minScore > 0) {
+    articles = articles.filter((a) => a.impactScore >= minScore);
+  }
+
+  const enabledCats = prefs.categories_enabled ?? [];
+  if (enabledCats.length > 0) {
+    articles = articles.filter((a) => enabledCats.includes(a.category));
+  }
+
+  const watchlist = (prefs.watchlist ?? []).map((t) => t.toUpperCase());
+  let topStocks = digest.topStocks;
+  if (watchlist.length > 0) {
+    // Watchlist tickers float to the top of stocks and articles
+    const inWatch = (tickers: string[]) =>
+      tickers.some((t) => watchlist.includes(t.toUpperCase()));
+    const watchlistStocks = topStocks.filter((s) => watchlist.includes(s.ticker.toUpperCase()));
+    const otherStocks = topStocks.filter((s) => !watchlist.includes(s.ticker.toUpperCase()));
+    topStocks = [...watchlistStocks, ...otherStocks].slice(0, 5);
+
+    const watchlistArticles = articles.filter((a) => inWatch(a.affectedStocks));
+    const otherArticles = articles.filter((a) => !inWatch(a.affectedStocks));
+    articles = [...watchlistArticles, ...otherArticles];
+  }
+
+  // Rebuild category map from filtered articles
+  const categories = {} as import("./processor/ai").DigestResult["categories"];
+  for (const cat of NEWS_CATEGORIES) {
+    categories[cat as import("./processor/ai").NewsCategory] = [];
+  }
+  for (const article of articles) {
+    const cat = (article.category || NEWS_CATEGORIES[0]) as import("./processor/ai").NewsCategory;
+    if (categories[cat]) categories[cat].push(article);
+  }
+
+  return { ...digest, articles, topStocks, categories };
+}
+
 /**
  * Deliver an already-generated digest to a single target (or the default chat
- * when no `targetChatId` is given). Logs per-user delivery and emits a delivery
- * metric. Cheap — safe to call many times for one {@link GeneratedDigest}.
+ * when no `targetChatId` is given). When `userPrefs` are provided and contain
+ * any personalization (watchlist, category filter, or min score), the digest is
+ * re-formatted from raw data for that user instead of sending the shared message.
+ * Cheap — safe to call many times for one {@link GeneratedDigest}.
  */
 export async function deliverDigest(
   generated: GeneratedDigest,
-  targetChatId?: number
+  targetChatId?: number,
+  userPrefs?: UserPreferencesData
 ): Promise<SendResult> {
-  const { formattedMessage, runDate, digest, stockPrices, startTime } = generated;
+  const { runDate, digest, stockPrices, startTime, secExtracts, earningsAnalyses } = generated;
+
+  const isPersonalized =
+    userPrefs &&
+    ((userPrefs.min_impact_score ?? 0) > 0 ||
+      (userPrefs.categories_enabled?.length ?? 0) > 0 ||
+      (userPrefs.watchlist?.length ?? 0) > 0);
+
+  const messageToSend = isPersonalized
+    ? formatDigestTelegram(applyUserFilter(digest, userPrefs!), {
+        stockPrices,
+        secExtracts: secExtracts.length > 0 ? secExtracts : undefined,
+        earningsAnalyses: earningsAnalyses.length > 0 ? earningsAnalyses : undefined,
+        personalizationNote: buildPersonalizationNote(userPrefs!),
+      })
+    : generated.formattedMessage;
 
   logger.info(
-    targetChatId ? `Delivering digest to user ${targetChatId}...` : "Sending digest to default chat..."
+    targetChatId
+      ? `Delivering digest to user ${targetChatId}${isPersonalized ? " (personalized)" : ""}...`
+      : "Sending digest to default chat..."
   );
 
   let sendResult: SendResult;
   if (targetChatId) {
-    sendResult = await sendDigestMessageToUser(targetChatId, formattedMessage);
+    sendResult = await sendDigestMessageToUser(targetChatId, messageToSend);
     if (supabase.isConfigured()) {
       await supabase.logUserDelivery(
         targetChatId,
@@ -343,7 +426,7 @@ export async function deliverDigest(
       );
     }
   } else {
-    sendResult = await sendDigestMessage(formattedMessage);
+    sendResult = await sendDigestMessage(messageToSend);
   }
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
