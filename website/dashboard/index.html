@@ -8,7 +8,7 @@
   <meta property="og:title" content="Goldirham Stack Dashboard">
   <meta property="og:description" content="Live analytics dashboard for AI Infrastructure intelligence — by Goldirham Stack.">
   <meta property="og:type" content="website">
-  <meta name="theme-color" content="#22d3ee">
+  <meta name="theme-color" content="#ff6b35">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -21,16 +21,16 @@
       --bg-hover: rgba(31,41,55,0.5); --bg-glass: rgba(17,24,39,0.6);
       --text: #f1f5f9; --text-dim: #94a3b8; --text-muted: #64748b;
       --border: rgba(51,65,85,0.4); --border-light: rgba(51,65,85,0.2);
-      --accent: #22d3ee; --accent2: #10b981; --danger: #ef4444; --warn: #f59e0b;
+      --accent: #ff6b35; --accent2: #f97316; --danger: #ef4444; --warn: #f59e0b;
       --bullish: #22c55e; --bearish: #ef4444; --neutral: #94a3b8;
-      --glow-cyan: rgba(34,211,238,0.15); --glow-green: rgba(16,185,129,0.15);
-      --gradient-1: linear-gradient(135deg, #22d3ee 0%, #06b6d4 100%);
-      --gradient-2: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      --glow-cyan: rgba(255,107,53,0.15); --glow-green: rgba(249,115,22,0.12);
+      --gradient-1: linear-gradient(135deg, #ff6b35 0%, #f97316 100%);
+      --gradient-2: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
       --gradient-3: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
       --gradient-card: linear-gradient(145deg, rgba(17,24,39,0.9) 0%, rgba(17,24,39,0.5) 100%);
       --shadow-card: 0 8px 32px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.2);
       --shadow-hover: 0 12px 48px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.3);
-      --shadow-glow: 0 0 20px var(--glow-cyan), 0 0 60px var(--glow-cyan);
+      --shadow-glow: 0 0 20px rgba(255,107,53,0.2), 0 0 60px rgba(255,107,53,0.1);
       --radius: 14px; --radius-sm: 8px; --radius-lg: 20px;
       --transition: cubic-bezier(0.4, 0, 0.2, 1);
     }
@@ -41,11 +41,11 @@
       --bg-hover: rgba(226,232,240,0.6); --bg-glass: rgba(255,255,255,0.7);
       --text: #0f172a; --text-dim: #475569; --text-muted: #94a3b8;
       --border: rgba(203,213,225,0.5); --border-light: rgba(203,213,225,0.3);
-      --glow-cyan: rgba(34,211,238,0.08); --glow-green: rgba(16,185,129,0.08);
+      --glow-cyan: rgba(255,107,53,0.08); --glow-green: rgba(249,115,22,0.08);
       --gradient-card: linear-gradient(145deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.7) 100%);
       --shadow-card: 0 2px 12px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
       --shadow-hover: 0 8px 24px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.05);
-      --shadow-glow: 0 0 30px rgba(34,211,238,0.1);
+      --shadow-glow: 0 0 30px rgba(255,107,53,0.1);
     }
     :root {
       --tooltip-bg: rgba(17,24,39,0.82);
@@ -76,7 +76,7 @@
     }
     .bg-glow-2 {
       position: fixed; bottom: -30%; right: -15%; width: 60%; height: 60%;
-      background: radial-gradient(ellipse, var(--glow-green) 0%, transparent 70%);
+      background: radial-gradient(ellipse, rgba(253,138,50,0.12) 0%, transparent 70%);
       pointer-events: none; z-index: 0; opacity: 0.4;
     }
 
@@ -115,7 +115,7 @@
     }
     .header-controls select:hover, .header-controls button:hover {
       border-color: var(--accent); background: var(--bg-hover);
-      transform: translateY(-1px); box-shadow: 0 4px 12px rgba(34,211,238,0.15);
+      transform: translateY(-1px); box-shadow: 0 4px 12px rgba(255,107,53,0.25);
     }
     .header-controls button:active { transform: translateY(0); }
     .back-link {
@@ -172,7 +172,7 @@
       transform: translateY(-3px); border-color: var(--border);
       box-shadow: var(--shadow-hover);
     }
-    .stat-card:nth-child(2)::before { background: linear-gradient(90deg, transparent, var(--accent2), transparent); }
+    .stat-card:nth-child(2)::before { background: linear-gradient(90deg, transparent, #10b981, transparent); }
     .stat-card:nth-child(3)::before { background: linear-gradient(90deg, transparent, var(--warn), transparent); }
     .stat-card:nth-child(4)::before { background: linear-gradient(90deg, transparent, #8b5cf6, transparent); }
     .stat-card:nth-child(5)::before { background: linear-gradient(90deg, transparent, #ec4899, transparent); }
@@ -212,7 +212,13 @@
       box-shadow: 0 12px 48px rgba(0,0,0,0.4), 0 0 20px rgba(139,92,246,0.1);
     }
     .card-ai canvas { filter: hue-rotate(10deg) saturate(1.1); }
-    .chart-card h3 {
+    .card-ai::after {
+      content: ''; position: absolute; top: 50%; left: 50%;
+      width: 200px; height: 200px;
+      background: radial-gradient(circle, rgba(255,107,53,0.12) 0%, rgba(139,92,246,0.15) 50%, transparent 70%);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
       font-size: 13px; font-weight: 600; margin-bottom: 14px;
       color: var(--text-dim); display: flex; align-items: center; gap: 8px;
       letter-spacing: 0.3px; text-transform: uppercase;
@@ -263,7 +269,7 @@
     tbody tr:hover { background: var(--bg-hover); }
     tbody tr:last-child td { border-bottom: none; }
     a { color: var(--accent); text-decoration: none; transition: color 0.2s; }
-    a:hover { color: #67e8f9; text-decoration: underline; }
+    a:hover { color: #fd8a3a; text-decoration: underline; }
 
     /* ─── Filter Bar ── */
     .filter-bar { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
@@ -310,7 +316,7 @@
     .feed-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border-light); font-size: 13px; }
     .feed-row:last-child { border: none; }
     .feed-status { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-    .feed-status.success { background: var(--accent2); }
+    .feed-status.success { background: #10b981; }
     .feed-status.failed { background: var(--danger); }
 
     /* ─── Error box ── */
@@ -535,17 +541,19 @@
     let searchDebounceTimer = null;
 
     const TICKER_COLORS = [
-      '#22d3ee', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899',
-      '#ef4444', '#06b6d4', '#f97316', '#6366f1', '#14b8a6',
-      '#84cc16', '#a78bfa', '#fb923c', '#2dd4bf', '#e879f9',
+      '#ff6b35', '#f97316', '#fd8a3a', '#fbbf24', '#f59e0b',
+      '#ef4444', '#dc2626', '#b91c1c',
+      '#10b981', '#059669',
+      '#6366f1', '#8b5cf6',
+      '#ec4899', '#a78bfa', '#14b8a6',
     ];
 
     const SECTOR_COLORS = {
-      'Chips & GPUs': '#22d3ee', 'Cloud & Hyperscalers': '#10b981',
-      'Datacenters': '#f59e0b', 'Networking': '#ef4444',
-      'Power & Utilities': '#8b5cf6', 'Cooling Infrastructure': '#ec4899',
-      'AI Models & Labs': '#14b8a6', 'Semiconductor Manufacturing': '#f97316',
-      'M&A and Partnerships': '#6366f1', 'Earnings & Guidance': '#06b6d4',
+      'Chips & GPUs': '#ff6b35', 'Cloud & Hyperscalers': '#f97316',
+      'Datacenters': '#fd8a3a', 'Networking': '#fbbf24',
+      'Power & Utilities': '#f59e0b', 'Cooling Infrastructure': '#ef4444',
+      'AI Models & Labs': '#10b981', 'Semiconductor Manufacturing': '#dc2626',
+      'M&A and Partnerships': '#6366f1', 'Earnings & Guidance': '#8b5cf6',
     };
 
     // ─── Chart.js defaults for premium look ──
@@ -808,8 +816,8 @@
         type:'bar', data:{
           labels: dates,
           datasets: [
-            { label:'Capex ($M)', data:capexData, backgroundColor:'rgba(34,211,238,0.7)', borderColor:'#22d3ee', borderWidth:1, borderRadius:4, borderSkipped:false, yAxisID:'y' },
-            { label:'AI Revenue ($M)', data:aiRevData, backgroundColor:'rgba(16,185,129,0.7)', borderColor:'#10b981', borderWidth:1, borderRadius:4, borderSkipped:false, yAxisID:'y' },
+            { label:'Capex ($M)', data:capexData, backgroundColor:'rgba(255,107,53,0.7)', borderColor:'#ff6b35', borderWidth:1, borderRadius:4, borderSkipped:false, yAxisID:'y' },
+            { label:'AI Revenue ($M)', data:aiRevData, backgroundColor:'rgba(249,115,22,0.7)', borderColor:'#f97316', borderWidth:1, borderRadius:4, borderSkipped:false, yAxisID:'y' },
           ]
         },
         options:{
@@ -912,7 +920,7 @@
       const avgRating = totalVotes > 0 ? (totalSum / totalVotes).toFixed(1) : '—';
 
       document.getElementById('statsGrid').innerHTML = `
-        <div class="stat-card"><div class="label">Digest Runs</div><div class="value">${totalDigests}</div><div class="sub"><span style="color:var(--accent2)">●</span> ${successful} success · ${failed} failed</div></div>
+        <div class="stat-card"><div class="label">Digest Runs</div><div class="value">${totalDigests}</div><div class="sub"><span style="color:#10b981">●</span> ${successful} success · ${failed} failed</div></div>
         <div class="stat-card"><div class="label">Articles Analyzed</div><div class="value">${fmtNum(totalArticles)}</div><div class="sub">Last run: ${lastRun}${digestTrend}</div></div>
         <div class="stat-card"><div class="label">Sectors Active</div><div class="value">${activeSectors}</div><div class="sub">Out of 10 total</div></div>
         <div class="stat-card"><div class="label">Stocks Tracked</div><div class="value">${latest?.total_stocks_tracked||'—'}</div><div class="sub">Per digest run</div></div>
@@ -1070,7 +1078,7 @@
         type: 'line', data: {
           labels: dates,
           datasets: [
-            { label: 'Articles', data: sorted.map(d => d.articles_processed||0), borderColor: '#22d3ee', backgroundColor: 'rgba(34,211,238,0.08)', fill: true, tension: 0.35, pointRadius: 3, pointHoverRadius: 6, yAxisID: 'y' },
+            { label: 'Articles', data: sorted.map(d => d.articles_processed||0), borderColor: '#ff6b35', backgroundColor: 'rgba(255,107,53,0.08)', fill: true, tension: 0.35, pointRadius: 3, pointHoverRadius: 6, yAxisID: 'y' },
             { label: 'Tokens (K)', data: sorted.map(d => (d.total_tokens_used||0)/1000), borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.08)', fill: true, tension: 0.35, pointRadius: 3, pointHoverRadius: 6, yAxisID: 'y1' },
             { label: 'Duration (s)', data: sorted.map(d => d.duration_seconds||0), borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.08)', fill: true, tension: 0.35, pointRadius: 3, pointHoverRadius: 6, yAxisID: 'y1' },
           ]
@@ -1098,7 +1106,7 @@
       const ctx=document.getElementById('tokenChart').getContext('2d');
       const c=chartTextColor(),gc=chartGridColor();
       charts.token = new Chart(ctx, {
-        type:'line', data:{labels:recent.map(m=>fmtDate(m.date)),datasets:[{label:'Tokens',data:recent.map(m=>m.total_tokens_used||0),borderColor:'#22d3ee',backgroundColor:'rgba(34,211,238,0.08)',fill:true,tension:0.35,pointRadius:3,pointHoverRadius:6,borderWidth:2}]},
+        type:'line', data:{labels:recent.map(m=>fmtDate(m.date)),datasets:[{label:'Tokens',data:recent.map(m=>m.total_tokens_used||0),borderColor:'#ff6b35',backgroundColor:'rgba(255,107,53,0.08)',fill:true,tension:0.35,pointRadius:3,pointHoverRadius:6,borderWidth:2}]},
         options:{responsive:true,plugins:{legend:{display:false},tooltip:{backgroundColor:isDark?'rgba(17,24,39,0.82)':'rgba(255,255,255,0.85)',titleColor:isDark?'#f1f5f9':'#0f172a',bodyColor:c,borderColor:isDark?'rgba(51,65,85,0.5)':'rgba(203,213,225,0.5)',borderWidth:1,padding:12,cornerRadius:8,callbacks:{label:(ctx)=>`${Number(ctx.raw).toLocaleString()} tokens`}}},scales:{x:{ticks:{color:c,maxTicksLimit:7,font:{size:10}},grid:{color:gc}},y:{ticks:{color:c},grid:{color:gc},beginAtZero:true}}}
       });
     }
@@ -1279,7 +1287,7 @@
       html += `<table><thead><tr><th>Company</th><th>Form</th><th>Date</th><th>Capex</th><th>AI Revenue</th><th>Margins</th><th>Guide</th><th>Impact</th></tr></thead><tbody>`;
 
       for (const f of filings.slice(0, 20)) {
-        const formColor = f.form_type === '8-K' ? 'var(--warn)' : f.form_type === '10-Q' ? 'var(--accent)' : 'var(--accent2)';
+        const formColor = f.form_type === '8-K' ? 'var(--warn)' : f.form_type === '10-Q' ? 'var(--accent)' : '#6366f1';
         const impactColor = (f.impact_score || 0) >= 8 ? 'var(--danger)' : (f.impact_score || 0) >= 6 ? 'var(--warn)' : 'var(--text-muted)';
 
         // Format financial data with tooltips
@@ -1421,7 +1429,7 @@
         html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:12px">
           <span style="width:20px;text-align:right;color:var(--text-dim)">${i}★</span>
           <div style="flex:1;height:10px;background:var(--border-light);border-radius:5px;overflow:hidden">
-            <div style="height:100%;width:${width}%;background:${['#ef4444','#f97316','#f59e0b','#22c55e','#22d3ee'][i-1]};border-radius:5px;transition:width 0.5s ease"></div>
+            <div style="height:100%;width:${width}%;background:${['#ef4444','#f97316','#f59e0b','#22c55e','#ff6b35'][i-1]};border-radius:5px;transition:width 0.5s ease"></div>
           </div>
           <span style="width:40px;color:var(--text-muted);font-family:'JetBrains Mono',monospace">${count} (${pct}%)</span>
         </div>`;
@@ -1464,8 +1472,7 @@
 
       const dates = Object.keys(byDate).sort().reverse().slice(0, 10);
 
-      let html = `<div style="display:flex;gap:20px;margin-bottom:14px;flex-wrap:wrap">
-        <span style="font-size:13px;display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:var(--accent2);display:inline-block"></span>${successful} delivered</span>
+      let html = `<div style="display:flex;gap:20px;margin-bottom:14px;flex-wrap:wrap">            <span style="font-size:13px;display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block"></span>${successful} delivered</span>
         <span style="font-size:13px;display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:var(--danger);display:inline-block"></span>${failed} failed</span>
         <span style="font-size:13px;color:var(--text-dim)">${uniqueUsers} unique users · ${total} total deliveries</span>
       </div>`;
@@ -1475,7 +1482,7 @@
         for (const date of dates) {
           const d = byDate[date];
           const pct = d.total > 0 ? ((d.success / d.total) * 100).toFixed(0) : '0';
-          const pctColor = parseInt(pct) >= 80 ? 'var(--accent2)' : parseInt(pct) >= 50 ? 'var(--warn)' : 'var(--danger)';
+          const pctColor = parseInt(pct) >= 80 ? '#10b981' : parseInt(pct) >= 50 ? 'var(--warn)' : 'var(--danger)';
           html += `<tr>
             <td style="font-weight:500">${fmtDate(date)}</td>
             <td>${d.success}/${d.total}</td>
@@ -1608,7 +1615,7 @@
         }
 
         status.textContent = `✅ ${articles.length} results`;
-        status.style.color = 'var(--accent2)';
+        status.style.color = '#10b981';
 
         // Set filter state to show search results
         activeFilters.search = query;
