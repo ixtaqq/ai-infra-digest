@@ -5,6 +5,7 @@ import { processArticles, NEWS_CATEGORIES } from "./processor/ai";
 import { formatDigestTelegram } from "./formatter/telegram";
 import {
   sendDigestMessage,
+  sendDigestMessageToUser,
   startInteractiveBot,
   registerCommand,
 } from "./sender/telegram";
@@ -21,14 +22,18 @@ import type { Article, FeedResult } from "./collector/rss";
 
 const MAX_ARTICLES_FOR_AI = 35;
 
-async function main() {    logger.info("🚀 AI Infrastructure Daily Digest — Starting");
-
+/**
+ * Run the full digest pipeline — collect, dedup, AI process, format, deliver.
+ * If `targetChatId` is provided, sends the digest to that user instead of
+ * the default chat, and logs per-user delivery to user_delivery_log.
+ *
+ * Returns true on success, false on failure.
+ */
+export async function runPipeline(targetChatId?: number): Promise<boolean> {
   const startTime = Date.now();
   const runDate = new Date().toISOString().split("T")[0];
   let digestRunId: number | null = null;
-
-  // Start interactive bot (registers /start, /help, etc.)
-  startInteractiveBot();
+  let overallSuccess = false;
 
   try {
     // ─── Conditional RSS: skip consistently failing feeds ──
@@ -92,7 +97,7 @@ async function main() {    logger.info("🚀 AI Infrastructure Daily Digest — 
           "This could mean: RSS feeds are down, or no AI-relevant articles were found.\n" +
           "Check the logs for details."
       );
-      return;
+      return false;
     }
 
     // ─── Step 1b: Deduplicate ───────────────────
@@ -156,7 +161,22 @@ async function main() {    logger.info("🚀 AI Infrastructure Daily Digest — 
 
     // ─── Step 4: Send to Telegram ───────────────
     logger.info("Step 4/4: Sending digest to Telegram...");
-    const sendResult = await sendDigestMessage(formattedMessage);
+    let sendResult;
+    if (targetChatId) {
+      // Per-user delivery — send to the target user
+      sendResult = await sendDigestMessageToUser(targetChatId, formattedMessage);
+      // Log to user_delivery_log
+      if (supabase.isConfigured()) {
+        await supabase.logUserDelivery(
+          targetChatId,
+          runDate,
+          sendResult.success ? "success" : "failed",
+          sendResult.error
+        );
+      }
+    } else {
+      sendResult = await sendDigestMessage(formattedMessage);
+    }
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
@@ -319,8 +339,8 @@ async function main() {    logger.info("🚀 AI Infrastructure Daily Digest — 
       await computeAndStoreTrending(runDate, digest);
     }
 
-    // Exit cleanly so the polling loop doesn't keep the process alive in CI
-    process.exit(0);
+    logger.info("✅ Digest pipeline completed successfully");
+    return true;
 
   } catch (error) {
     const errMsg = (error as Error).message;
@@ -368,6 +388,22 @@ async function main() {    logger.info("🚀 AI Infrastructure Daily Digest — 
       // Ignore send errors
     }
 
+    return false;
+  }
+}
+
+async function main() {
+  logger.info("🚀 AI Infrastructure Daily Digest — Starting");
+
+  // Start interactive bot (registers /start, /help, etc.)
+  startInteractiveBot();
+
+  const success = await runPipeline();
+
+  // Exit cleanly so the polling loop doesn't keep the process alive in CI
+  if (success) {
+    process.exit(0);
+  } else {
     process.exit(1);
   }
 }

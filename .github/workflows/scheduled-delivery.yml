@@ -1,0 +1,46 @@
+name: Scheduled Delivery (Per-User)
+
+on:
+  schedule:
+    # Every 30 minutes — checks if any user's preferred_time matches now
+    - cron: "*/30 * * * *"
+  workflow_dispatch: # Allow manual trigger for testing
+
+jobs:
+  deliver-digests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: ai-infra-digest/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd ai-infra-digest
+          npm ci
+
+      - name: Build TypeScript
+        run: |
+          cd ai-infra-digest
+          npm run build
+
+      - name: Run scheduled delivery
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          AI_PROVIDER: ${{ vars.AI_PROVIDER || 'groq' }}
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_MODEL: ${{ vars.AI_MODEL || 'llama-3.3-70b-versatile' }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TZ: Asia/Kuala_Lumpur
+        run: |
+          cd ai-infra-digest
+          node dist/scheduler.js

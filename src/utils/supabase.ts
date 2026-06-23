@@ -390,6 +390,61 @@ export const supabase = {
     }
   },
 
+  // ─── User Delivery Log ────────────────────────────
+
+  /**
+   * Log that a digest was delivered to a user for a given date.
+   * Returns true if logged successfully.
+   */
+  async logUserDelivery(
+    chatId: number,
+    runDate: string,
+    status: "success" | "failed",
+    details?: string
+  ): Promise<boolean> {
+    // Use upsert with on_conflict to handle race conditions from overlapping cron runs
+    return supabaseFetch(
+      "POST",
+      "user_delivery_log",
+      {
+        chat_id: chatId,
+        run_date: runDate,
+        status,
+        details,
+      },
+      "on_conflict=chat_id,run_date"
+    );
+  },
+
+  /**
+   * Check if a user was already successfully delivered today.
+   * Returns true if a successful delivery record exists for this user+date.
+   */
+  async wasUserDeliveredToday(
+    chatId: number,
+    runDate: string
+  ): Promise<boolean> {
+    const cfg = getConfig();
+    if (!cfg) return false;
+
+    try {
+      const response = await fetch(
+        `${cfg.url}/rest/v1/user_delivery_log?chat_id=eq.${chatId}&run_date=eq.${runDate}&status=eq.success&select=id&limit=1`,
+        {
+          headers: {
+            apikey: cfg.key,
+            Authorization: `Bearer ${cfg.key}`,
+          },
+        }
+      );
+      if (!response.ok) return false;
+      const data = (await response.json()) as { id: number }[];
+      return data.length > 0;
+    } catch {
+      return false;
+    }
+  },
+
   // Quick helper to check if the database is reachable
   async healthCheck(): Promise<boolean> {
     const cfg = getConfig();

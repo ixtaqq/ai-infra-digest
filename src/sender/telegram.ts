@@ -454,6 +454,49 @@ export async function sendTelegramMessage(
   }
 }
 
+/**
+ * Send a digest message to a specific user chat, rather than the default chat.
+ * Used for per-user scheduled delivery.
+ */
+export async function sendDigestMessageToUser(
+  chatId: number,
+  text: string,
+  parseMode: "HTML" | "MarkdownV2" = "HTML"
+): Promise<SendResult> {
+  const b = getBot();
+
+  try {
+    if (text.length <= 4096) {
+      const result = await b.sendMessage(chatId, text, {
+        parse_mode: parseMode,
+        disable_web_page_preview: false,
+      });
+      logger.info(`Digest sent to user ${chatId} (ID: ${result.message_id})`);
+      return { success: true, messageId: result.message_id };
+    }
+
+    // Chunk long messages
+    const chunks = splitMessage(text, 4096);
+    let lastResult: SendResult = { success: true };
+
+    for (let i = 0; i < chunks.length; i++) {
+      const header = i === 0 ? "" : `📄 Part ${i + 1}/${chunks.length}\n\n`;
+      const result = await b.sendMessage(chatId, header + chunks[i], {
+        parse_mode: parseMode,
+        disable_web_page_preview: false,
+      });
+      lastResult = { success: true, messageId: result.message_id };
+    }
+
+    logger.info(`Digest sent to user ${chatId} in ${chunks.length} parts`);
+    return lastResult;
+  } catch (error) {
+    const errMsg = (error as Error).message;
+    logger.error(`Failed to send digest to user ${chatId}: ${errMsg}`);
+    return { success: false, error: errMsg };
+  }
+}
+
 export async function sendDigestMessage(
   digestText: string
 ): Promise<SendResult> {
