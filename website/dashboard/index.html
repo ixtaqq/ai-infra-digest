@@ -1044,7 +1044,7 @@
       msg.textContent = 'Loading dashboard data...';
       content.style.display = 'none';
 
-      const days = 30;
+      const days = parseInt(document.querySelector('.chart-tabs button.active')?.dataset?.range || '30');
       const rangeDate = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
 
       let slowTimer = setTimeout(() => {
@@ -1747,7 +1747,6 @@
       btn.addEventListener('click', function() {
         this.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
         this.classList.add('active');
-        // Reload sector chart with different range
         loadDashboard();
       });
     });
@@ -1756,8 +1755,15 @@
     loadDashboard();
     setInterval(loadDashboard, 60000);
 
-    // Keyboard shortcut: / to focus search
+    // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
+      // Cmd+K or Ctrl+K to focus search
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        const input = document.getElementById('globalSearch');
+        if (input) input.focus();
+      }
+      // / to focus search (Gmail-style)
       if (e.key === '/' && !e.ctrlKey && !e.metaKey && !['INPUT', 'TEXTAREA'].includes(e.target.tagName)) {
         e.preventDefault();
         const input = document.getElementById('globalSearch');
