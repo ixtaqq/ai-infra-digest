@@ -63,7 +63,7 @@ function loadConfig(): Config {
     app: {
       timezone: process.env.TZ || "Asia/Kuala_Lumpur",
       cacheDir: path.resolve(__dirname, "../.cache"),
-      maxArticlesPerSource: 10,
+      maxArticlesPerSource: 5,
     },
   };
 }

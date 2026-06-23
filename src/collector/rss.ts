@@ -11,16 +11,40 @@ const parser = new Parser({
 
 // ─── Tier 1: Major company news + Financial news ───────
 const TIER_1_FEEDS = [
-  // Major tech companies (via Google Alerts RSS / company blogs)
+  // AI chip & semiconductor companies
   { url: "https://nvidianews.nvidia.com/news-rss", name: "NVIDIA" },
   { url: "https://news.microsoft.com/feed/", name: "Microsoft" },
   { url: "https://www.amd.com/en/newsroom/press-releases/rss.html", name: "AMD" },
+
+  // More AI infrastructure companies (via Google News topic RSS)
+  { url: "https://news.google.com/rss/search?q=Broadcom+AI&hl=en-US&gl=US&ceid=US:en", name: "Broadcom" },
+  { url: "https://news.google.com/rss/search?q=Amazon+AWS+AI+infrastructure&hl=en-US&gl=US&ceid=US:en", name: "Amazon" },
+  { url: "https://news.google.com/rss/search?q=Google+AI+infrastructure+datacenter&hl=en-US&gl=US&ceid=US:en", name: "Google" },
+  { url: "https://news.google.com/rss/search?q=Meta+AI+infrastructure&hl=en-US&gl=US&ceid=US:en", name: "Meta" },
+  { url: "https://news.google.com/rss/search?q=TSMC+AI+chips+semiconductor&hl=en-US&gl=US&ceid=US:en", name: "TSMC" },
+  { url: "https://news.google.com/rss/search?q=Intel+AI+chips+foundry&hl=en-US&gl=US&ceid=US:en", name: "Intel" },
+  { url: "https://news.google.com/rss/search?q=Qualcomm+AI+chips&hl=en-US&gl=US&ceid=US:en", name: "Qualcomm" },
+  { url: "https://news.google.com/rss/search?q=Oracle+cloud+AI&hl=en-US&gl=US&ceid=US:en", name: "Oracle" },
+  { url: "https://news.google.com/rss/search?q=IBM+AI+enterprise&hl=en-US&gl=US&ceid=US:en", name: "IBM" },
+  { url: "https://news.google.com/rss/search?q=Micron+HBM+memory+AI&hl=en-US&gl=US&ceid=US:en", name: "Micron" },
+  { url: "https://news.google.com/rss/search?q=ASML+semiconductor+equipment&hl=en-US&gl=US&ceid=US:en", name: "ASML" },
+  { url: "https://news.google.com/rss/search?q=Super+Micro+AI+servers&hl=en-US&gl=US&ceid=US:en", name: "Super Micro" },
+  { url: "https://news.google.com/rss/search?q=Dell+AI+servers+infrastructure&hl=en-US&gl=US&ceid=US:en", name: "Dell" },
+  { url: "https://news.google.com/rss/search?q=ARM+AI+chips+architecture&hl=en-US&gl=US&ceid=US:en", name: "ARM" },
+
+  // Company blogs with official RSS
+  { url: "https://news.google.com/rss/search?q=IBM+AI+enterprise+cloud&hl=en-US&gl=US&ceid=US:en", name: "IBM" },
 
   // Financial news
   { url: "https://feeds.content.dowjones.io/public/rss/mw_topstories", name: "MarketWatch" },
   { url: "https://finance.yahoo.com/news/rssindex", name: "Yahoo Finance" },
   { url: "https://www.cnbc.com/id/100003114/device/rss/rss.html", name: "CNBC" },
   { url: "https://www.reutersagency.com/feed/?taxonomy=best-sectors&post_type=bundles&best-sectors=tech", name: "Reuters Tech" },
+  { url: "https://www.bloomberg.com/technology/feeds", name: "Bloomberg Tech" },
+  { url: "https://www.ft.com/technology?format=rss", name: "Financial Times Tech" },
+  { url: "https://www.barrons.com/feed/top-stories", name: "Barron's" },
+  { url: "https://feeds.a.dj.com/rss/RSSMarketsMain.xml", name: "WSJ Markets" },
+  { url: "https://www.investors.com/category/news/feed/", name: "Investor's Business Daily" },
 
   // SEC filings (EDGAR RSS)
   { url: "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&CIK=&type=8-K&company=&dateb=&owner=include&start=0&count=20&output=atom", name: "SEC Filings" },
@@ -34,28 +58,60 @@ const TIER_2_FEEDS = [
   { url: "https://techcrunch.com/feed/", name: "TechCrunch" },
   { url: "https://www.theverge.com/rss/index.xml", name: "The Verge" },
   { url: "https://seekingalpha.com/market_currents.xml", name: "Seeking Alpha" },
+  { url: "https://www.semianalysis.com/feed", name: "SemiAnalysis" },
+  { url: "https://www.theregister.com/headlines.rss", name: "The Register" },
+  { url: "https://www.datacenterdynamics.com/en/feed/", name: "Datacenter Dynamics" },
+  { url: "https://semiengineering.com/feed/", name: "Semiconductor Engineering" },
 
   // AI-specific
   { url: "https://blog.google/technology/ai/rss/", name: "Google AI Blog" },
   { url: "https://openai.com/blog/rss/", name: "OpenAI" },
   { url: "https://aws.amazon.com/blogs/ai/feed/", name: "AWS AI" },
   { url: "https://venturebeat.com/category/ai/feed/", name: "VentureBeat AI" },
+  { url: "https://artificialintelligence-news.com/feed/", name: "AI News" },
+  { url: "https://medium.com/feed/tag/artificial-intelligence", name: "Medium AI" },
+  { url: "https://aibusiness.com/feed.rss", name: "AI Business" },
+  { url: "https://www.zdnet.com/topic/artificial-intelligence/rss.xml", name: "ZDNet AI" },
 ];
 
 // ─── AI/Semiconductor keywords for filtering ────────────
 const AI_KEYWORDS = [
+  // Core AI infrastructure
   "AI infrastructure", "GPU", "Blackwell", "datacenter", "data center",
   "inference", "training", "LLM", "AI spending", "cloud AI",
   "power demand", "semiconductor", "chip", "accelerator",
-  "NVIDIA", "AMD", "Broadcom", "AVGO", "NVDA", "AMD",
-  "Microsoft", "Amazon", "Google", "Meta", "OpenAI",
-  "H100", "H200", "B100", "B200", "MI300", "MI350",
-  "cloud capex", "AI revenue", "earnings",
-  "analyst upgrade", "analyst downgrade", "price target",
   "artificial intelligence", "machine learning",
   "HPC", "high performance computing",
+  "cloud capex", "AI revenue", "earnings",
+  "analyst upgrade", "analyst downgrade", "price target",
   "memory", "HBM", "CoWoS", "TSMC",
   "fabrication", "fab", "node", "process technology",
+  "foundry", "wafer", "yield", "packaging", "advanced packaging",
+
+  // Company names & tickers
+  "NVIDIA", "NVDA", "AMD", "Broadcom", "AVGO",
+  "Microsoft", "MSFT", "Amazon", "AMZN", "AWS",
+  "Google", "GOOGL", "GOOG", "Alphabet",
+  "Meta", "META", "Facebook",
+  "OpenAI", "TSMC", "TSM",
+  "Intel", "INTC", "Qualcomm", "QCOM",
+  "Oracle", "ORCL", "OCI",
+  "IBM", "Micron", "MU", "ASML",
+  "Super Micro", "SMCI", "Dell", "DELL",
+  "ARM", "ARM Holdings",
+  "Cerebras", "SambaNova", "Graphcore",
+  "HPE", "Hewlett Packard", "Cisco", "CSCO",
+  "Marvell", "MRVL", "Arista", "ANET",
+  "CrowdStrike", "Palantir", "PLTR", "Snowflake", "SNOW",
+  "ServiceNow", "NOW", "Salesforce", "CRM",
+
+  // GPU & AI hardware
+  "H100", "H200", "B100", "B200", "B300",
+  "MI300", "MI350", "MI400",
+  "Gaudi", "Habana", "Trainium", "Inferentia",
+  "TPU", "Trillium", "Dojo", "D1X",
+  "Radeon", "Instinct", "CDNA", "ROCm",
+  "CUDA", "Tensor Core", "TensorRT",
 ];
 
 function matchesKeywords(title: string, content: string): boolean {
