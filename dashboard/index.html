@@ -5,564 +5,368 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI Infra Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <style>
-    /* ─── CSS Variables for Theming ── */
     :root {
-      --bg: #0a0e17;
-      --bg-card: #111827;
-      --bg-hover: #1f2937;
-      --text: #f1f5f9;
-      --text-dim: #94a3b8;
-      --border: #1e293b;
-      --accent: #22d3ee;
-      --accent2: #10b981;
-      --danger: #ef4444;
-      --warning: #f59e0b;
-      --bullish: #22c55e;
-      --bearish: #ef4444;
-      --neutral: #94a3b8;
-      --header-bg: rgba(17, 24, 39, 0.8);
-      --shadow: 0 4px 6px -1px rgba(0,0,0,0.3);
+      --bg: #0a0e17; --bg-card: #111827; --bg-hover: #1f2937;
+      --text: #f1f5f9; --text-dim: #94a3b8; --border: #1e293b;
+      --accent: #22d3ee; --accent2: #10b981; --danger: #ef4444;
+      --bullish: #22c55e; --bearish: #ef4444; --neutral: #94a3b8;
+      --header-bg: rgba(17,24,39,0.8); --shadow: 0 4px 6px -1px rgba(0,0,0,0.3);
     }
     [data-theme="light"] {
-      --bg: #f1f5f9;
-      --bg-card: #ffffff;
-      --bg-hover: #e2e8f0;
-      --text: #0f172a;
-      --text-dim: #64748b;
-      --border: #cbd5e1;
-      --header-bg: rgba(255, 255, 255, 0.9);
-      --shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+      --bg: #f1f5f9; --bg-card: #fff; --bg-hover: #e2e8f0;
+      --text: #0f172a; --text-dim: #64748b; --border: #cbd5e1;
+      --header-bg: rgba(255,255,255,0.9); --shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
     }
-
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
-      background: var(--bg);
-      color: var(--text);
-      transition: background 0.3s, color 0.3s;
-      min-height: 100vh;
-    }
-
-    /* ─── Layout ── */
-    .header {
-      position: sticky; top: 0; z-index: 100;
-      background: var(--header-bg);
-      backdrop-filter: blur(12px);
-      border-bottom: 1px solid var(--border);
-      padding: 16px 24px;
-      display: flex; justify-content: space-between; align-items: center;
-      flex-wrap: wrap; gap: 12px;
-    }
-    .header h1 {
-      font-size: 20px; font-weight: 700;
-      display: flex; align-items: center; gap: 10px;
-    }
-    .header h1 span { color: var(--accent); }
-    .header-controls { display: flex; align-items: center; gap: 16px; }
-    .header-controls select, .header-controls button {
-      background: var(--bg-card);
-      color: var(--text);
-      border: 1px solid var(--border);
-      padding: 8px 14px;
-      border-radius: 8px;
-      font-size: 13px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .header-controls select:hover, .header-controls button:hover {
-      border-color: var(--accent);
-    }
-    .status-dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      display: inline-block;
-    }
-    .status-dot.live { background: var(--accent2); animation: pulse 2s infinite; }
-    .status-dot.offline { background: var(--text-dim); }
-    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
-
-    .container { max-width: 1440px; margin: 0 auto; padding: 24px; }
-
-    /* ─── Stats Grid ── */
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 16px; margin-bottom: 24px;
-    }
-    .stat-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 20px;
-      transition: transform 0.2s, box-shadow 0.2s;
-    }
-    .stat-card:hover {
-      transform: translateY(-2px);
-      box-shadow: var(--shadow);
-    }
-    .stat-card .label {
-      font-size: 12px; text-transform: uppercase;
-      letter-spacing: 0.5px; color: var(--text-dim);
-      margin-bottom: 6px;
-    }
-    .stat-card .value {
-      font-size: 28px; font-weight: 700;
-      line-height: 1.2;
-    }
-    .stat-card .sub {
-      font-size: 12px; color: var(--text-dim); margin-top: 4px;
-    }
-
-    /* ─── Charts Grid ── */
-    .charts-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-      gap: 16px; margin-bottom: 24px;
-    }
-    .chart-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 20px;
-    }
-    .chart-card h3 {
-      font-size: 14px; font-weight: 600;
-      margin-bottom: 12px;
-      color: var(--text-dim);
-    }
-    .chart-card canvas { max-height: 250px; }
-
-    /* ─── Tables ── */
-    .table-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 20px;
-      margin-bottom: 16px;
-      overflow-x: auto;
-    }
-    .table-card h3 {
-      font-size: 14px; font-weight: 600;
-      margin-bottom: 12px;
-      color: var(--text-dim);
-    }
-    table {
-      width: 100%; border-collapse: collapse;
-      font-size: 13px;
-    }
-    th {
-      text-align: left; padding: 10px 12px;
-      border-bottom: 1px solid var(--border);
-      color: var(--text-dim); font-weight: 600;
-      text-transform: uppercase; font-size: 11px;
-      letter-spacing: 0.5px;
-    }
-    td {
-      padding: 10px 12px;
-      border-bottom: 1px solid var(--border);
-    }
-    tr:hover { background: var(--bg-hover); }
-    .ticker {
-      font-weight: 700; font-family: monospace;
-    }
-    .bullish { color: var(--bullish); }
-    .bearish { color: var(--bearish); }
-    .neutral { color: var(--neutral); }
-
-    /* ─── Pipeline Health ── */
-    .feed-row {
-      display: flex; align-items: center; gap: 12px;
-      padding: 8px 0;
-      border-bottom: 1px solid var(--border);
-      font-size: 13px;
-    }
-    .feed-row:last-child { border: none; }
-    .feed-status {
-      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
-    }
-    .feed-status.success { background: var(--accent2); }
-    .feed-status.failed { background: var(--danger); }
-
-    /* ─── Loading / Empty ── */
-    .loading {
-      text-align: center; padding: 60px 20px;
-      color: var(--text-dim);
-    }
-    .loading .spinner {
-      width: 40px; height: 40px;
-      border: 3px solid var(--border);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      margin: 0 auto 16px;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* ─── Responsive ── */
-    @media (max-width: 768px) {
-      .container { padding: 12px; }
-      .charts-grid { grid-template-columns: 1fr; }
-      .stats-grid { grid-template-columns: repeat(2, 1fr); }
-      .header { padding: 12px 16px; }
-      .header h1 { font-size: 16px; }
-    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,monospace; background:var(--bg); color:var(--text); transition:all .3s; min-height:100vh; }
+    .header { position:sticky; top:0; z-index:100; background:var(--header-bg); backdrop-filter:blur(12px); border-bottom:1px solid var(--border); padding:16px 24px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; }
+    .header h1 { font-size:20px; font-weight:700; display:flex; align-items:center; gap:10px; }
+    .header h1 span { color:var(--accent); }
+    .header-controls { display:flex; align-items:center; gap:12px; }
+    .header-controls select, .header-controls button { background:var(--bg-card); color:var(--text); border:1px solid var(--border); padding:8px 14px; border-radius:8px; font-size:13px; cursor:pointer; transition:all .2s; }
+    .header-controls select:hover, .header-controls button:hover { border-color:var(--accent); }
+    .status-dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+    .status-dot.live { background:var(--accent2); animation:pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.4;} }
+    .container { max-width:1440px; margin:0 auto; padding:24px; }
+    .stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; margin-bottom:24px; }
+    .stat-card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:20px; transition:transform .2s; }
+    .stat-card:hover { transform:translateY(-2px); box-shadow:var(--shadow); }
+    .stat-card .label { font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:var(--text-dim); margin-bottom:6px; }
+    .stat-card .value { font-size:28px; font-weight:700; line-height:1.2; }
+    .stat-card .sub { font-size:12px; color:var(--text-dim); margin-top:4px; }
+    .charts-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(400px,1fr)); gap:16px; margin-bottom:24px; }
+    .chart-card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:20px; }
+    .chart-card h3 { font-size:14px; font-weight:600; margin-bottom:12px; color:var(--text-dim); }
+    .chart-card canvas { max-height:250px; }
+    .table-card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:16px; overflow-x:auto; }
+    .table-card h3 { font-size:14px; font-weight:600; margin-bottom:12px; color:var(--text-dim); }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th { text-align:left; padding:10px 12px; border-bottom:1px solid var(--border); color:var(--text-dim); font-weight:600; text-transform:uppercase; font-size:11px; letter-spacing:.5px; }
+    td { padding:10px 12px; border-bottom:1px solid var(--border); }
+    tr:hover { background:var(--bg-hover); }
+    .bullish { color:var(--bullish); } .bearish { color:var(--bearish); } .neutral { color:var(--neutral); }
+    .feed-row { display:flex; align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
+    .feed-row:last-child { border:none; }
+    .feed-status { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+    .feed-status.success { background:var(--accent2); } .feed-status.failed { background:var(--danger); }
+    .loading { text-align:center; padding:60px 20px; color:var(--text-dim); }
+    .loading .spinner { width:40px; height:40px; border:3px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; margin:0 auto 16px; }
+    @keyframes spin { to{transform:rotate(360deg);} }
+    .error-box { background:rgba(239,68,68,0.1); border:1px solid var(--danger); border-radius:12px; padding:20px; margin-bottom:16px; text-align:center; }
+    .error-box button { background:var(--accent); color:#000; border:none; padding:8px 20px; border-radius:8px; cursor:pointer; font-weight:600; margin-top:8px; }
+    .config-form { max-width:500px; margin:40px auto; background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:32px; }
+    .config-form h2 { margin-bottom:16px; font-size:18px; }
+    .config-form label { display:block; font-size:13px; color:var(--text-dim); margin-bottom:4px; }
+    .config-form input { width:100%; padding:10px 12px; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:14px; margin-bottom:16px; font-family:monospace; }
+    .config-form button { background:var(--accent); color:#000; border:none; padding:10px 24px; border-radius:8px; cursor:pointer; font-weight:600; font-size:14px; width:100%; }
+    .config-form .note { font-size:12px; color:var(--text-dim); margin-top:8px; }
+    @media (max-width:768px) { .container{padding:12px;} .charts-grid{grid-template-columns:1fr;} .stats-grid{grid-template-columns:repeat(2,1fr);} .header{padding:12px 16px;} .header h1{font-size:16px;} }
   </style>
 </head>
 <body>
-  <!-- Header -->
   <div class="header">
     <h1>🚀 <span>AI Infra</span> Dashboard</h1>
     <div class="header-controls">
       <span id="liveIndicator"><span class="status-dot live"></span> Live</span>
       <select id="rangeSelect" onchange="loadDashboard()">
-        <option value="7">Last 7 days</option>
-        <option value="14">Last 14 days</option>
-        <option value="30" selected>Last 30 days</option>
-        <option value="90">Last 90 days</option>
+        <option value="7">7 days</option>
+        <option value="14">14 days</option>
+        <option value="30" selected>30 days</option>
+        <option value="90">90 days</option>
       </select>
       <button onclick="toggleTheme()" id="themeBtn">☀️ Light</button>
+      <button onclick="showConfig()">⚙️ Config</button>
       <button onclick="loadDashboard()">🔄 Refresh</button>
     </div>
   </div>
 
   <div class="container" id="app">
+    <div id="configPanel" style="display:none"></div>
     <div class="loading" id="loading">
       <div class="spinner"></div>
-      <p>Connecting to Supabase...</p>
+      <p id="loadingMsg">Loading...</p>
     </div>
     <div id="content" style="display:none">
       <div class="stats-grid" id="statsGrid"></div>
-      <div class="charts-grid" id="chartsGrid"></div>
-      <div class="charts-grid">
-        <div class="chart-card"><h3>📈 Stock Mentions (7d)</h3><canvas id="stockChart"></canvas></div>
-        <div class="chart-card"><h3>🔬 AI Token Usage</h3><canvas id="tokenChart"></canvas></div>
+      <div class="charts-grid" id="chartsGrid">
+        <div class="chart-card"><h3>📊 Sector Activity</h3><canvas id="sectorChart"></canvas></div>
+        <div class="chart-card"><h3>📈 Top Stock Movers</h3><canvas id="stockChart"></canvas></div>
       </div>
-      <div class="table-card"><h3>📰 Latest Articles</h3><div id="articlesTable"><table><thead><tr><th>Title</th><th>Category</th><th>Impact</th><th>Score</th><th>Stocks</th></tr></thead><tbody id="articlesBody"></tbody></table></div></div>
-      <div class="table-card"><h3>🔌 Pipeline Health</h3><div id="pipelineHealth"></div></div>
-      <div class="table-card"><h3>💰 Capex Announcements</h3><div id="capexTable"><table><thead><tr><th>Company</th><th>Amount</th><th>Category</th><th>Description</th></tr></thead><tbody id="capexBody"></tbody></table></div></div>
+      <div class="charts-grid">
+        <div class="chart-card"><h3>🔬 AI Token Usage</h3><canvas id="tokenChart"></canvas></div>
+        <div class="chart-card"><h3>⚡ Pipeline Health</h3><div id="pipelineMini"></div></div>
+      </div>
+      <div class="table-card"><h3>📰 Latest Articles</h3><table><thead><tr><th>Title</th><th>Category</th><th>Impact</th><th>Score</th><th>Stocks</th></tr></thead><tbody id="articlesBody"></tbody></table></div>
+      <div class="table-card"><h3>🔌 Feed Health</h3><div id="pipelineHealth"></div></div>
+      <div class="table-card"><h3>💰 Capex Announcements</h3><table><thead><tr><th>Company</th><th>Amount</th><th>Category</th><th>Description</th></tr></thead><tbody id="capexBody"></tbody></table></div>
     </div>
   </div>
 
   <script>
-    // ─── Supabase Config ──
-    const SUPABASE_URL = localStorage.getItem('supabase_url') || '';
-    const SUPABASE_ANON_KEY = localStorage.getItem('supabase_anon_key') || '';
-
-    let supabase = null;
+    // ─── Config ──
+    let SUPABASE_URL = localStorage.getItem('supabase_url') || '';
+    let SUPABASE_ANON_KEY = localStorage.getItem('supabase_anon_key') || '';
     let charts = {};
+    let isDark = document.documentElement.getAttribute('data-theme') === 'dark';
 
-    // ─── Theme ──
     function toggleTheme() {
-      const html = document.documentElement;
-      const isDark = html.getAttribute('data-theme') === 'dark';
-      html.setAttribute('data-theme', isDark ? 'light' : 'dark');
-      document.getElementById('themeBtn').textContent = isDark ? '🌙 Dark' : '☀️ Light';
-      // Update chart colors on theme toggle
-      Object.values(charts).forEach(c => { if (c) c.destroy(); });
+      isDark = !isDark;
+      document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+      document.getElementById('themeBtn').textContent = isDark ? '☀️ Light' : '🌙 Dark';
+      Object.values(charts).forEach(c => { if(c) c.destroy(); });
       charts = {};
       loadDashboard();
     }
 
-    // ─── Init Supabase ──
-    async function initSupabase() {
-      const url = SUPABASE_URL || prompt('Enter Supabase URL (Settings → API):');
-      const key = SUPABASE_ANON_KEY || prompt('Enter Supabase anon/public key:');
-      if (url && key) {
-        localStorage.setItem('supabase_url', url);
-        localStorage.setItem('supabase_anon_key', key);
-        supabase = supabaseJs.createClient(url, key);
-        return true;
+    function showConfig() {
+      const panel = document.getElementById('configPanel');
+      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+      panel.innerHTML = `
+        <div class="config-form">
+          <h2>⚙️ Supabase Configuration</h2>
+          <label>Supabase URL</label>
+          <input id="cfgUrl" value="${SUPABASE_URL}" placeholder="https://xxx.supabase.co">
+          <label>Anon Public Key</label>
+          <input id="cfgKey" value="${SUPABASE_ANON_KEY}" placeholder="eyJhbGciOiJ...">
+          <button onclick="saveConfig()">Save & Reload</button>
+          <p class="note">Find these in Supabase Dashboard → Settings → API</p>
+        </div>
+      `;
+    }
+
+    function saveConfig() {
+      SUPABASE_URL = document.getElementById('cfgUrl').value.trim();
+      SUPABASE_ANON_KEY = document.getElementById('cfgKey').value.trim();
+      localStorage.setItem('supabase_url', SUPABASE_URL);
+      localStorage.setItem('supabase_anon_key', SUPABASE_ANON_KEY);
+      document.getElementById('configPanel').style.display = 'none';
+      loadDashboard();
+    }
+
+    // ─── Direct REST API with timeout (no SDK needed) ──
+    async function supabaseQuery(table, opts = {}) {
+      if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return [];
+      let url = `${SUPABASE_URL}/rest/v1/${table}?select=${opts.select || '*'}`;
+      if (opts.order) url += `&order=${opts.order}.${opts.ascending === false ? 'asc' : 'desc'}`;
+      if (opts.limit) url += `&limit=${opts.limit}`;
+      if (opts.range) url += `&date=gte.${opts.range}`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      try {
+        const res = await fetch(url, {
+          headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+        return await res.json();
+      } catch(e) {
+        clearTimeout(timeout);
+        console.error(`Supabase query error (${table}):`, e.message);
+        throw e;
       }
-      return false;
     }
 
-    // ─── Formatting helpers ──
-    function fmtNum(n) { return (n || 0).toLocaleString(); }
-    function fmtDate(d) { return new Date(d).toLocaleDateString('en-MY', { timeZone: 'Asia/Kuala_Lumpur' }); }
-    function impactClass(i) { return i === 'Bullish' ? 'bullish' : i === 'Bearish' ? 'bearish' : 'neutral'; }
-    function impactArrow(i) { return i === 'Bullish' ? '▲' : i === 'Bearish' ? '▼' : '▬'; }
+    // ─── Formatting ──
+    function fmtNum(n) { return (n||0).toLocaleString(); }
+    function fmtDate(d) { try { return new Date(d).toLocaleDateString('en-MY',{timeZone:'Asia/Kuala_Lumpur'}); } catch { return d; } }
+    function ic(i) { return i==='Bullish'?'bullish':i==='Bearish'?'bearish':'neutral'; }
+    function ia(i) { return i==='Bullish'?'▲':i==='Bearish'?'▼':'▬'; }
 
-    async function query(table, opts = {}) {
-      if (!supabase) return [];
-      let q = supabase.from(table).select(opts.select || '*');
-      if (opts.order) q = q.order(opts.order, { ascending: opts.ascending ?? false });
-      if (opts.limit) q = q.limit(opts.limit);
-      if (opts.range) q = q.gte('date', opts.range);
-      const { data, error } = await q;
-      if (error) console.error(table, error);
-      return data || [];
-    }
-
-    // ─── Load everything ──
+    // ─── Load ──
     async function loadDashboard() {
-      if (!supabase && !(await initSupabase())) return;
+      const loading = document.getElementById('loading');
+      const content = document.getElementById('content');
+      const msg = document.getElementById('loadingMsg');
 
-      document.getElementById('loading').style.display = 'none';
-      document.getElementById('content').style.display = 'block';
+      if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+        loading.style.display = 'block';
+        msg.innerHTML = '⚠️ Supabase not configured. Click ⚙️ Config to add your credentials.';
+        content.style.display = 'none';
+        return;
+      }
+
+      loading.style.display = 'block';
+      msg.textContent = 'Loading dashboard data from Supabase...';
+      content.style.display = 'none';
 
       const days = parseInt(document.getElementById('rangeSelect').value);
-      const rangeDate = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+      const rangeDate = new Date(Date.now()-days*86400000).toISOString().split('T')[0];
+
+      // Show a timeout warning if loading takes too long
+      let slowTimer = setTimeout(() => {
+        msg.innerHTML = '⏳ Still connecting... (CORS may be blocked from file:// — <a href="#" onclick="showCorsHelp();return false" style="color:var(--accent)">try the local server</a>)';
+      }, 5000);
 
       try {
         const [digests, sectors, stocks, articles, feeds, capex, metrics] = await Promise.all([
-          query('digest_runs', { order: 'run_date', limit: 30 }),
-          query('sector_activity', { select: 'date,sector,article_count,avg_impact_score,bullish_count,bearish_count', range: rangeDate }),
-          query('stock_mentions', { order: 'mention_count', limit: 10, range: rangeDate }),
-          query('articles', { order: 'impact_score', limit: 20 }),
-          query('pipeline_health', { order: 'created_at', limit: 50 }),
-          query('capex_tracking', { order: 'date', limit: 10 }),
-          query('daily_metrics', { order: 'date', limit: 30 }),
+          supabaseQuery('digest_runs', { order: 'run_date', limit: 30 }).catch(()=>[]),
+          supabaseQuery('sector_activity', { select: 'date,sector,article_count,avg_impact_score,bullish_count,bearish_count', order: 'date', range: rangeDate }).catch(()=>[]),
+          supabaseQuery('stock_mentions', { order: 'mention_count', limit: 10, range: rangeDate }).catch(()=>[]),
+          supabaseQuery('articles', { order: 'impact_score', limit: 20 }).catch(()=>[]),
+          supabaseQuery('pipeline_health', { order: 'created_at', limit: 50 }).catch(()=>[]),
+          supabaseQuery('capex_tracking', { order: 'date', limit: 10 }).catch(()=>[]),
+          supabaseQuery('daily_metrics', { order: 'date', limit: 30 }).catch(()=>[]),
         ]);
+
+        clearTimeout(slowTimer);
+        loading.style.display = 'none';
+        content.style.display = 'block';
+
+        const hasData = digests.length > 0 || articles.length > 0;
+        if (!hasData) {
+          document.getElementById('statsGrid').innerHTML = `
+            <div style="grid-column:1/-1" class="stat-card">
+              <div class="label">No Data Yet</div>
+              <div class="value" style="font-size:16px;font-weight:400">
+                Run <code style="background:var(--bg-hover);padding:2px 8px;border-radius:4px">npm run test-digest</code> to populate the dashboard
+              </div>
+            </div>
+          `;
+        }
 
         renderStats(digests, sectors, metrics);
         renderSectorChart(sectors);
         renderStockChart(stocks);
         renderTokenChart(metrics);
+        renderPipelineMini(feeds, metrics);
         renderArticles(articles);
         renderPipeline(feeds);
         renderCapex(capex);
 
         document.getElementById('liveIndicator').innerHTML =
-          `<span class="status-dot live"></span> Live — ${new Date().toLocaleTimeString('en-MY', { timeZone: 'Asia/Kuala_Lumpur' })} MYT`;
-
-      } catch (e) {
-        console.error('Dashboard error:', e);
-        document.getElementById('content').innerHTML =
-          `<div class="loading"><p>❌ Error loading data: ${e.message}</p><button onclick="loadDashboard()">Retry</button></div>`;
+          `<span class="status-dot live"></span> ${new Date().toLocaleTimeString('en-MY',{timeZone:'Asia/Kuala_Lumpur'})} MYT`;
+      } catch(e) {
+        loading.style.display = 'none';
+        content.style.display = 'block';
+        document.getElementById('statsGrid').innerHTML = `
+          <div style="grid-column:1/-1" class="error-box">
+            <p>❌ ${e.message}</p>
+            <button onclick="loadDashboard()">Retry</button>
+            <button onclick="showConfig()" style="margin-left:8px;background:var(--text-dim);color:#fff">⚙️ Fix Config</button>
+          </div>
+        `;
       }
     }
 
     // ─── Stats ──
     function renderStats(digests, sectors, metrics) {
       const totalDigests = digests.length;
-      const successful = digests.filter(d => d.status === 'success').length;
-      const failed = digests.filter(d => d.status === 'failed').length;
-      const totalArticles = digests.reduce((s, d) => s + (d.articles_processed || 0), 0);
-      const activeSectors = sectors.length;
-      const totalTokens = digests.reduce((s, d) => s + (d.total_tokens_used || 0), 0);
+      const successful = digests.filter(d=>d.status==='success').length;
+      const failed = digests.filter(d=>d.status==='failed').length;
+      const totalArticles = digests.reduce((s,d)=>s+(d.articles_processed||0),0);
+      const activeSectors = new Set(sectors.map(s=>s.sector)).size;
+      const totalTokens = digests.reduce((s,d)=>s+(d.total_tokens_used||0),0);
       const latest = digests[0];
       const lastRun = latest ? fmtDate(latest.run_date) : '—';
-
       document.getElementById('statsGrid').innerHTML = `
-        <div class="stat-card">
-          <div class="label">Digest Runs</div>
-          <div class="value">${totalDigests}</div>
-          <div class="sub">${successful} success · ${failed} failed</div>
-        </div>
-        <div class="stat-card">
-          <div class="label">Articles Analyzed</div>
-          <div class="value">${fmtNum(totalArticles)}</div>
-          <div class="sub">Last run: ${lastRun}</div>
-        </div>
-        <div class="stat-card">
-          <div class="label">Sectors Active</div>
-          <div class="value">${activeSectors}</div>
-          <div class="sub">Out of 10 total sectors</div>
-        </div>
-        <div class="stat-card">
-          <div class="label">Stocks Tracked</div>
-          <div class="value">${fmtNum(latest?.total_stocks_tracked || '—')}</div>
-          <div class="sub">Mentions tracked per day</div>
-        </div>
-        <div class="stat-card">
-          <div class="label">AI Tokens Used</div>
-          <div class="value">${fmtNum(totalTokens)}</div>
-          <div class="sub">Est. cost: $${(totalTokens * 0.00000015).toFixed(4)}</div>
-        </div>
-        <div class="stat-card">
-          <div class="label">Pipeline Health</div>
-          <div class="value">${((successful / Math.max(totalDigests, 1)) * 100).toFixed(0)}%</div>
-          <div class="sub">${failed} failed runs</div>
-        </div>
+        <div class="stat-card"><div class="label">Digest Runs</div><div class="value">${totalDigests}</div><div class="sub">${successful} success · ${failed} failed</div></div>
+        <div class="stat-card"><div class="label">Articles Analyzed</div><div class="value">${fmtNum(totalArticles)}</div><div class="sub">Last run: ${lastRun}</div></div>
+        <div class="stat-card"><div class="label">Sectors Active</div><div class="value">${activeSectors}</div><div class="sub">Out of 10 total</div></div>
+        <div class="stat-card"><div class="label">Stocks Tracked</div><div class="value">${latest?.total_stocks_tracked||'—'}</div><div class="sub">Per digest run</div></div>
+        <div class="stat-card"><div class="label">AI Tokens Used</div><div class="value">${fmtNum(totalTokens)}</div><div class="sub">Est. cost: $${(totalTokens*0.00000015).toFixed(4)}</div></div>
+        <div class="stat-card"><div class="label">Pipeline Health</div><div class="value">${totalDigests>0?((successful/totalDigests)*100).toFixed(0):'—'}%</div><div class="sub">${failed} failed runs</div></div>
       `;
     }
 
-    // ─── Sector Activity (Bar Chart) ──
+    // ─── Sector Chart ──
     function renderSectorChart(sectors) {
-      if (charts.sector) charts.sector.destroy();
-      const grouped = {};
-      sectors.forEach(s => {
-        if (!grouped[s.sector]) grouped[s.sector] = 0;
-        grouped[s.sector] += s.article_count || 0;
-      });
-      const labels = Object.keys(grouped);
-      const data = Object.values(grouped);
-      if (!labels.length) return;
-
-      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-      const ctx = document.getElementById('sectorChart').getContext('2d');
-      charts.sector = new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels,
-          datasets: [{
-            label: 'Articles',
-            data,
-            backgroundColor: ['#22d3ee', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#06b6d4'],
-            borderRadius: 4,
-          }]
-        },
-        options: {
-          responsive: true,
-          plugins: { legend: { display: false } },
-          scales: {
-            x: { ticks: { color: isDark ? '#94a3b8' : '#64748b', maxRotation: 45 } },
-            y: { ticks: { color: isDark ? '#94a3b8' : '#64748b' }, beginAtZero: true }
-          }
-        }
-      });
+      if(charts.sector) charts.sector.destroy();
+      const g={}; sectors.forEach(s=>{if(!g[s.sector])g[s.sector]=0;g[s.sector]+=s.article_count||0;});
+      const labels=Object.keys(g),data=Object.values(g);
+      if(!labels.length) return;
+      const ctx=document.getElementById('sectorChart').getContext('2d');
+      const c=isDark?'#94a3b8':'#64748b';
+      charts.sector=new Chart(ctx,{type:'bar',data:{labels,datasets:[{label:'Articles',data,backgroundColor:['#22d3ee','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316','#6366f1','#06b6d4'],borderRadius:4}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{ticks:{color:c,maxRotation:45}},y:{ticks:{color:c},beginAtZero:true}}}});
     }
 
-    // ─── Stock Mentions ──
+    // ─── Stock Chart ──
     function renderStockChart(stocks) {
-      if (charts.stock) charts.stock.destroy();
-      const top = stocks.slice(0, 10);
-      if (!top.length) return;
-      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-      const ctx = document.getElementById('stockChart').getContext('2d');
-
-      // Use price change for color if available, else mention count
-      const prices = top.map(s => s.price_change_percent || 0);
-      const colors = prices.map(p => p >= 0 ? '#22c55e' : '#ef4444');
-
-      charts.stock = new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: top.map(s => s.ticker),
-          datasets: [{
-            label: 'Price Change %',
-            data: prices,
-            backgroundColor: colors,
-            borderRadius: 4,
-          }]
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              callbacks: {
-                afterLabel: (ctx) => {
-                  const s = top[ctx.dataIndex];
-                  return `Mentions: ${s.mention_count}\nAvg Sentiment: ${(s.avg_sentiment || 0).toFixed(2)}`;
-                }
-              }
-            }
-          },
-          scales: {
-            x: { ticks: { color: isDark ? '#94a3b8' : '#64748b' } },
-            y: { ticks: { color: isDark ? '#94a3b8' : '#64748b' }, beginAtZero: true }
-          }
-        }
-      });
+      if(charts.stock) charts.stock.destroy();
+      const top=stocks.slice(0,10);
+      if(!top.length) return;
+      const ctx=document.getElementById('stockChart').getContext('2d');
+      const c=isDark?'#94a3b8':'#64748b';
+      const prices=top.map(s=>s.price_change_percent||0);
+      charts.stock=new Chart(ctx,{type:'bar',data:{labels:top.map(s=>s.ticker),datasets:[{label:'Price Change %',data:prices,backgroundColor:prices.map(p=>p>=0?'#22c55e':'#ef4444'),borderRadius:4}]},options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{afterLabel:(ctx)=>{const s=top[ctx.dataIndex];return `Mentions: ${s.mention_count}\nSentiment: ${(s.avg_sentiment||0).toFixed(2)}`}}}},scales:{x:{ticks:{color:c}},y:{ticks:{color:c},beginAtZero:true}}}});
     }
 
-    // ─── Token Usage ──
+    // ─── Token Chart ──
     function renderTokenChart(metrics) {
-      if (charts.token) charts.token.destroy();
-      const recent = (metrics || []).slice(-14);
-      if (!recent.length) return;
-      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-      const ctx = document.getElementById('tokenChart').getContext('2d');
-      charts.token = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: recent.map(m => fmtDate(m.date)),
-          datasets: [{
-            label: 'Tokens',
-            data: recent.map(m => m.total_tokens_used || 0),
-            borderColor: '#22d3ee',
-            backgroundColor: 'rgba(34, 211, 238, 0.1)',
-            fill: true,
-            tension: 0.3,
-            pointRadius: 3,
-          }]
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              callbacks: {
-                afterLabel: (ctx) => {
-                  const m = recent[ctx.dataIndex];
-                  return `Cost: $${((m.total_tokens_used || 0) * 0.00000015).toFixed(4)}`;
-                }
-              }
-            }
-          },
-          scales: {
-            x: { ticks: { color: isDark ? '#94a3b8' : '#64748b', maxTicksLimit: 7 } },
-            y: { ticks: { color: isDark ? '#94a3b8' : '#64748b' }, beginAtZero: true }
-          }
-        }
-      });
+      if(charts.token) charts.token.destroy();
+      const recent=(metrics||[]).slice(-14);
+      if(!recent.length) return;
+      const ctx=document.getElementById('tokenChart').getContext('2d');
+      const c=isDark?'#94a3b8':'#64748b';
+      charts.token=new Chart(ctx,{type:'line',data:{labels:recent.map(m=>fmtDate(m.date)),datasets:[{label:'Tokens',data:recent.map(m=>m.total_tokens_used||0),borderColor:'#22d3ee',backgroundColor:'rgba(34,211,238,0.1)',fill:true,tension:.3,pointRadius:3}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{ticks:{color:c,maxTicksLimit:7}},y:{ticks:{color:c},beginAtZero:true}}}});
     }
 
-    // ─── Articles Table ──
+    // ─── Pipeline Mini ──
+    function renderPipelineMini(feeds, metrics) {
+      const el=document.getElementById('pipelineMini');
+      const m=metrics?metrics[0]:null;
+      if(m) {
+        el.innerHTML=`<div style="font-size:28px;font-weight:700">${m.feeds_healthy||0}/${(m.feeds_healthy||0)+(m.feeds_failing||0)}</div><div style="font-size:12px;color:var(--text-dim)">healthy feeds · ${m.feeds_failing||0} failing</div>`;
+      } else if(feeds.length) {
+        const healthy=feeds.filter(f=>f.status==='success').length;
+        const total=feeds.length;
+        el.innerHTML=`<div style="font-size:28px;font-weight:700">${healthy}/${total}</div><div style="font-size:12px;color:var(--text-dim)">${total-healthy} feeds failing</div>`;
+      } else {
+        el.innerHTML=`<div style="color:var(--text-dim);padding:20px 0">No pipeline data yet</div>`;
+      }
+    }
+
+    // ─── Articles ──
     function renderArticles(articles) {
-      const tbody = document.getElementById('articlesBody');
-      if (!articles.length) { tbody.innerHTML = '<tr><td colspan="5">No articles yet</td></tr>'; return; }
-      tbody.innerHTML = articles.slice(0, 20).map(a => `
-        <tr>
-          <td><a href="${a.url || '#'}" target="_blank" style="color:var(--accent);text-decoration:none">${a.title}</a></td>
-          <td>${a.category || '—'}</td>
-          <td class="${impactClass(a.impact)}">${impactArrow(a.impact)} ${a.impact || '—'}</td>
-          <td>${a.impact_score || '—'}/10</td>
-          <td>${(a.affected_stocks || []).join(', ') || '—'}</td>
-        </tr>
-      `).join('');
+      const tbody=document.getElementById('articlesBody');
+      if(!articles.length) { tbody.innerHTML='<tr><td colspan="5" style="color:var(--text-dim)">No articles yet</td></tr>'; return; }
+      tbody.innerHTML=articles.slice(0,20).map(a=>`<tr><td><a href="${a.url||'#'}" target="_blank" style="color:var(--accent);text-decoration:none">${a.title}</a></td><td>${a.category||'—'}</td><td class="${ic(a.impact)}">${ia(a.impact)} ${a.impact||'—'}</td><td>${a.impact_score||'—'}/10</td><td>${(a.affected_stocks||[]).join(', ')||'—'}</td></tr>`).join('');
     }
 
-    // ─── Pipeline Health ──
+    // ─── Pipeline ──
     function renderPipeline(feeds) {
-      const el = document.getElementById('pipelineHealth');
-      if (!feeds.length) { el.innerHTML = '<p style="color:var(--text-dim)">No pipeline data yet — run a digest first</p>'; return; }
-      // Group by feed name, show latest status
-      const latest = {};
-      feeds.forEach(f => {
-        if (!latest[f.feed_name] || f.created_at > latest[f.feed_name].created_at) {
-          latest[f.feed_name] = f;
-        }
-      });
-      const entries = Object.values(latest);
-      const healthy = entries.filter(e => e.status === 'success').length;
-      const failing = entries.filter(e => e.status === 'failed').length;
-
-      el.innerHTML = `
-        <p style="margin-bottom:12px;font-size:13px;color:var(--text-dim)">
-          ${healthy} healthy · ${failing} failing · ${entries.length} total feeds
-        </p>
-        ${entries.slice(0, 30).map(f => `
-          <div class="feed-row">
-            <span class="feed-status ${f.status}"></span>
-            <span style="flex:1">${f.feed_name}</span>
-            <span style="color:var(--text-dim);font-size:12px">${f.articles_fetched || 0} articles</span>
-            ${f.status === 'failed' ? `<span style="color:var(--danger);font-size:11px">${f.error_message || ''}</span>` : ''}
-          </div>
-        `).join('')}
-      `;
+      const el=document.getElementById('pipelineHealth');
+      if(!feeds.length) { el.innerHTML='<p style="color:var(--text-dim)">No pipeline data yet</p>'; return; }
+      const latest={};
+      feeds.forEach(f=>{if(!latest[f.feed_name]||f.created_at>latest[f.feed_name].created_at)latest[f.feed_name]=f;});
+      const entries=Object.values(latest);
+      el.innerHTML=`<p style="margin-bottom:12px;font-size:13px;color:var(--text-dim)">${entries.filter(e=>e.status==='success').length} healthy · ${entries.filter(e=>e.status==='failed').length} failing · ${entries.length} total</p>${entries.slice(0,40).map(f=>`<div class="feed-row"><span class="feed-status ${f.status}"></span><span style="flex:1">${f.feed_name}</span><span style="color:var(--text-dim);font-size:12px">${f.articles_fetched||0}</span>${f.status==='failed'?`<span style="color:var(--danger);font-size:11px">${(f.error_message||'').slice(0,50)}</span>`:''}</div>`).join('')}`;
     }
 
     // ─── Capex ──
     function renderCapex(capex) {
-      const tbody = document.getElementById('capexBody');
-      if (!capex.length) { tbody.innerHTML = '<tr><td colspan="4">No capex tracked yet</td></tr>'; return; }
-      tbody.innerHTML = capex.map(c => `
-        <tr>
-          <td><strong>${c.company}</strong></td>
-          <td>${c.amount || '—'}</td>
-          <td>${c.category || '—'}</td>
-          <td>${c.description || ''}</td>
-        </tr>
-      `).join('');
+      const tbody=document.getElementById('capexBody');
+      if(!capex.length) { tbody.innerHTML='<tr><td colspan="4" style="color:var(--text-dim)">No capex tracked yet</td></tr>'; return; }
+      tbody.innerHTML=capex.map(c=>`<tr><td><strong>${c.company}</strong></td><td>${c.amount||'—'}</td><td>${c.category||'—'}</td><td>${c.description||''}</td></tr>`).join('');
     }
 
-    // ─── Init ──
+    // ─── CORS Help ──
+    function showCorsHelp() {
+      const panel = document.getElementById('configPanel');
+      panel.style.display = 'block';
+      panel.innerHTML = `
+        <div class="config-form">
+          <h2>🔌 CORS Issue Detected</h2>
+          <p style="font-size:14px;line-height:1.6;margin-bottom:16px">
+            Opening <code>dashboard/index.html</code> from <code>file://</code> often blocks Supabase API calls.
+          </p>
+          <p style="font-size:14px;line-height:1.6;margin-bottom:16px">
+            <strong>Fix:</strong> Run this command in your terminal to serve the dashboard locally:
+          </p>
+          <pre style="background:var(--bg);padding:12px;border-radius:8px;font-size:13px;text-align:left;overflow-x:auto;margin-bottom:16px;border:1px solid var(--border)">cd ai-infra-digest && npx serve dashboard</pre>
+          <p style="font-size:13px;color:var(--text-dim);line-height:1.5">
+            Then open <strong>http://localhost:3000</strong> in your browser.<br>
+            Your credentials are saved in localStorage — they'll work immediately.
+          </p>
+          <button onclick="document.getElementById('configPanel').style.display='none'" style="margin-top:16px;background:var(--bg-hover);color:var(--text);border:1px solid var(--border);padding:8px 20px;border-radius:8px;cursor:pointer">Dismiss</button>
+        </div>
+      `;
+    }
+
+    // ─── Start ──
     loadDashboard();
-    // Auto-refresh every 60s
     setInterval(loadDashboard, 60000);
   </script>
 </body>
