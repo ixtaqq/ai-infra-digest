@@ -122,8 +122,9 @@ export function formatDigestTelegram(
     articlesToShow.forEach((article) => {
       articleCount++;
       const impactIcon = impactEmoji(article.impactScore);
+      const secBadge = article.isSECFiling ? ' \uD83C\uDFDB️' : '';
       lines.push(
-        `  ${impactIcon} ${escapeHtml(article.title)}`
+        `  ${impactIcon} ${escapeHtml(article.title)}${secBadge}`
       );
       lines.push(
         `   <i>${article.impact}</i> (${article.impactScore}/10) ` +

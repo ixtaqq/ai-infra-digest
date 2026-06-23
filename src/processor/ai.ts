@@ -18,6 +18,32 @@ export const NEWS_CATEGORIES = [
   "Earnings & Guidance",
 ] as const;
 
+// ─── SEC Filing Detection ──────────────────────────────
+
+/** Keywords that indicate an article is an SEC filing or regulatory event. */
+const SEC_PATTERNS = [
+  /\b8-K\b/i,
+  /\b10-Q\b/i,
+  /\b10-K\b/i,
+  /\bSEC filing\b/i,
+  /\bSEC EDGAR\b/i,
+  /form (?:8-K|10-Q|10-K|8k|10q|10k)/i,
+  /\bedgar\b/i,
+];
+
+/**
+ * Check if an article is likely an SEC filing or regulatory event
+ * by scanning its title, source, and URL for known patterns.
+ */
+export function isSECFilingArticle(article: {
+  title: string;
+  source: string;
+  url?: string;
+}): boolean {
+  const text = `${article.title} ${article.source} ${article.url || ""}`;
+  return SEC_PATTERNS.some((pattern) => pattern.test(text));
+}
+
 export type NewsCategory = typeof NEWS_CATEGORIES[number];
 
 // ─── Types ────────────────────────────────────────────
@@ -31,6 +57,8 @@ export interface ProcessedArticle {
   affectedStocks: string[];
   reason: string;
   category: NewsCategory;
+  /** True if the article is an SEC filing (8-K, 10-Q, 10-K, etc.) */
+  isSECFiling?: boolean;
 }
 
 export interface AIUsage {

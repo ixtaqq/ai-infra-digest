@@ -26,6 +26,7 @@ export interface ArticleData {
   affected_stocks?: string[];
   summary?: string;
   reason?: string;
+  is_sec_filing?: boolean;
 }
 
 export interface SectorActivityData {

@@ -1,7 +1,7 @@
 import { config } from "./config";
 import { logger } from "./utils/logger";
 import { collectArticles, skipFeed, resetSkippedFeeds } from "./collector/rss";
-import { processArticles, NEWS_CATEGORIES } from "./processor/ai";
+import { processArticles, NEWS_CATEGORIES, isSECFilingArticle } from "./processor/ai";
 import { formatDigestTelegram } from "./formatter/telegram";
 import {
   sendDigestMessage,
@@ -189,6 +189,17 @@ export async function runPipeline(targetChatId?: number): Promise<boolean> {
       stockPrices = new Map();
     }
 
+    // ─── Tag articles with SEC filing badge ──────
+    for (const article of digest.articles) {
+      if (isSECFilingArticle(article)) {
+        article.isSECFiling = true;
+      }
+    }
+    const flaggedCount = digest.articles.filter((a) => a.isSECFiling).length;
+    if (flaggedCount > 0) {
+      logger.info(`SEC badge: ${flaggedCount} articles tagged as SEC filings`);
+    }
+
     // ─── Step 3: Format Digest ───────────────────
     logger.info("Step 3/4: Formatting digest for Telegram...");
     const formattedMessage = formatDigestTelegram(digest, {
@@ -270,6 +281,7 @@ export async function runPipeline(targetChatId?: number): Promise<boolean> {
             affected_stocks: a.affectedStocks,
             summary: a.summary,
             reason: a.reason,
+            is_sec_filing: a.isSECFiling || undefined,
           }))
         );
 
