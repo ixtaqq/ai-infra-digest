@@ -1,7 +1,99 @@
 import Parser from "rss-parser";
+import * as fs from "fs";
+import * as path from "path";
 import { logger } from "../utils/logger";
 import { config } from "../config";
 import { sleep } from "../utils/helpers";
+
+// ─── Conditional GET Cache ─────────────────────────────
+interface FeedCacheEntry {
+  etag?: string;
+  lastModified?: string;
+  /** Number of consecutive failures (cleared on success) */
+  consecutiveFailures: number;
+}
+
+const CACHE_FILE = path.join(config.app.cacheDir, "rss-headers.json");
+
+function ensureCacheDir(): void {
+  const dir = path.dirname(CACHE_FILE);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+}
+
+function readFeedCache(): Map<string, FeedCacheEntry> {
+  try {
+    ensureCacheDir();
+    if (!fs.existsSync(CACHE_FILE)) return new Map();
+    const raw = fs.readFileSync(CACHE_FILE, "utf-8");
+    return new Map(Object.entries(JSON.parse(raw)));
+  } catch {
+    return new Map();
+  }
+}
+
+function writeFeedCache(cache: Map<string, FeedCacheEntry>): void {
+  try {
+    ensureCacheDir();
+    fs.writeFileSync(
+      CACHE_FILE,
+      JSON.stringify(Object.fromEntries(cache), null, 2),
+      "utf-8"
+    );
+  } catch {
+    // Non-critical — cache miss just means full re-fetch
+  }
+}
+
+/**
+ * Create a custom fetch wrapper that sends cached ETag/Last-Modified headers
+ * and reads 304 responses to return empty results early.
+ */
+async function conditionalFetch(
+  url: string,
+  timeoutMs = 15000
+): Promise<{
+  body: string | null;
+  status: number;
+  etag?: string;
+  lastModified?: string;
+}> {
+  const cache = readFeedCache();
+  const entry = cache.get(url);
+
+  const headers: Record<string, string> = {
+    "User-Agent": "AI-Infra-Digest/1.0",
+  };
+  if (entry?.etag) headers["If-None-Match"] = entry.etag;
+  if (entry?.lastModified) headers["If-Modified-Since"] = entry.lastModified;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, { headers, signal: controller.signal });
+    clearTimeout(timer);
+
+    const etag = response.headers.get("ETag") || undefined;
+    const lastModified = response.headers.get("Last-Modified") || undefined;
+
+    if (response.status === 304) {
+      logger.debug(`Conditional GET: 304 Not Modified for ${url}`);
+      return { body: null, status: 304, etag, lastModified };
+    }
+
+    if (!response.ok) {
+      return { body: null, status: response.status, etag, lastModified };
+    }
+
+    const body = await response.text();
+    return { body, status: response.status, etag, lastModified };
+  } catch (error) {
+    clearTimeout(timer);
+    throw error;
+  }
+}
 
 const parser = new Parser({
   timeout: 15000,
@@ -188,6 +280,20 @@ async function fetchFeedWithStatus(
 ): Promise<FeedResult> {
   const startTime = Date.now();
 
+  // Try conditional GET first — may return 304 (cached)
+  const httpResult = await conditionalFetch(feed.url);
+  if (httpResult.status === 304) {
+    logger.info(`Cached content unchanged for ${feed.name} (304)`);
+    return {
+      name: feed.name,
+      url: feed.url,
+      status: "success",
+      articlesFetched: 0,
+      articles: [],
+      response_time_ms: Date.now() - startTime,
+    };
+  }
+
   // Retry loop with exponential backoff
   const maxRetries = 2;
   let lastError: Error | null = null;
@@ -215,6 +321,15 @@ async function fetchFeedWithStatus(
       });
     }
 
+    // Update cache with response headers
+    const cache = readFeedCache();
+    const entry = cache.get(feed.url) || { consecutiveFailures: 0 };
+    entry.etag = httpResult.etag || entry.etag;
+    entry.lastModified = httpResult.lastModified || entry.lastModified;
+    entry.consecutiveFailures = 0; // Reset on success
+    cache.set(feed.url, entry);
+    writeFeedCache(cache);
+
     logger.info(`Fetched ${articles.length} articles from ${feed.name} (${Date.now() - startTime}ms)`);
     return {
       name: feed.name,
@@ -222,6 +337,7 @@ async function fetchFeedWithStatus(
       status: "success",
       articlesFetched: articles.length,
       articles,
+      response_time_ms: Date.now() - startTime,
     };
   } catch (error) {      lastError = error instanceof Error ? error : new Error(String(error));
       if (attempt < maxRetries) {
@@ -231,7 +347,13 @@ async function fetchFeedWithStatus(
     }
   }
 
-  // All retries exhausted
+  // All retries exhausted — increment failure counter
+  const cache = readFeedCache();
+  const entry = cache.get(feed.url) || { consecutiveFailures: 0 };
+  entry.consecutiveFailures = (entry.consecutiveFailures || 0) + 1;
+  cache.set(feed.url, entry);
+  writeFeedCache(cache);
+
   logger.warn(`Failed to fetch ${feed.name} after ${maxRetries + 1} attempts: ${lastError?.message}`);
   return {
     name: feed.name,

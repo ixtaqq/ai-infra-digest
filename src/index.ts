@@ -5,13 +5,18 @@ import { processArticles, NEWS_CATEGORIES } from "./processor/ai";
 import { formatDigestTelegram } from "./formatter/telegram";
 import {
   sendDigestMessage,
-  sendTelegramMessage,
   startInteractiveBot,
   registerCommand,
 } from "./sender/telegram";
 import { deduplicateArticles } from "./utils/dedup";
 import { fetchStockPrices } from "./utils/stocks";
 import { supabase } from "./utils/supabase";
+import {
+  emitFeedFetch,
+  emitStockFetch,
+  emitDigestDelivery,
+  emitError,
+} from "./utils/metrics";
 import type { Article, FeedResult } from "./collector/rss";
 
 const MAX_ARTICLES_FOR_AI = 35;
@@ -66,6 +71,15 @@ async function main() {    logger.info("🚀 AI Infrastructure Daily Digest — 
     logger.info("Step 1/4: Collecting news from RSS feeds...");
     const { articles, feedStatuses } = await collectArticles(skipFeeds);
 
+    // ─── Emit feed metrics & check for errors ────
+    for (const f of feedStatuses) {
+      emitFeedFetch(f.name, f.url, f.status, f.articlesFetched, f.response_time_ms || 0, false, 0, f.error);
+      if (f.status === "failed" && f.error) {
+        emitError("rss", "warn", `Feed "${f.name}" failed: ${f.error}`, undefined,
+          "The feed may be temporarily unreachable — retry mechanism will handle it on next run");
+      }
+    }
+
     // ─── Health Alert: Check feed failure rate ────
     if (supabase.isConfigured()) {
       await checkFeedHealth(feedStatuses);
@@ -101,7 +115,15 @@ async function main() {    logger.info("🚀 AI Infrastructure Daily Digest — 
 
     // ─── Step 2: AI Processing ───────────────────
     logger.info(`Step 2/4: Processing articles with AI (${articlesToProcess.length} articles)...`);
-    const digest = await processArticles(articlesToProcess);
+    let digest;
+    try {
+      digest = await processArticles(articlesToProcess);
+    } catch (error) {
+      const errMsg = (error as Error).message;
+      emitError("ai", "error", errMsg, undefined,
+        "Check AI API key, rate limits, or model availability. If using Groq, verify your quota at console.groq.com");
+      throw error;
+    }
 
     // ─── Alert System: send instant alerts for high-impact articles ──
     if (supabase.isConfigured()) {
@@ -115,7 +137,18 @@ async function main() {    logger.info("🚀 AI Infrastructure Daily Digest — 
         ...digest.topStocks.map((s) => s.ticker),
       ]),
     ];
-    const stockPrices = await fetchStockPrices(allTickers);
+    let stockPrices: Map<string, import("./utils/stocks").StockPrice>;
+    try {
+      const startStock = Date.now();
+      stockPrices = await fetchStockPrices(allTickers);
+      emitStockFetch(allTickers.length, stockPrices.size, Date.now() - startStock);
+    } catch (error) {
+      const errMsg = (error as Error).message;
+      emitStockFetch(allTickers.length, 0, 0, [errMsg]);
+      emitError("yahoo_finance", "error", errMsg, undefined,
+        "Yahoo Finance may be rate-limiting. Try again in a few minutes, or check if tickers are valid.");
+      stockPrices = new Map();
+    }
 
     // ─── Step 3: Format Digest ───────────────────
     logger.info("Step 3/4: Formatting digest for Telegram...");
@@ -127,12 +160,23 @@ async function main() {    logger.info("🚀 AI Infrastructure Daily Digest — 
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
+    // ─── Emit delivery metric ────────────────────
+    emitDigestDelivery(
+      sendResult.success ? "success" : "failed",
+      digest.articles.length,
+      stockPrices.size,
+      parseFloat(elapsed),
+      digest.usage.totalTokens,
+      sendResult.error
+    );
+
     if (sendResult.success) {
       logger.info(
         `✅ Digest delivered successfully in ${elapsed}s — ` +
           `${digest.articles.length} articles, ${stockPrices.size} prices, ${digest.topStocks.length} stocks`
       );
     } else {
+      emitError("telegram", "error", `Digest delivery failed: ${sendResult.error}`);
       logger.error("Failed to deliver digest", { error: sendResult.error });
     }
 
@@ -270,34 +314,54 @@ async function main() {    logger.info("🚀 AI Infrastructure Daily Digest — 
       logger.info("✅ Metrics written to Supabase");
     }
 
+    // ─── Write Trending Now ──────────────────────
+    if (supabase.isConfigured() && digestRunId) {
+      await computeAndStoreTrending(runDate, digest);
+    }
+
     // Exit cleanly so the polling loop doesn't keep the process alive in CI
     process.exit(0);
 
   } catch (error) {
+    const errMsg = (error as Error).message;
     logger.error("Digest generation failed", {
-      error: (error as Error).message,
+      error: errMsg,
       stack: (error as Error).stack?.slice(0, 500),
-    });      // Record failure in Supabase
+    });
+
+    // Emit error metric
+    emitError("ai", "error", errMsg, undefined,
+      "Check the logs for details. Common causes: AI API outage, Supabase connectivity, or network issues.");
+
+    // Record failure in Supabase
     if (supabase.isConfigured()) {
-      await supabase.createDigestRun({
-        run_date: runDate,
-        status: "failed",
-        articles_collected: 0,
-        articles_processed: 0,
-        batches_run: 0,
-        ai_provider: "groq",
-        ai_model: "llama-3.3-70b-versatile",
-        total_tokens_used: 0,
-        duration_seconds: ((Date.now() - startTime) / 1000),
-        error_message: (error as Error).message,
-      });
+      try {
+        const ok = await supabase.createDigestRun({
+          run_date: runDate,
+          status: "failed",
+          articles_collected: 0,
+          articles_processed: 0,
+          batches_run: 0,
+          ai_provider: "groq",
+          ai_model: "llama-3.3-70b-versatile",
+          total_tokens_used: 0,
+          duration_seconds: ((Date.now() - startTime) / 1000),
+          error_message: errMsg,
+        });
+        if (!ok) {
+          emitError("supabase", "error", "Failed to create digest run record in Supabase");
+        }
+      } catch (supaError) {
+        emitError("supabase", "error", `Supabase write failed: ${(supaError as Error).message}`,
+          undefined, "Check your Supabase credentials and network connectivity.");
+      }
     }
 
     // Try to send error notification
     try {
       await sendDigestMessage(
         `⚠️ <b>AI Infra Digest — Error</b>\n\n` +
-          `The daily digest failed to generate:\n<code>${(error as Error).message}</code>\n\n` +
+          `The daily digest failed to generate:\n<code>${errMsg}</code>\n\n` +
           `Check the GitHub Actions logs for details.`
       );
     } catch {
@@ -568,8 +632,8 @@ export function registerDigestCommands(): void {
       return "Could not connect to database.";
     }
   });
-}
 
+  // ─── /alert command ──
   registerCommand("alert", async (ctx) => {
     const parts = ctx.text.split(/\s+/).slice(1);
     const setting = parts[0]?.toLowerCase();
@@ -633,6 +697,213 @@ export function registerDigestCommands(): void {
       `• <code>/alert threshold 9</code> — Set minimum impact score`
     );
   });
+
+  // ─── /trending command ──
+  registerCommand("trending", async (ctx) => {
+    if (!supabase.isConfigured()) {
+      return "Supabase not configured. Run the digest first to see trends.";
+    }
+
+    const cfg = getSupabaseConfig();
+    if (!cfg) return "Database not available.";
+
+    try {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
+      const resp = await fetch(
+        `${cfg.url}/rest/v1/daily_metrics?select=date,trending_json,trending_entities&date=gte.${sevenDaysAgo}&order=date.desc`,
+        { headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` } }
+      );
+      if (!resp.ok) return "Could not fetch trending data.";
+
+      const metrics = (await resp.json()) as Record<string, unknown>[];
+      if (!metrics.length) return "No trending data available yet. Run the daily digest first.";
+
+      const latest = metrics.find((m) => m.trending_json);
+      if (!latest) return "No trending data available yet.";
+
+      let trending: TrendingItem[];
+      try {
+        trending = JSON.parse(latest.trending_json as string) as TrendingItem[];
+      } catch {
+        return "Could not parse trending data.";
+      }
+
+      if (!trending.length) return "No trending entities found.";
+
+      const lines = [`🔥 <b>Trending Now</b> — ${latest.date as string}`, ""];
+
+      for (const item of trending.slice(0, 8)) {
+        const typeEmoji =
+          item.type === "ticker" ? "📈" :
+          item.type === "sector" ? "📊" :
+          item.type === "company" ? "🏢" : "🔑";
+        const sentimentEmoji =
+          item.dominantSentiment === "positive" ? "🟢" :
+          item.dominantSentiment === "negative" ? "🔴" : "⚪";
+
+        lines.push(`${typeEmoji} <b>${escapeHtml(item.entity)}</b> ${sentimentEmoji}`);
+        lines.push(`   ${item.mentionCount} mentions, avg score ${item.avgScore}/10`);
+        if (item.topArticles.length) {
+          lines.push(`   📰 <a href="${item.topArticles[0].url}">${escapeHtml(item.topArticles[0].title.slice(0, 80))}</a>`);
+        }
+        lines.push("");
+      }
+
+      lines.push("<i>Last 7 days • Use /digest to generate fresh data</i>");
+      return { text: lines.join("\n") };
+    } catch {
+      return "Could not fetch trending data.";
+    }
+  });
+
+  // ─── /feedback command ──
+  registerCommand("feedback", async (ctx) => {
+    const parts = ctx.text.split(/\s+/).slice(1);
+    const rating = parseInt(parts[0], 10);
+    const comment = parts.slice(1).join(" ");
+
+    if (isNaN(rating) || rating < 1 || rating > 5) {
+      return (
+        `💬 <b>Feedback</b>\n\n` +
+        `Help me improve! Rate today's digest from 1 to 5.\n\n` +
+        `<b>Usage:</b>\n` +
+        `• <code>/feedback 5</code> — Rate 1–5 (required)\n` +
+        `• <code>/feedback 4 Great coverage of NVIDIA</code> — Add a comment\n` +
+        `• <code>/feedback 2 Too many articles on power sector</code>\n\n` +
+        `<i>Your feedback is anonymous and helps improve the digest.</i>`
+      );
+    }
+
+    if (!supabase.isConfigured()) {
+      return `✅ Thanks for your ${rating}/5 rating! ${comment ? `Comment: "${escapeHtml(comment)}"` : ""}\n\nYour feedback helps improve the digest.`;
+    }
+
+    const cfg = getSupabaseConfig();
+    if (!cfg) return `✅ Thanks for your ${rating}/5 rating!`;
+
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      const getResp = await fetch(
+        `${cfg.url}/rest/v1/daily_metrics?date=eq.${today}&select=date,feedback_ratings`,
+        { headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` } }
+      );
+
+      let existingRatings: number[] = [];
+      let existingComments: string[] = [];
+      if (getResp.ok) {
+        const existing = (await getResp.json()) as Record<string, unknown>[];
+        if (existing.length > 0 && existing[0].feedback_ratings) {
+          try {
+            const parsed = JSON.parse(existing[0].feedback_ratings as string) as { ratings: number[]; comments: string[] };
+            existingRatings = parsed.ratings || [];
+            existingComments = parsed.comments || [];
+          } catch { /* start fresh */ }
+        }
+      }
+
+      existingRatings.push(rating);
+      if (comment) existingComments.push(comment);
+
+      await supabase.updateDailyMetrics(today, {
+        feedback_ratings: JSON.stringify({ ratings: existingRatings, comments: existingComments }),
+      });
+
+      const avg = existingRatings.reduce((s, r) => s + r, 0) / existingRatings.length;
+      return `✅ Thanks for your feedback!\n\n` +
+        `Your rating: ${rating}/5\n` +
+        `${comment ? `Comment: "${escapeHtml(comment)}"\n` : ""}\n` +
+        `Average rating today: ${avg.toFixed(1)}/5 (${existingRatings.length} votes)`;
+    } catch {
+      return `✅ Thanks for your ${rating}/5 rating! (Couldn't save to database, but your feedback is noted.)`;
+    }
+  });
+}
+
+// ─── Trending Now ──────────────────────────────────────
+
+interface TrendingItem {
+  entity: string;
+  type: "ticker" | "sector" | "company" | "keyword";
+  mentionCount: number;
+  avgScore: number;
+  dominantSentiment: "positive" | "negative" | "neutral";
+  topArticles: { title: string; url: string }[];
+}
+
+/**
+ * Compute trending entities from the current digest and store in Supabase.
+ * Averages with the last 7 days of data for a rolling trend view.
+ */
+async function computeAndStoreTrending(
+  runDate: string,
+  digest: import("./processor/ai").DigestResult
+): Promise<void> {
+  try {
+    const cfg = getSupabaseConfig();
+    if (!cfg) return;
+
+    // Compute trending from current digest
+    const tickerCounts = new Map<string, { count: number; totalScore: number; sentiments: number[] }>();
+    for (const article of digest.articles) {
+      for (const ticker of article.affectedStocks) {
+        const entry = tickerCounts.get(ticker) || { count: 0, totalScore: 0, sentiments: [] };
+        entry.count++;
+        entry.totalScore += article.impactScore;
+        entry.sentiments.push(article.impact === "Bullish" ? 1 : article.impact === "Bearish" ? -1 : 0);
+        tickerCounts.set(ticker, entry);
+      }
+    }
+
+    const trending: TrendingItem[] = [];
+
+    // Top tickers by mention count
+    const sortedTickers = [...tickerCounts.entries()]
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, 5);
+    for (const [ticker, data] of sortedTickers) {
+      const avgSent = data.sentiments.length > 0
+        ? data.sentiments.reduce((s, v) => s + v, 0) / data.sentiments.length
+        : 0;
+      trending.push({
+        entity: ticker,
+        type: "ticker",
+        mentionCount: data.count,
+        avgScore: Math.round((data.totalScore / data.count) * 10) / 10,
+        dominantSentiment: avgSent > 0.2 ? "positive" : avgSent < -0.2 ? "negative" : "neutral",
+        topArticles: digest.articles
+          .filter((a) => a.affectedStocks.includes(ticker))
+          .slice(0, 3)
+          .map((a) => ({ title: a.title, url: a.url })),
+      });
+    }
+
+    // Top sectors
+    const sectorSorted = Object.entries(digest.categories)
+      .sort((a, b) => b[1].length - a[1].length)
+      .slice(0, 3);
+    for (const [sector, articles] of sectorSorted) {
+      const avgScore = articles.reduce((s, a) => s + a.impactScore, 0) / articles.length;
+      trending.push({
+        entity: sector,
+        type: "sector",
+        mentionCount: articles.length,
+        avgScore: Math.round(avgScore * 10) / 10,
+        dominantSentiment: "neutral",
+        topArticles: articles.slice(0, 3).map((a) => ({ title: a.title, url: a.url })),
+      });
+    }
+
+    // Store in daily_metrics under a trending key (Supabase doesn't have a dedicated table)
+    await supabase.updateDailyMetrics(runDate, {
+      trending_json: JSON.stringify(trending),
+      trending_entities: trending.map((t) => t.entity).join(","),
+    });
+
+    logger.info(`Trending Now: ${trending.length} entities tracked for ${runDate}`);
+  } catch (error) {
+    logger.warn(`Trending computation failed: ${(error as Error).message}`);
+  }
+}
 
 function getSupabaseConfig(): { url: string; key: string } | null {
   const url = config.app.supabaseUrl;

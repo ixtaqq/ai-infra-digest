@@ -59,6 +59,8 @@ function initCommands() {
       `• /digest — Run and receive the latest digest now\n` +
       `• /sources — List all tracked RSS feeds\n` +
       `• /last — Show the most recent digest summary\n` +
+      `• /trending — See what's trending in AI infra\n` +
+      `• /feedback N — Rate today's digest (1-5)\n` +
       `• /settings — View your preferences\n` +
       `• /watchlist — Manage your ticker watchlist\n` +
       `• /help — Show this message again\n\n` +
@@ -84,8 +86,11 @@ function initCommands() {
       `• /digest — Generate and send the latest digest now\n` +
       `• /sources — Show all 57 tracked RSS feeds\n` +
       `• /last — Show the most recent digest summary\n` +
+      `• /trending — See what's trending in AI infra\n` +
+      `• /feedback N — Rate today's digest (1-5)\n` +
       `• /settings — View your user preferences\n` +
       `• /watchlist <code>NVDA,AMD,AVGO</code> — Set your ticker watchlist\n` +
+      `• /alert — Manage high-impact alerts\n` +
       `• /help — This message\n\n` +
       `<b>About:</b>\n` +
       `• Covers AI infra across 10 sectors (chips → power → data centers)\n` +
@@ -184,6 +189,140 @@ function initCommands() {
     }
   });
 
+  // Handle /trending — route to registered handler
+  pollingBot.onText(/^\/trending(@\w+)?$/, async (msg) => {
+    const chatId = msg.chat.id;
+    const handler = handlers.get("trending");
+    if (handler) {
+      try {
+        const result = await handler({
+          chatId,
+          username: msg.from?.username,
+          firstName: msg.from?.first_name,
+          text: msg.text || "",
+        });
+        const reply = typeof result === "string" ? { text: result } : result;
+        await pollingBot.sendMessage(chatId, reply.text, {
+          parse_mode: (reply.parseMode || "HTML") as "HTML",
+          disable_web_page_preview: true,
+        });
+      } catch (error) {
+        await pollingBot.sendMessage(
+          chatId,
+          `❌ Failed: ${(error as Error).message}`,
+          { parse_mode: "HTML" }
+        );
+      }
+    }
+  });
+
+  // Handle /feedback — route to registered handler with inline keyboard
+  pollingBot.onText(/^\/feedback(@\w+)?(\s+.*)?$/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const handler = handlers.get("feedback");
+    if (handler) {
+      try {
+        const fullText = msg.text || "";
+        // Check if there's a rating already in the text
+        const parts = fullText.split(/\s+/).slice(1);
+        const hasInlineRating = parts.length > 0 && /^[1-5]$/.test(parts[0]);
+
+        if (!hasInlineRating) {
+          // Show inline keyboard for quick rating
+          const inlineKeyboard = {
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: "⭐ 1", callback_data: "feedback_1" },
+                  { text: "⭐ 2", callback_data: "feedback_2" },
+                  { text: "⭐ 3", callback_data: "feedback_3" },
+                  { text: "⭐ 4", callback_data: "feedback_4" },
+                  { text: "⭐ 5", callback_data: "feedback_5" },
+                ],
+                [
+                  { text: "📝 Add comment (use /feedback 5 Your comment)", callback_data: "feedback_help" },
+                ],
+              ],
+            },
+          };
+
+          const bot = getBot();
+          await bot.sendMessage(
+            chatId,
+            `💬 <b>Rate Today's Digest</b>\n\nHow would you rate today's digest?`,
+            {
+              parse_mode: "HTML",
+              ...inlineKeyboard,
+            }
+          );
+        } else {
+          const result = await handler({
+            chatId,
+            username: msg.from?.username,
+            firstName: msg.from?.first_name,
+            text: fullText,
+          });
+          const reply = typeof result === "string" ? { text: result } : result;
+          await pollingBot.sendMessage(chatId, reply.text, {
+            parse_mode: (reply.parseMode || "HTML") as "HTML",
+            disable_web_page_preview: true,
+          });
+        }
+      } catch (error) {
+        await pollingBot.sendMessage(
+          chatId,
+          `❌ Failed: ${(error as Error).message}`,
+          { parse_mode: "HTML" }
+        );
+      }
+    }
+  });
+
+  // Handle callback queries from inline keyboards
+  pollingBot.on("callback_query", async (query) => {
+    const chatId = query.message?.chat?.id;
+    const data = query.data || "";
+    if (!chatId) return;
+
+    // Acknowledge the callback query (removes loading state on the button)
+    try {
+      await pollingBot.answerCallbackQuery(query.id);
+    } catch {
+      // Non-critical
+    }
+
+    // Handle feedback callbacks
+    if (data.startsWith("feedback_")) {
+      const ratingStr = data.replace("feedback_", "");
+      if (ratingStr === "help") {
+        await pollingBot.sendMessage(
+          chatId,
+          `💬 <b>Adding a Comment</b>\n\nUse <code>/feedback 5 Your comment here</code>\n\nExample: <code>/feedback 4 Great NVIDIA coverage but too many power articles</code>`,
+          { parse_mode: "HTML" }
+        );
+        return;
+      }
+
+      const rating = parseInt(ratingStr, 10);
+      if (rating >= 1 && rating <= 5) {
+        const handler = handlers.get("feedback");
+        if (handler) {
+          const result = await handler({
+            chatId,
+            username: query.from?.username,
+            firstName: query.from?.first_name,
+            text: `/feedback ${rating}`,
+          });
+          const reply = typeof result === "string" ? { text: result } : result;
+          await pollingBot.sendMessage(chatId, reply.text, {
+            parse_mode: (reply.parseMode || "HTML") as "HTML",
+            disable_web_page_preview: true,
+          });
+        }
+      }
+    }
+  });
+
   // Handle /settings
   pollingBot.onText(/^\/settings(@\w+)?$/, async (msg) => {
     const chatId = msg.chat.id;
@@ -254,7 +393,7 @@ function initCommands() {
   pollingBot.onText(/^\//, async (msg) => {
     const chatId = msg.chat.id;
     const text = msg.text?.toLowerCase() || "";
-    const knownCommands = ["/start", "/help", "/digest", "/sources", "/last", "/settings", "/watchlist", "/alert"];
+    const knownCommands = ["/start", "/help", "/digest", "/sources", "/last", "/settings", "/watchlist", "/alert", "/trending", "/feedback"];
     const isKnown = knownCommands.some((cmd) => text.startsWith(cmd));
     if (!isKnown) {
       await pollingBot.sendMessage(
