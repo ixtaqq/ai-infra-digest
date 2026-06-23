@@ -1085,9 +1085,18 @@
       const status = document.getElementById('searchStatus');
       const query = input.value.trim();
 
-      // Reset pagination state — search replaces the result set
+      // Reset pagination state — search replaces the entire result set
+      articlePage = 0;
       hasMoreArticles = false;
-      document.getElementById('loadMoreBtn').style.display = 'none';
+      allFetchedArticles = [];
+      const loadBtn = document.getElementById('loadMoreBtn');
+      if (loadBtn) {
+        loadBtn.style.display = 'none';
+        loadBtn.disabled = false;
+        loadBtn.textContent = '⬇️ Load More';
+      }
+      const pagInfo = document.getElementById('paginationInfo');
+      if (pagInfo) pagInfo.textContent = '';
 
       if (!query || query.length < 2) {
         status.textContent = 'Type at least 2 characters';
