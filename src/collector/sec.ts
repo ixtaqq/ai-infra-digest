@@ -93,7 +93,7 @@ export const TRACKED_COMPANIES: CompanyEntry[] = [
   { ticker: "CSCO",  name: "Cisco Systems Inc.",            cik: "0000858877", tier: 1 },
   // Alternate Tier 2 — secondary monitoring
   { ticker: "MRVL",  name: "Marvell Technology Inc.",       cik: "0001835632", tier: 2 },
-  { ticker: "ANET",  name: "Arista Networks Inc.",          cik: "0001596538", tier: 2 },
+  { ticker: "ANET",  name: "Arista Networks Inc.",          cik: "0001596532", tier: 2 },
   { ticker: "DLR",   name: "Digital Realty Trust Inc.",     cik: "0001426046", tier: 2 },
   { ticker: "EQIX",  name: "Equinix Inc.",                  cik: "0001102541", tier: 2 },
   { ticker: "CEG",   name: "Constellation Energy Corp.",    cik: "0001868275", tier: 2 },
@@ -102,7 +102,7 @@ export const TRACKED_COMPANIES: CompanyEntry[] = [
   { ticker: "VRT",   name: "Vertiv Holdings Co.",           cik: "0001637864", tier: 2 },
   { ticker: "ETN",   name: "Eaton Corporation PLC",         cik: "0001551182", tier: 2 },
   { ticker: "ARM",   name: "Arm Holdings PLC (ADR)",        cik: "0001973239", tier: 2 },
-  { ticker: "WDC",   name: "Western Digital Corp.",         cik: "0000100040", tier: 2 },
+  { ticker: "WDC",   name: "Western Digital Corp.",         cik: "0000106040", tier: 2 },
   { ticker: "ON",    name: "ON Semiconductor Corp.",        cik: "0001097864", tier: 2 },
   { ticker: "STX",   name: "Seagate Technology Holdings",   cik: "0001137789", tier: 2 },
   { ticker: "ANSS",  name: "Ansys Inc.",                    cik: "0001013462", tier: 2 },
