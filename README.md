@@ -1,6 +1,6 @@
 # 🏆 Goldirham Stack
 
-**Daily intelligence for the AI infrastructure age.** — A pipeline that collects 57+ RSS feeds, analyzes news with AI, and delivers a curated morning digest via Telegram at each user's preferred delivery time.
+**Daily intelligence for the AI infrastructure age.** — A pipeline that collects 57+ RSS feeds, analyzes news with AI, extracts SEC filings from 35 companies, and delivers a curated morning digest via Telegram at each user's preferred delivery time.
 
 Covers the **full AI infrastructure value chain**: power generation → cooling → networking → chips → AI models.
 
@@ -14,13 +14,26 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 - **Conditional GET caching** — stores ETag/Last-Modified headers per feed, returns 304 for unchanged content, reducing bandwidth and parse time
 - **Consecutive failure tracking** — feeds failing 2+ times in a row are automatically skipped
 - **RSS retry with exponential backoff** — up to 2 retries per feed with full-jitter backoff
+- **🏛️ SEC Alert Badge** — articles detected as SEC filings (8-K, 10-Q, 10-K) automatically get a 🏛️ badge in the Telegram digest and `is_sec_filing` flag in Supabase
 
 ### 🤖 AI Processing
 - **Multi-provider**: Groq (default), OpenAI, OpenRouter, or custom endpoints
+- **Two-tier model routing** — classification/flagging runs on **fast/cheap model** (llama-3.1-8b-instant at ~$0.05/M tokens), synthesis runs on **strong model** (llama-3.3-70b-versatile at ~$0.59/M tokens), saving **40-60% on AI costs**
 - **Dynamic batch sizing** — automatically adjusts batch size (5–15 articles) to target ~4 batches, optimizing token cost vs. quality
 - **Batch processing** with **exponential backoff** (full-jitter retry, up to 3 attempts)
 - **Synthesis pass** — generates market outlook, top stocks, and daily summary
-- **Token tracking** — actual `prompt_tokens`, `completion_tokens`, `total_tokens` recorded per run
+- **Token tracking** — actual `prompt_tokens`, `completion_tokens`, `total_tokens` recorded per run, with **both model names logged** (`ai_model` + `ai_fast_model`) to Supabase for accurate cost tracking
+
+### 🏛️ SEC Filing Intelligence
+- **EDGAR watcher** — monitors 8‑K, 10‑K, and 10‑Q filings for the top 35 tracked companies via SEC EDGAR RSS feeds
+- **Two-pass extraction (MVP)**:
+  - **Pass 0 — Keyword pre-filter** (free): scans for capex, AI revenue, margins, inventory, guidance keywords. Zero AI cost for irrelevant filings.
+  - **Pass 1 — Fast model flagging** (~$0.0005/filing): uses llama-3.1-8b-instant to confirm relevance contextually
+  - **Pass 2 — Strong model extraction** (~$0.01/filing): uses llama-3.3-70b-versatile for precise number extraction on flagged filings only
+- **Extracted metrics**: Capital Expenditure (Capex), Capex Guidance, AI/Data Center Revenue, Gross/Operating Margins, Inventory Levels, Revenue/EPS Guidance
+- **Impact scoring** — 1–10 rating per filing with rationale and key takeaways
+- **`/sec` command** — query latest filings by ticker (e.g., `/sec NVDA`)
+- **SEC Highlights section** in daily digest — top 1-2 impactful filings shown with key numbers
 
 ### 💰 Stock Prices
 - **Yahoo Finance** integration — daily price snapshots for 30+ tracked tickers
@@ -39,6 +52,7 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 | `/sources` | List all 57 tracked RSS feeds with health status |
 | `/last` | Show the most recent digest summary from Supabase |
 | `/trending` | See what's trending in AI infra (last 7 days) |
+| `/sec NVDA` | Retrieve the latest SEC filing highlights for a ticker |
 | `/feedback 5` | Rate today's digest (1–5) with optional comment |
 | `/settings` | View your user preferences |
 | `/watchlist NVDA,AMD,AVGO` | Set your ticker watchlist |
@@ -66,10 +80,14 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 - **Interactive article filtering** — click sector chart bars or use filter pills (sector, impact, search)
 - **Dashboard pagination** — "Load More" button fetches additional 20 articles via cursor, dedup by URL
 - **Full-text article search** — search bar queries Supabase by title, summary, source, category, and stocks, with Cmd+K shortcut
+- **SEC Filings table** — financial data viewer with capex, AI revenue, margins, guidance, impact scores
 - **Auto-refresh** every 60 seconds
 
 ### 🗄️ Database (Supabase)
 - **11 tables**: `digest_runs`, `articles`, `sector_activity`, `stock_mentions`, `pipeline_health`, `capex_tracking`, `ai_usage`, `daily_metrics`, `stock_prices`, `user_preferences`, `user_delivery_log`
+- `digest_runs` tracks **both models** (`ai_model` for strong model, `ai_fast_model` for fast model)
+- `articles` has **`is_sec_filing`** boolean flag for article enrichment
+- `sec_filings` table stores extracted financial data from SEC EDGAR
 - All pipeline data written automatically after each digest run
 - Dashboard reads directly from Supabase REST API
 - User preferences stored per Telegram chat ID (watchlist, alert settings, categories, delivery time)
@@ -119,17 +137,26 @@ RSS Feeds (57 sources, conditional GET with ETag cache)
       ▼
 Step 1: News Collector (rss-parser + keyword filter + retry backoff)
       │
-      ▼
-Step 1b: Dedup (URL match + Jaccard similarity)
+      ├── Step 1b: SEC EDGAR Watcher (35 companies, 8-K/10-K/10-Q)
       │
       ▼
-Step 2: AI Processor (dynamic batch sizing + synthesis)
+Step 1c: Dedup (URL match + Jaccard similarity)
       │
       ▼
-Step 2b: Yahoo Finance (stock prices for mentioned tickers)
+Step 2: AI Processor (two-tier routing)
+      │
+      ├── Classification: Fast Model (llama-3.1-8b-instant) — 40-60% cheaper
+      ├── Synthesis: Strong Model (llama-3.3-70b-versatile) — market outlook
+      └── SEC Two-Pass: Flag (fast) → Extract (strong) — saves 50-70% on SEC AI costs
       │
       ▼
-Step 3: Telegram Formatter (HTML, categorized, with price data)
+Step 2b: Article Enrichment (🏛️ SEC badge detection via regex)
+      │
+      ▼
+Step 2c: Yahoo Finance (stock prices for mentioned tickers)
+      │
+      ▼
+Step 3: Telegram Formatter (HTML, categorized, with SEC highlights + badge)
       │
       ▼
 Step 4: Telegram Bot (send + interactive commands + webhook support)
@@ -173,7 +200,8 @@ nano .env
 | `TELEGRAM_CHAT_ID` | ✅ | — | Your Telegram chat/user ID |
 | `AI_API_KEY` | ✅ | — | API key for your AI provider |
 | `AI_PROVIDER` | ❌ | `groq` | `groq`, `openai`, `openrouter`, `custom` |
-| `AI_MODEL` | ❌ | `llama-3.3-70b-versatile` | Model name |
+| `AI_MODEL` | ❌ | `llama-3.3-70b-versatile` | Strong model for synthesis & SEC extraction |
+| `AI_FAST_MODEL` | ❌ | `llama-3.1-8b-instant` | Fast/cheap model for classification & SEC flagging |
 | `SUPABASE_URL` | ❌ | — | Supabase project URL (for dashboard) |
 | `SUPABASE_SERVICE_KEY` | ❌ | — | Supabase service role key (for dashboard) |
 
@@ -226,6 +254,7 @@ The workflow in `.github/workflows/scheduled-delivery.yml` runs **every 30 minut
 |---|---|
 | `AI_PROVIDER` | `groq` |
 | `AI_MODEL` | `llama-3.3-70b-versatile` |
+| `AI_FAST_MODEL` | `llama-3.1-8b-instant` |
 
 ## Dashboard
 
@@ -258,11 +287,13 @@ ai-infra-digest/
 │   ├── scheduler.ts                      # Cron-friendly per-user delivery scheduler
 │   ├── config.ts                         # Environment config loader
 │   ├── collector/
-│   │   └── rss.ts                        # 57 RSS feeds + conditional GET caching + retry backoff
+│   │   ├── rss.ts                        # 57 RSS feeds + conditional GET caching + retry backoff
+│   │   └── sec.ts                        # SEC EDGAR watcher — 35 companies, 8-K/10-K/10-Q
 │   ├── formatter/
-│   │   └── telegram.ts                   # HTML Telegram message formatter
+│   │   └── telegram.ts                   # HTML Telegram message formatter + SEC badge
 │   ├── processor/
-│   │   └── ai.ts                         # AI batch processing + dynamic batch sizing + backoff
+│   │   ├── ai.ts                         # AI batch processing + two-tier routing + SEC detection
+│   │   └── sec.ts                        # SEC two-pass extraction (flag + extract)
 │   ├── sender/
 │   │   └── telegram.ts                   # Bot API (polling + webhook, interactive commands, inline keyboards)
 │   └── utils/
@@ -292,12 +323,14 @@ Tom's Hardware, AnandTech, Ars Technica, TechCrunch, The Verge, Seeking Alpha, S
 | Service | Cost |
 |---|---|
 | GitHub Actions | Free (2000 min/month) |
-| Groq API (Llama 3.3 70B) | ~$0.15/1M tokens — ~$0.01/day |
+| Groq API (fast model, ~80% of tokens) | ~$0.05/1M tokens — ~$0.004/day |
+| Groq API (strong model, ~20% of tokens) | ~$0.59/1M tokens — ~$0.003/day |
+| SEC two-pass (fast flag + strong extract) | ~$0.02/day for 5 filings |
 | OpenAI (fallback) | ~$0.50–2/month |
 | Supabase | Free tier (500 MB, 50k rows) |
 | Telegram Bot API | Free |
 | Yahoo Finance | Free |
-| **Total** | **<$2/month** |
+| **Total** | **<$1/month** |
 
 ## Roadmap
 
@@ -310,15 +343,16 @@ Tom's Hardware, AnandTech, Ars Technica, TechCrunch, The Verge, Seeking Alpha, S
 - **v2.1** — NDJSON structured logging, enhanced error alerts with recovery actions, production webhook support
 - **v2.2** — Feedback with inline keyboard, trending (7-day rolling), per-user scheduled delivery, idempotent delivery log
 
-### Phase II · Intelligence. 🔨 Building
-- **v3** — SEC filing deep analysis — parse 8-K, 10-K, 10-Q filings for 35 companies. Extract Capex, AI Revenue, Margins, Inventory, forward guidance
-- **v3** — Earnings transcript parsing — download and analyze calls. Extract Capex guidance, AI revenue mentions, management tone signals
+### Phase II · Intelligence. ✅ Shipped
+- **v3.0** — SEC filing deep analysis — parse 8-K, 10-K, 10-Q filings for 35 companies via EDGAR. Extract Capex, AI Revenue, Margins, Inventory, forward guidance
+- **v3.0a** — Two-tier AI routing — classification via fast model (llama-3.1-8b), synthesis via strong model (llama-3.3-70b). Saves 40-60% on AI costs
+- **v3.0b** — Two-pass SEC extraction — keyword pre-filter (free) → fast model flagging (~$0.0005) → strong model extraction (~$0.01). Saves 50-70% on SEC AI costs
+- **v3.0c** — Article enrichment — 🏛️ SEC alert badge on filing articles, stored in Supabase as `is_sec_filing`
 
-### Phase III · Interaction. 📈 Planned
-- Telegram bot enhancement — /digest, /trending, /watchlist, /alert, /sec, /feedback
-- Watchlist filtering & price threshold alert system
-- Premium live dashboard — 6 charts, search, pagination, gold fintech aesthetic
-- Per-user scheduled delivery with timezone-aware cron
+### Phase III · Interaction. 🔨 Building
+- **v3.1** — Earnings transcript mining — download and analyze calls. Extract Capex guidance, AI revenue mentions, management tone signals
+- **v3.1a** — Management tone + guidance delta — sentiment analysis on CEO/CFO tone, QoQ guidance comparison
+- **v3.2** — Dashboard 2.0 — Supabase Auth, public digest pages, SEC-derived charts (capex barometer, AI revenue index), CMD+K search for SEC filings
 
 ### Phase IV · Research. 🔭 Future
 - **v4** — Article archival & historical trend analysis across sectors and tickers. Price threshold alerts
@@ -330,4 +364,4 @@ Tom's Hardware, AnandTech, Ars Technica, TechCrunch, The Verge, Seeking Alpha, S
 
 ---
 
-Built with ❤️ — Powered by Llama 3.3 via Groq.
+Built with ❤️ — Powered by Llama 3.3 (strong) + Llama 3.1 8B (fast) via Groq.

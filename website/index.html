@@ -726,8 +726,8 @@
       </h1>
 
       <p>
-        Collects <strong>57 RSS feeds</strong>, analyzes them with <strong>Llama 3.3</strong>,
-        extracts <strong>SEC filings</strong> from 35 companies, and delivers a curated
+        Collects <strong>57 RSS feeds</strong>, analyzes them with <strong>two-tier AI routing</strong>,
+        extracts <strong>SEC filings</strong> from 35 companies via two-pass extraction, and delivers a curated
         morning digest — straight to your Telegram and live analytics dashboard.
       </p>
 
@@ -854,8 +854,8 @@
         </div>
         <div class="feature-card delay-1">
           <span class="icon">🧠</span>
-          <h3>AI‑Powered Analysis</h3>
-          <p>Every article scored by Llama 3.3 (via Groq) for impact, sentiment, affected stocks, and category — ~3,000 tokens/day.</p>
+          <h3>Two-Tier AI Routing</h3>
+          <p>Classification via fast 8B model (llama-3.1), synthesis via strong 70B model (llama-3.3). Saves 40–60% on AI costs — ~3,000 tokens/day total.</p>
         </div>
         <div class="feature-card delay-2">
           <span class="icon">📊</span>
@@ -869,13 +869,13 @@
         </div>
         <div class="feature-card delay-3">
           <span class="icon">🏛️</span>
-          <h3>SEC Filing Analysis</h3>
-          <p>Fetches 8‑K, 10‑K, and 10‑Q filings for 35 companies via SEC EDGAR. Extracts Capex, AI Revenue, Margins, and Guidance.</p>
+          <h3>SEC Two-Pass Extraction</h3>
+          <p>Keyword pre-filter (free) → fast model flagging (~$0.0005) → strong model extraction (~$0.01). Extracts Capex, AI Revenue, Margins, Guidance from 35 companies. 🏛️ badge on filing articles.</p>
         </div>
         <div class="feature-card delay-3">
           <span class="icon">🖥️</span>
           <h3>Premium Live Dashboard</h3>
-          <p>Glassmorphism UI with 6 interactive charts, full‑text search, trending analysis, SEC filings table, and delivery logs.</p>
+          <p>Gold fintech UI with 6 charts, SEC filings table (capex/AI revenue/margins), full‑text search, trending analysis, and delivery logs.</p>
         </div>
       </div>
     </div>
@@ -928,8 +928,7 @@
       </p>
 
       <div class="tech-strip animate">
-        <span class="tech-chip"><span class="chip-icon">📘</span> TypeScript</span>
-        <span class="tech-chip"><span class="chip-icon">🤖</span> Groq / Llama 3.3</span>
+        <span class="tech-chip"><span class="chip-icon">📘</span> TypeScript</span>          <span class="tech-chip"><span class="chip-icon">🧠</span> Two-Tier AI (8B + 70B)</span>
         <span class="tech-chip"><span class="chip-icon">💬</span> Telegram Bot API</span>
         <span class="tech-chip"><span class="chip-icon">📊</span> Supabase</span>
         <span class="tech-chip"><span class="chip-icon">📈</span> Chart.js</span>
@@ -962,6 +961,7 @@
               <li>Smart dedup — URL hash + Jaccard similarity (0.65 threshold)</li>
               <li>Keyword filtering &amp; categorization with ticker extraction</li>
               <li>58 unit tests passing — Vitest, integration, and E2E coverage</li>
+              <li>Per-user scheduled delivery with timezone-aware cron</li>
             </ul>
           </div>
 
@@ -973,9 +973,9 @@
             </div>
             <div class="phase-title-text">Intelligence.</div>
             <ul class="feature-list">
-              <li>AI analysis via Llama 3.3 (Groq) — 5-15 article dynamic batches</li>
-              <li>Impact scoring, sentiment analysis, &amp; sector classification</li>
-              <li>SEC EDGAR integration — 35 companies, 8-K/10-K/10-Q extraction</li>
+              <li>Two-tier AI routing — fast 8B classification + strong 70B synthesis, 40-60% cheaper</li>
+              <li>SEC two-pass extraction — free keyword filter → fast flag → strong extract, 50-70% cheaper</li>
+              <li>SEC alert badge 🏛️ — articles auto-tagged via regex (8-K, 10-Q, 10-K), stored in Supabase</li>
               <li>Yahoo Finance snapshots — 30 tickers tracked with price deltas</li>
             </ul>
           </div>
@@ -988,10 +988,10 @@
             </div>
             <div class="phase-title-text">Interaction.</div>
             <ul class="feature-list">
-              <li>Telegram bot — /digest, /trending, /watchlist, /alert, /sec, /feedback</li>
-              <li>Watchlist filtering &amp; price threshold alert system</li>
-              <li>Premium live dashboard — 6 charts, search, pagination, dark mode</li>
-              <li>Per-user scheduled delivery with timezone-aware cron</li>
+              <li>Earnings transcript mining — download and analyze calls for guidance &amp; tone</li>
+              <li>Management tone + guidance delta — QoQ comparison, CEO/CFO sentiment analysis</li>
+              <li>Dashboard 2.0 — Supabase Auth, public digest pages, SEC charts</li>
+              <li>CMD+K search for SEC filings &amp; transcript archive</li>
             </ul>
           </div>
 
@@ -1003,10 +1003,10 @@
             </div>
             <div class="phase-title-text">Research.</div>
             <ul class="feature-list">
-              <li>Deep SEC analysis — Capex, AI Revenue, Margins, Inventory, forward guidance</li>
-              <li>Historical trend analysis across sectors &amp; tickers with price alerts</li>
-              <li>Earnings transcript parsing — management tone &amp; Capex guidance signals</li>
-              <li>Bull/bear thesis generation &amp; personal portfolio tracking with P&amp;L</li>
+              <li>Bull/bear thesis generation per ticker with competitive landscape analysis</li>
+              <li>Personal portfolio tracking with P&amp;L &amp; price threshold alerts</li>
+              <li>Real-time SEC filing alerts with instant AI summary</li>
+              <li>Automated research reports &amp; sector rotation detection</li>
             </ul>
           </div>
         </div>
@@ -1020,7 +1020,7 @@
       <div class="section-label animate">Get Started</div>
       <h2 class="section-title animate">Run in 5 Minutes</h2>
       <p class="section-sub animate">
-        All you need is a Telegram bot token and a Groq API key (free tier). No credit card required.
+        All you need is a Telegram bot token and a Groq API key (free tier). No credit card required. Two-tier AI routing saves 40-60% on costs.
       </p>
 
       <div class="terminal-block animate">
