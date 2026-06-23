@@ -467,6 +467,8 @@
 
       <div class="table-card"><h3>📬 Delivery Log</h3><div id="deliverySection"></div></div>
 
+      <div class="table-card"><h3>📜 SEC Filings</h3><div id="secSection"></div></div>
+
       <div class="table-card"><h3>💰 Capex Announcements</h3><table><thead><tr><th>Company</th><th>Amount</th><th>Category</th><th>Description</th></tr></thead><tbody id="capexBody"></tbody></table></div>
     </div>
   </div>
@@ -599,7 +601,7 @@
       }, 8000);
 
       try {
-        const [digests, sectors, stocks, articles, feeds, capex, metrics, prices, deliveries] = await Promise.all([
+        const [digests, sectors, stocks, articles, feeds, capex, metrics, prices, deliveries, secFilings] = await Promise.all([
           supabaseQuery('digest_runs', { order: 'run_date', limit: 60, rangeColumn: 'run_date', range: rangeDate }).catch(()=>[]),
           supabaseQuery('sector_activity', { select: 'date,sector,article_count,avg_impact_score', order: 'date', range: rangeDate }).catch(()=>[]),
           supabaseQuery('stock_mentions', { order: 'mention_count', limit: 10, range: rangeDate }).catch(()=>[]),
@@ -609,6 +611,7 @@
           supabaseQuery('daily_metrics', { order: 'date', limit: 30, range: rangeDate }).catch(()=>[]),
           supabaseQuery('stock_prices', { order: 'date', limit: 500, range: rangeDate }).catch(()=>[]),
           supabaseQuery('user_delivery_log', { order: 'delivered_at', limit: 100, range: rangeDate, rangeColumn: 'run_date' }).catch(()=>[]),
+          supabaseQuery('sec_filings', { order: 'filing_date', limit: 50, range: rangeDate, rangeColumn: 'filing_date' }).catch(()=>[]),
         ]);
 
         clearTimeout(slowTimer);
@@ -646,6 +649,7 @@
         renderTrendingSection(metrics);
         renderFeedbackSection(metrics);
         renderDeliverySection(deliveries);
+        renderSECSection(secFilings);
         renderCapex(capex);
 
         // Show Load More if we have a full initial page
@@ -1036,6 +1040,68 @@
         </div>
         ${entries.slice(0,40).map(f=>`<div class="feed-row"><span class="feed-status ${f.status}"></span><span style="flex:1;font-weight:500">${f.feed_name}</span><span style="color:var(--text-muted);font-size:12px;font-family:'JetBrains Mono',monospace">${f.articles_fetched||0}</span>${f.status==='failed'?`<span style="color:var(--danger);font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(f.error_message||'').slice(0,60)}</span>`:''}</div>`).join('')}
       `;
+    }
+
+    // ─── SEC Filings ──
+    function renderSECSection(filings) {
+      const el = document.getElementById('secSection');
+      if (!filings.length) {
+        el.innerHTML = '<p style="color:var(--text-dim);padding:12px 0">No SEC filings analyzed yet — run the daily digest</p>';
+        return;
+      }
+
+      // Show summary stats at top
+      const totalFilings = filings.length;
+      const eightKs = filings.filter(f => f.form_type === '8-K').length;
+      const highImpact = filings.filter(f => (f.impact_score || 0) >= 8).length;
+
+      // Cache unique tickers for filter
+      const uniqueTickers = [...new Set(filings.map(f => f.ticker))];
+
+      let html = `<div style="display:flex;gap:20px;margin-bottom:14px;flex-wrap:wrap">
+        <span style="font-size:13px;display:flex;align-items:center;gap:6px">📜 ${totalFilings} filings</span>
+        <span style="font-size:13px;color:var(--text-dim)">${eightKs} 8-Ks</span>
+        <span style="font-size:13px;color:var(--text-dim)">${uniqueTickers.length} companies</span>
+        <span style="font-size:13px;display:flex;align-items:center;gap:6px">
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--danger);display:inline-block"></span>
+          ${highImpact} high-impact (8+)
+        </span>
+      </div>`;
+
+      html += `<table><thead><tr><th>Company</th><th>Form</th><th>Date</th><th>Capex</th><th>AI Revenue</th><th>Margins</th><th>Guide</th><th>Impact</th></tr></thead><tbody>`;
+
+      for (const f of filings.slice(0, 20)) {
+        const formColor = f.form_type === '8-K' ? 'var(--warn)' : f.form_type === '10-Q' ? 'var(--accent)' : 'var(--accent2)';
+        const impactColor = (f.impact_score || 0) >= 8 ? 'var(--danger)' : (f.impact_score || 0) >= 6 ? 'var(--warn)' : 'var(--text-muted)';
+
+        // Format financial data with tooltips
+        const fmtCapex = f.capex !== null && f.capex !== undefined ? `$${f.capex.toLocaleString()}M` : '—';
+        const fmtAiRev = f.ai_revenue !== null && f.ai_revenue !== undefined ? `$${f.ai_revenue.toLocaleString()}M` : '—';
+        const fmtMargins = [];
+        if (f.gross_margin !== null && f.gross_margin !== undefined) fmtMargins.push(`GM:${f.gross_margin}%`);
+        if (f.operating_margin !== null && f.operating_margin !== undefined) fmtMargins.push(`OM:${f.operating_margin}%`);
+        const marginStr = fmtMargins.length > 0 ? fmtMargins.join(' ') : '—';
+        const fmtGuide = f.revenue_guidance !== null && f.revenue_guidance !== undefined ? `$${f.revenue_guidance.toLocaleString()}M` : '—';
+
+        html += `<tr>
+          <td><strong>${escapeHtml(f.ticker)}</strong><br><span style="font-size:10px;color:var(--text-muted)">${escapeHtml(f.company_name?.slice(0, 30) || '')}</span></td>
+          <td><span style="font-size:11px;background:${formColor}22;color:${formColor};padding:2px 8px;border-radius:4px;font-weight:600">${escapeHtml(f.form_type)}</span></td>
+          <td style="font-size:12px;color:var(--text-dim);font-family:'JetBrains Mono',monospace">${fmtDate(f.filing_date) || f.filing_date}</td>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${fmtCapex}</td>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${fmtAiRev}</td>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim)">${marginStr}</td>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${fmtGuide}</td>
+          <td><span style="color:${impactColor};font-weight:600">${escapeHtml(f.impact_score || '—')}</span><span style="color:var(--text-muted);font-size:10px">/10</span></td>
+        </tr>`;
+      }
+
+      html += `</tbody></table>`;
+
+      if (filings.length > 20) {
+        html += `<div style="margin-top:10px;font-size:11px;color:var(--text-muted)">Showing 20 of ${filings.length} filings</div>`;
+      }
+
+      el.innerHTML = html;
     }
 
     // ─── Capex ──

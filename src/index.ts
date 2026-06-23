@@ -19,7 +19,7 @@ import {
   emitError,
 } from "./utils/metrics";
 import { collectSECFilings, getTopFilings } from "./collector/sec";
-import { analyzeSECFilings, formatSECExtract } from "./processor/sec";
+import { analyzeSECFilings } from "./processor/sec";
 import type { Article, FeedResult } from "./collector/rss";
 import type { SECFinancialExtract } from "./processor/sec";
 
@@ -834,6 +834,92 @@ export function registerDigestCommands(): void {
       return { text: lines.join("\n") };
     } catch {
       return "Could not fetch trending data.";
+    }
+  });
+
+  // ─── /sec command — latest SEC filings ──
+  registerCommand("sec", async (ctx) => {
+    if (!supabase.isConfigured()) {
+      return "Supabase not configured. Run the daily digest to start SEC filing analysis.";
+    }
+
+    const cfg = getSupabaseConfig();
+    if (!cfg) return "Database not available.";
+
+    const parts = ctx.text.split(/\s+/).slice(1);
+    const ticker = parts[0]?.toUpperCase();
+
+    try {
+      let url: string;
+      if (ticker) {
+        // Show filings for a specific ticker
+        url = `${cfg.url}/rest/v1/sec_filings?ticker=eq.${ticker}&order=filing_date.desc&limit=5&select=*`;
+      } else {
+        // Show latest filings across all companies
+        url = `${cfg.url}/rest/v1/sec_filings?order=filing_date.desc&limit=8&select=*`;
+      }
+
+      const resp = await fetch(url, {
+        headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` },
+      });
+      if (!resp.ok) return "Could not fetch SEC filings.";
+
+      const filings = (await resp.json()) as Record<string, unknown>[];
+      if (!filings.length) {
+        return ticker
+          ? `No SEC filings found for <b>${ticker}</b>. Run the daily digest to populate filing data.`
+          : "No SEC filings yet. Run the daily digest to start filing analysis.";
+      }
+
+      const lines: string[] = [];
+
+      if (ticker) {
+        lines.push(`📜 <b>SEC Filings — ${ticker}</b>`);
+      } else {
+        lines.push(`📜 <b>Latest SEC Filings</b>`);
+      }
+      lines.push("");
+
+      for (const f of filings) {
+        const formType = f.form_type as string;
+        const company = f.company_name as string;
+        const filingDate = f.filing_date as string;
+        const impactScore = (f.impact_score as number) || 0;
+
+        const impactEmoji = impactScore >= 8 ? "🔴" : impactScore >= 6 ? "🟡" : "⚪";
+        const formEmoji = formType === "8-K" ? "⚡" : formType === "10-Q" ? "📊" : formType === "10-K" ? "📋" : "📄";
+
+        lines.push(`${formEmoji} <b>${escapeHtml(company)}</b> — ${formType}`);
+        lines.push(`   Date: ${filingDate} ${impactEmoji} Impact: ${impactScore}/10`);
+
+        const data: string[] = [];
+        if (f.capex !== null && f.capex !== undefined) data.push(`💰 Capex: $${(f.capex as number).toLocaleString()}M`);
+        if (f.capex_guidance !== null && f.capex_guidance !== undefined) data.push(`📊 Capex Guide: $${(f.capex_guidance as number).toLocaleString()}M`);
+        if (f.ai_revenue !== null && f.ai_revenue !== undefined) {
+          const growth = f.ai_revenue_growth_pct ? ` (${(f.ai_revenue_growth_pct as number) >= 0 ? "+" : ""}${f.ai_revenue_growth_pct}%)` : "";
+          data.push(`🤖 AI Rev: $${(f.ai_revenue as number).toLocaleString()}M${growth}`);
+        }
+        if (f.gross_margin !== null && f.gross_margin !== undefined) data.push(`📈 GM: ${f.gross_margin}%`);
+        if (f.operating_margin !== null && f.operating_margin !== undefined) data.push(`📉 OM: ${f.operating_margin}%`);
+        if (f.revenue_guidance !== null && f.revenue_guidance !== undefined) data.push(`🎯 Rev Guide: $${(f.revenue_guidance as number).toLocaleString()}M`);
+
+        if (data.length > 0) {
+          lines.push(`   ${data.join(" · ")}`);
+        }
+
+        // Show key takeaways
+        const takeaways = f.key_takeaways as string[] | null;
+        if (takeaways && takeaways.length > 0) {
+          lines.push(`   <i>${escapeHtml(takeaways.slice(0, 2).join(" · "))}</i>`);
+        }
+
+        lines.push("");
+      }
+
+      lines.push("<i>Use /sec TICKER to filter by company (e.g., /sec NVDA)</i>");
+      return { text: lines.join("\n") };
+    } catch {
+      return "Could not fetch SEC filings.";
     }
   });
 
