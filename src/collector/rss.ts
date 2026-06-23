@@ -32,8 +32,42 @@ const TIER_1_FEEDS = [
   { url: "https://news.google.com/rss/search?q=Dell+AI+servers+infrastructure&hl=en-US&gl=US&ceid=US:en", name: "Dell" },
   { url: "https://news.google.com/rss/search?q=ARM+AI+chips+architecture&hl=en-US&gl=US&ceid=US:en", name: "ARM" },
 
-  // Company blogs with official RSS
-  { url: "https://news.google.com/rss/search?q=IBM+AI+enterprise+cloud&hl=en-US&gl=US&ceid=US:en", name: "IBM" },
+  // Networking
+  { url: "https://news.google.com/rss/search?q=Arista+Networks+AI+networking&hl=en-US&gl=US&ceid=US:en", name: "Arista" },
+  { url: "https://news.google.com/rss/search?q=Cisco+AI+networking&hl=en-US&gl=US&ceid=US:en", name: "Cisco" },
+  { url: "https://news.google.com/rss/search?q=Marvell+AI+networking&hl=en-US&gl=US&ceid=US:en", name: "Marvell" },
+
+  // Semiconductor equipment
+  { url: "https://news.google.com/rss/search?q=Applied+Materials+semiconductor&hl=en-US&gl=US&ceid=US:en", name: "Applied Materials" },
+  { url: "https://news.google.com/rss/search?q=Lam+Research+semiconductor&hl=en-US&gl=US&ceid=US:en", name: "Lam Research" },
+  { url: "https://news.google.com/rss/search?q=KLA+semiconductor+inspection&hl=en-US&gl=US&ceid=US:en", name: "KLA" },
+  { url: "https://news.google.com/rss/search?q=Tokyo+Electron+semiconductor&hl=en-US&gl=US&ceid=US:en", name: "Tokyo Electron" },
+
+  // Datacenter REITs
+  { url: "https://news.google.com/rss/search?q=Digital+Realty+datacenter+AI&hl=en-US&gl=US&ceid=US:en", name: "Digital Realty" },
+  { url: "https://news.google.com/rss/search?q=Equinix+datacenter+AI&hl=en-US&gl=US&ceid=US:en", name: "Equinix" },
+
+  // Power & Energy
+  { url: "https://news.google.com/rss/search?q=Constellation+Energy+nuclear+AI+power&hl=en-US&gl=US&ceid=US:en", name: "Constellation Energy" },
+  { url: "https://news.google.com/rss/search?q=Vistra+AI+power+demand&hl=en-US&gl=US&ceid=US:en", name: "Vistra" },
+  { url: "https://news.google.com/rss/search?q=GE+Vernova+AI+power+grid&hl=en-US&gl=US&ceid=US:en", name: "GE Vernova" },
+  { url: "https://news.google.com/rss/search?q=Siemens+Energy+AI+power&hl=en-US&gl=US&ceid=US:en", name: "Siemens Energy" },
+
+  // Cooling infrastructure
+  { url: "https://news.google.com/rss/search?q=Vertiv+AI+cooling+datacenter&hl=en-US&gl=US&ceid=US:en", name: "Vertiv" },
+  { url: "https://news.google.com/rss/search?q=Schneider+Electric+AI+datacenter&hl=en-US&gl=US&ceid=US:en", name: "Schneider Electric" },
+  { url: "https://news.google.com/rss/search?q=Eaton+AI+power+management&hl=en-US&gl=US&ceid=US:en", name: "Eaton" },
+
+  // AI model companies
+  { url: "https://news.google.com/rss/search?q=Anthropic+AI+Claude&hl=en-US&gl=US&ceid=US:en", name: "Anthropic" },
+  { url: "https://news.google.com/rss/search?q=xAI+Grok+AI&hl=en-US&gl=US&ceid=US:en", name: "xAI" },
+  { url: "https://news.google.com/rss/search?q=Mistral+AI&hl=en-US&gl=US&ceid=US:en", name: "Mistral AI" },
+  { url: "https://news.google.com/rss/search?q=Cohere+AI+enterprise&hl=en-US&gl=US&ceid=US:en", name: "Cohere" },
+
+  // Memory & Storage
+  { url: "https://news.google.com/rss/search?q=SK+hynix+HBM+memory+AI&hl=en-US&gl=US&ceid=US:en", name: "SK hynix" },
+  { url: "https://news.google.com/rss/search?q=Samsung+HBM+AI+memory&hl=en-US&gl=US&ceid=US:en", name: "Samsung" },
+  { url: "https://news.google.com/rss/search?q=GlobalFoundries+AI+chips&hl=en-US&gl=US&ceid=US:en", name: "GlobalFoundries" },
 
   // Financial news
   { url: "https://feeds.content.dowjones.io/public/rss/mw_topstories", name: "MarketWatch" },
@@ -112,6 +146,49 @@ const AI_KEYWORDS = [
   "TPU", "Trillium", "Dojo", "D1X",
   "Radeon", "Instinct", "CDNA", "ROCm",
   "CUDA", "Tensor Core", "TensorRT",
+
+  // Semiconductor equipment
+  "ASML", "Applied Materials", "AMAT", "Lam Research", "LRCX",
+  "KLA", "KLAC", "Tokyo Electron",
+  "EUV", "DUV", "lithography", "wafer fab", "deposition", "etch",
+
+  // Networking
+  "Arista", "ANET", "Cisco", "CSCO", "Juniper", "JNPR",
+  "InfiniBand", "Ethernet AI", "AI networking", "optical interconnect",
+  "network switch", "data center networking", "smart NIC", "DPU",
+
+  // Memory & Storage
+  "HBM", "HBM3E", "HBM4", "DDR5", "GDDR7",
+  "memory shortage", "SK hynix", "Samsung memory",
+
+  // Datacenter REITs
+  "Digital Realty", "DLR", "Equinix", "EQIX",
+  "colocation", "AI capacity", "datacenter expansion", "data center leasing",
+
+  // Power & Energy
+  "Constellation Energy", "CEG", "Vistra", "VST",
+  "GE Vernova", "GEV", "Siemens Energy",
+  "power demand", "grid upgrades", "nuclear power", "AI electricity",
+  "renewable energy", "SMR", "small modular reactor",
+
+  // Cooling
+  "Vertiv", "VRT", "Schneider Electric", "Eaton", "ETN",
+  "liquid cooling", "immersion cooling", "thermal management",
+  "datacenter cooling", "Trane", "TT",
+
+  // AI model companies
+  "Anthropic", "Claude", "xAI", "Grok",
+  "Mistral AI", "Cohere", "AI model", "frontier model",
+  "foundation model", "open source model",
+
+  // Sector categories
+  "semiconductor manufacturing", "chip design",
+  "M&A", "partnership", "joint venture",
+  "guidance", "earnings report", "revenue guidance",
+  "capex", "capital expenditure", "buyback", "dividend",
+
+  // Additional tickers
+  "GlobalFoundries", "GFS", "Samsung",
 ];
 
 function matchesKeywords(title: string, content: string): boolean {

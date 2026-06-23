@@ -1,4 +1,4 @@
-import type { DigestResult } from "../processor/ai";
+import type { DigestResult, NewsCategory } from "../processor/ai";
 import type { StockPrice } from "../utils/stocks";
 
 function formatDate(): string {
@@ -19,12 +19,9 @@ function impactEmoji(score: number): string {
 
 function sentimentEmoji(sentiment: string): string {
   switch (sentiment) {
-    case "positive":
-      return "🟢";
-    case "negative":
-      return "🔴";
-    default:
-      return "⚪";
+    case "positive": return "🟢";
+    case "negative": return "🔴";
+    default: return "⚪";
   }
 }
 
@@ -33,6 +30,19 @@ function formatStockPrice(price: StockPrice): string {
   const sign = price.changePercent > 0 ? "+" : "";
   return `${arrow} ${sign}${price.changePercent.toFixed(1)}%`;
 }
+
+const CATEGORY_EMOJIS: Record<string, string> = {
+  "Chips & GPUs": "💾",
+  "Cloud & Hyperscalers": "☁️",
+  "Datacenters": "🏢",
+  "Networking": "🔗",
+  "Power & Utilities": "⚡",
+  "Cooling Infrastructure": "❄️",
+  "AI Models & Labs": "🧠",
+  "Semiconductor Manufacturing": "🏭",
+  "M&A and Partnerships": "🤝",
+  "Earnings & Guidance": "📊",
+};
 
 function escapeHtml(text: string): string {
   return text
@@ -56,67 +66,85 @@ export function formatDigestTelegram(
 
   // ─── Header ───────────────────────────────────────
   lines.push("🚀 <b>AI Infra Morning Digest</b>");
-  lines.push(`<i>${formatDate()}</i>`);
+  lines.push(`<i>${formatDate()} • Full value chain coverage</i>`);
   lines.push("");
 
-  // ─── Top News ─────────────────────────────────────
-  lines.push("<b>📰 TOP NEWS</b>");
-  lines.push("");
-
-  const topArticles = digest.articles.slice(0, 10);
-
-  topArticles.forEach((article, i) => {
-    const emoji = impactEmoji(article.impactScore);
-    lines.push(`${i + 1}. ${emoji} <b>${escapeHtml(article.title)}</b>`);
-    lines.push(`   <i>${article.impact}</i> (${article.impactScore}/10)`);
-
-    if (article.affectedStocks.length > 0) {
-      lines.push(`   Stocks: ${article.affectedStocks.join(", ")}`);
-    }
-
-    if (article.url) {
-      lines.push(`   <a href="${article.url}">Read more</a>`);
-    }
-
-    lines.push("");
-  });
-
-  // ─── Top Stocks with Prices ───────────────────────
+  // ─── Top Stocks with Prices (compact) ─────────────
   if (digest.topStocks.length > 0) {
-    lines.push("<b>📊 TOP STOCKS</b>");
+    lines.push("<b>📊 TOP MOVERS</b>");
+    const topStocks = digest.topStocks.slice(0, 10);
+    lines.push(
+      topStocks
+        .map((stock) => {
+          const price = prices?.get(stock.ticker);
+          const emoji = sentimentEmoji(stock.sentiment);
+          const priceStr = price ? ` ${formatStockPrice(price)}` : "";
+          return `${emoji} <b>${stock.ticker}</b>${priceStr}`;
+        })
+        .join(" • ")
+    );
     lines.push("");
+  }
 
-    digest.topStocks.slice(0, 8).forEach((stock) => {
-      const price = prices?.get(stock.ticker);
-      const emoji = sentimentEmoji(stock.sentiment);
+  // ─── News by Category ─────────────────────────────
+  const categoryOrder = [
+    "Chips & GPUs",
+    "Cloud & Hyperscalers",
+    "Datacenters",
+    "Networking",
+    "Semiconductor Manufacturing",
+    "Power & Utilities",
+    "Cooling Infrastructure",
+    "AI Models & Labs",
+    "Earnings & Guidance",
+    "M&A and Partnerships",
+  ];
 
-      let line = `${emoji} <b>${stock.ticker}</b>`;
-      if (price) {
-        line += ` ${formatStockPrice(price)}`;
+  lines.push("<b>📰 NEWS BY SECTOR</b>");
+  lines.push("");
+
+  let articleCount = 0;
+  const MAX_ARTICLES = 15;
+
+  for (const cat of categoryOrder) {
+    const catArticles = digest.categories[cat as NewsCategory];
+    if (!catArticles?.length) continue;
+    if (articleCount >= MAX_ARTICLES) break;
+
+    const emoji = CATEGORY_EMOJIS[cat] || "📌";
+    lines.push(`${emoji} <b>${escapeHtml(cat)}</b>`);
+
+    const remaining = MAX_ARTICLES - articleCount;
+    const articlesToShow = catArticles.slice(0, Math.min(remaining, 3));
+
+    articlesToShow.forEach((article) => {
+      articleCount++;
+      const impactIcon = impactEmoji(article.impactScore);
+      lines.push(
+        `  ${impactIcon} ${escapeHtml(article.title)}`
+      );
+      lines.push(
+        `   <i>${article.impact}</i> (${article.impactScore}/10) ` +
+        `| Stocks: ${article.affectedStocks.slice(0, 3).join(", ") || "N/A"}`
+      );
+      if (article.url) {
+        lines.push(`   <a href="${article.url}">Read</a>`);
       }
-      line += ` — ${escapeHtml(stock.reason)}`;
-
-      lines.push(line);
     });
 
-    // Add any extra stock prices not in top stocks
-    if (prices) {
-      const extraTickers = [...prices.keys()].filter(
-        (t) => !digest.topStocks.some((s) => s.ticker === t)
-      );
-      if (extraTickers.length > 0) {
-        lines.push("");
-        lines.push("<b>💰 ADDITIONAL PRICES</b>");
-        extraTickers.slice(0, 5).forEach((ticker) => {
-          const price = prices!.get(ticker)!;
-          lines.push(
-            `   <b>${ticker}</b> ${formatStockPrice(price)}`
-          );
-        });
-      }
-    }
-
     lines.push("");
+  }
+
+  if (articleCount === 0 && digest.articles.length > 0) {
+    // Fallback: show articles without categories
+    lines.push("<b>📰 TOP NEWS</b>");
+    digest.articles.slice(0, 8).forEach((article, i) => {
+      const emoji = impactEmoji(article.impactScore);
+      lines.push(`${i + 1}. ${emoji} <b>${escapeHtml(article.title)}</b>`);
+      lines.push(`   <i>${article.impact}</i> (${article.impactScore}/10)`);
+      if (article.url) lines.push(`   <a href="${article.url}">Read</a>`);
+      lines.push("");
+    });
   }
 
   // ─── Market Outlook ─────────────────────────────
@@ -130,6 +158,20 @@ export function formatDigestTelegram(
     lines.push("<b>📝 SUMMARY</b>");
     lines.push("");
     lines.push(escapeHtml(digest.summary));
+    lines.push("");
+  }
+
+  // ─── Value Chain Coverage Indicator ───────────────
+  const activeCategories = Object.keys(digest.categories).filter(
+    (c) => digest.categories[c as NewsCategory]?.length > 0
+  );
+  if (activeCategories.length > 0) {
+    lines.push("<b>🔬 VALUE CHAIN COVERAGE</b>");
+    lines.push(
+      activeCategories
+        .map((c) => `${CATEGORY_EMOJIS[c] || "📌"} ${c}`)
+        .join(" • ")
+    );
     lines.push("");
   }
 

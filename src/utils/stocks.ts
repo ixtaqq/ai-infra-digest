@@ -11,32 +11,40 @@ export interface StockPrice {
 const YAHOO_FINANCE_URL =
   "https://query1.finance.yahoo.com/v8/finance/chart";
 
-// Common AI infrastructure tickers with their full exchange names for Yahoo Finance
+// Complete AI Infrastructure Universe — all tickers across 10 sectors
 const TICKER_MAP: Record<string, string> = {
-  NVDA: "NVDA",
-  AMD: "AMD",
-  AVGO: "AVGO",
-  MSFT: "MSFT",
-  AMZN: "AMZN",
-  GOOGL: "GOOGL",
-  META: "META",
-  TSLA: "TSLA",
-  INTC: "INTC",
-  QCOM: "QCOM",
-  TSM: "TSM",
+  // 1. AI Chip Designers
+  NVDA: "NVDA", AMD: "AMD", AVGO: "AVGO", QCOM: "QCOM",
+  MRVL: "MRVL", ARM: "ARM",
+
+  // 2. Semiconductor Manufacturing
+  TSM: "TSM", INTC: "INTC", GFS: "GFS",
+
+  // 3. Semiconductor Equipment
+  ASML: "ASML", AMAT: "AMAT", LRCX: "LRCX", KLAC: "KLAC",
+
+  // 4. Memory & Storage
   MU: "MU",
-  MRVL: "MRVL",
-  SNPS: "SNPS",
+
+  // 5. Networking
+  ANET: "ANET", CSCO: "CSCO", JNPR: "JNPR",
+
+  // 6. Datacenter REITs
+  DLR: "DLR", EQIX: "EQIX",
+
+  // 7. Cloud Providers
+  MSFT: "MSFT", AMZN: "AMZN", GOOGL: "GOOGL", ORCL: "ORCL",
+
+  // 8. Power & Energy
+  CEG: "CEG", VST: "VST", GEV: "GEV",
+
+  // 9. Cooling Infrastructure
+  VRT: "VRT", ETN: "ETN", TT: "TT", SBGSY: "SBGSY",
+
+  // 10. Other key tech
+  META: "META", CRM: "CRM", NOW: "NOW", PLTR: "PLTR",
+  IBM: "IBM", DELL: "DELL", SMCI: "SMCI", SNPS: "SNPS",
   CDNS: "CDNS",
-  ARM: "ARM",
-  DELL: "DELL",
-  SMCI: "SMCI",
-  ANET: "ANET",
-  CRM: "CRM",
-  ORCL: "ORCL",
-  NOW: "NOW",
-  PLTR: "PLTR",
-  IBM: "IBM",
 };
 
 async function fetchPrice(ticker: string): Promise<StockPrice | null> {

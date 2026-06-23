@@ -3,6 +3,22 @@ import { config } from "../config";
 import { logger } from "../utils/logger";
 import type { Article } from "../collector/rss";
 
+// ─── AI Infrastructure News Categories ───────────────
+export const NEWS_CATEGORIES = [
+  "Chips & GPUs",
+  "Cloud & Hyperscalers",
+  "Datacenters",
+  "Networking",
+  "Power & Utilities",
+  "Cooling Infrastructure",
+  "AI Models & Labs",
+  "Semiconductor Manufacturing",
+  "M&A and Partnerships",
+  "Earnings & Guidance",
+] as const;
+
+export type NewsCategory = typeof NEWS_CATEGORIES[number];
+
 // ─── Types ────────────────────────────────────────────
 export interface ProcessedArticle {
   title: string;
@@ -13,6 +29,7 @@ export interface ProcessedArticle {
   impactScore: number;
   affectedStocks: string[];
   reason: string;
+  category: NewsCategory;
 }
 
 export interface DigestResult {
@@ -20,9 +37,11 @@ export interface DigestResult {
   topStocks: { ticker: string; reason: string; sentiment: "positive" | "negative" | "neutral" }[];
   marketOutlook: string;
   summary: string;
+  categories: Record<NewsCategory, ProcessedArticle[]>;
 }
 
 const BATCH_SIZE = 10;
+const CATEGORIES_LIST = NEWS_CATEGORIES.map((c, i) => `${i + 1}. ${c}`).join("\n");
 
 // ─── AI Client Setup ──────────────────────────────────
 function createClient(): OpenAI {
@@ -31,9 +50,25 @@ function createClient(): OpenAI {
     baseURL: config.ai.baseUrl,
     timeout: 180000,
     maxRetries: 2,
-    // Use native fetch instead of node-fetch (fixes gzip decompression on Windows)
     fetch: globalThis.fetch,
   });
+}
+
+// ─── Build Category Map ──────────────────────────────
+function buildCategoriesMap(articles: ProcessedArticle[]): Record<string, ProcessedArticle[]> {
+  const map: Record<string, ProcessedArticle[]> = {};
+  for (const cat of NEWS_CATEGORIES) {
+    map[cat] = [];
+  }
+  for (const article of articles) {
+    const cat = article.category || NEWS_CATEGORIES[0];
+    if (map[cat]) {
+      map[cat].push(article);
+    } else {
+      map[NEWS_CATEGORIES[0]].push(article);
+    }
+  }
+  return map;
 }
 
 // ─── Batch Analysis Prompt ────────────────────────────
@@ -45,9 +80,11 @@ Analyze these news articles (batch ${batchNum}/${totalBatches}) and return JSON.
 For each article:
 1. Summarize in 2-3 bullet points
 2. Impact: Bullish, Bearish, or Neutral
-3. Affected stocks (tickers like NVDA, AMD, AVGO, MSFT, AMZN, GOOGL, META)
+3. Affected stocks (tickers like NVDA, AMD, AVGO, MSFT, AMZN, GOOGL, META, TSM, ASML, ANET, VRT, CEG)
 4. Impact score 1-10
 5. Why investors should care
+6. Category — assign ONE best-fit category:
+${CATEGORIES_LIST}
 
 Articles:
 ${articles
@@ -72,7 +109,8 @@ Respond ONLY with JSON:
       "impact": "Bullish",
       "impactScore": 8,
       "affectedStocks": ["NVDA"],
-      "reason": "Why it matters"
+      "reason": "Why it matters",
+      "category": "Chips & GPUs"
     }
   ]
 }`;
@@ -85,7 +123,7 @@ function buildSynthesisPrompt(
   const articlesText = batchResults
     .map(
       (a, i) =>
-        `[${i + 1}] "${a.title}" — ${a.impact} (${a.impactScore}/10) — Stocks: ${a.affectedStocks.join(", ") || "N/A"}`
+        `[${i + 1}] "${a.title}" — ${a.impact} (${a.impactScore}/10) — Cats: ${a.category || "Uncategorized"} — Stocks: ${a.affectedStocks.join(", ") || "N/A"}`
     )
     .join("\n");
 
@@ -154,7 +192,6 @@ async function processBatch(
 
   if (!result?.articles) {
     logger.warn(`Batch ${batchNum} returned unparseable result, retrying...`);
-    // Retry once
     const retryContent = await callAI(client, prompt);
     const retryResult = parseJSON<{ articles: ProcessedArticle[] }>(retryContent);
     if (!retryResult?.articles) {
@@ -196,7 +233,6 @@ export async function processArticles(
       logger.info(`Batch ${i + 1}: ${batchResults.length} articles analyzed`);
     } catch (error) {
       logger.error(`Batch ${i + 1} failed`, { error: (error as Error).message });
-      // Continue with remaining batches
     }
   }
 
@@ -204,11 +240,14 @@ export async function processArticles(
     throw new Error("All AI batches failed — no articles could be analyzed");
   }
 
-  // Synthesis pass: create market overview from all results
+  // Build categories map
+  const categories = buildCategoriesMap(allBatchResults);
+
+  // Synthesis pass: create market overview
   logger.info("Running synthesis pass for market outlook...");
   let topStocks: DigestResult["topStocks"] = [];
-  let marketOutlook = "AI infrastructure spending remains a key focus in the market.";
-  let summary = "Daily digest of AI infrastructure news.";
+  let marketOutlook = "AI infrastructure spending remains a key focus across all sectors.";
+  let summary = "Daily digest of AI infrastructure news covering the full value chain.";
 
   try {
     const synthesisPrompt = buildSynthesisPrompt(allBatchResults);
@@ -230,8 +269,12 @@ export async function processArticles(
     });
   }
 
+  const categoriesWithContent = Object.fromEntries(
+    Object.entries(categories).filter(([, arts]) => arts.length > 0)
+  ) as Record<NewsCategory, ProcessedArticle[]>;
+
   logger.info(
-    `AI processing complete: ${allBatchResults.length} articles analyzed across ${batches.length} batches`
+    `AI processing complete: ${allBatchResults.length} articles across ${Object.keys(categoriesWithContent).length} categories`
   );
 
   return {
@@ -239,5 +282,6 @@ export async function processArticles(
     topStocks,
     marketOutlook,
     summary,
+    categories: categoriesWithContent,
   };
 }
