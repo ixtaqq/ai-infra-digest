@@ -111,7 +111,7 @@ export async function runPipeline(targetChatId?: number): Promise<boolean> {
       if (secResult.newFilings.length > 0) {
         logger.info(`SEC: ${secResult.newFilings.length} new filings found, analyzing top ones...`);
         const topFilings = getTopFilings(secResult.newFilings, 5);
-        const secAnalysis = await analyzeSECFilings(topFilings, 3);
+        const secAnalysis = await analyzeSECFilings(topFilings, 5);
         secExtracts = secAnalysis.extracts;
         logger.info(`SEC analysis: ${secExtracts.length} filings analyzed (${secExtracts.filter(e => e.impactScore >= 7).length} high-impact)`);
 

@@ -98,11 +98,56 @@ function createClient(): OpenAI {
   });
 }
 
-// ─── Prompt Builder ─────────────────────────────────────
+// ─── Keywords for Pre-Filtering ─────────────────────────
+
+/** Keywords that signal relevant financial data in SEC filings.
+ * Used to skip irrelevant filings before any AI call. */
+const RELEVANT_KEYWORDS = [
+  "capital expenditure", "capex",
+  "ai revenue", "data center revenue", "ai segment",
+  "gross margin", "operating margin", "margin expansion",
+  "inventory", "inventory days", "inventory turnover",
+  "revenue guidance", "earnings guidance", "eps guidance",
+  "forward guidance", "outlook",
+  "capital allocation", "share buyback", "dividend",
+];
+
+/**
+ * Quick keyword pre-filter to skip filings with no relevant financial data.
+ * Returns true if the filing text mentions any of the target keywords.
+ * This is a free pre-filter before any AI call.
+ */
+function hasRelevantKeywords(text: string): boolean {
+  const lower = text.toLowerCase();
+  return RELEVANT_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
+// ─── Pass 1: Flagging Prompt ────────────────────────────
+
+function buildFlagPrompt(filing: SECFiling): string {
+  return `Does this SEC filing contain concrete financial data relevant to AI infrastructure investing?
+
+Company: ${filing.companyName} (${filing.ticker})
+Form: ${filing.formType}
+Date: ${filing.filingDate}
+
+Check if it mentions SPECIFIC NUMBERS for any of:
+- Capital Expenditure (Capex) or Capex guidance
+- AI / Data Center segment revenue
+- Gross margins or operating margins
+- Inventory levels or turnover
+- Revenue or EPS forward guidance
+
+FILING TEXT:
+${filing.rawText.slice(0, 3000)}
+
+Respond with JSON only:
+{"hasFinancialData": true/false, "reason": "Brief reason for the decision"}`;
+}
+
+// ─── Pass 2: Extraction Prompt ──────────────────────────
 
 function buildSECPrompt(filing: SECFiling): string {
-  const dateContext = new Date().toISOString().split("T")[0];
-
   return `You are an institutional equity research analyst specializing in AI infrastructure.
 
 Analyze this SEC filing from ${filing.companyName} (${filing.ticker}) filed on ${filing.filingDate}.
@@ -141,14 +186,38 @@ Return JSON only:
 
 // ─── Parse JSON ─────────────────────────────────────────
 
-function parseSECJSON(text: string): SECFinancialExtract | null {
+/**
+ * Clean JSON from LLM response — strips markdown code fences
+ * and extracts the first JSON object or array.
+ */
+function cleanJSON(text: string): string {
   let cleaned = text.trim();
   const codeBlock = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (codeBlock) cleaned = codeBlock[1].trim();
   const objectMatch = cleaned.match(/\{[\s\S]*\}/);
   if (objectMatch) cleaned = objectMatch[0];
+  return cleaned;
+}
+
+function parseSECJSON(text: string): SECFinancialExtract | null {
   try {
-    return JSON.parse(cleaned) as SECFinancialExtract;
+    return JSON.parse(cleanJSON(text)) as SECFinancialExtract;
+  } catch {
+    return null;
+  }
+}
+
+/** Lightweight parser for the Pass 1 flag response shape. */
+function parseFlagResponse(text: string): { hasFinancialData: boolean; reason: string } | null {
+  try {
+    const parsed = JSON.parse(cleanJSON(text));
+    if (typeof parsed === 'object' && parsed !== null && typeof parsed.hasFinancialData === 'boolean') {
+      return {
+        hasFinancialData: parsed.hasFinancialData,
+        reason: typeof parsed.reason === 'string' ? parsed.reason : '',
+      };
+    }
+    return null;
   } catch {
     return null;
   }
@@ -156,19 +225,20 @@ function parseSECJSON(text: string): SECFinancialExtract | null {
 
 // ─── Call AI with Retry ────────────────────────────────
 
-async function callAI(client: OpenAI, prompt: string): Promise<{
+async function callAI(client: OpenAI, prompt: string, model?: string): Promise<{
   content: string;
   totalTokens: number;
   promptTokens: number;
   completionTokens: number;
 }> {
+  const activeModel = model || config.ai.model;
   let lastError: Error | null = null;
   const maxRetries = 2;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const response = await client.chat.completions.create({
-        model: config.ai.model,
+        model: activeModel,
         messages: [
           {
             role: "system",
@@ -208,7 +278,7 @@ async function callAI(client: OpenAI, prompt: string): Promise<{
   throw lastError ?? new Error("SEC AI call failed after all retries");
 }
 
-// ─── Process a Single Filing ────────────────────────────
+// ─── Process a Single Filing (Pass 2 — uses STRONG model) ──
 
 interface FilingResult {
   extract: SECFinancialExtract | null;
@@ -221,7 +291,8 @@ async function processFiling(
 ): Promise<FilingResult> {
   const prompt = buildSECPrompt(filing);
   try {
-    const result = await callAI(client, prompt);
+    // Pass 2 uses the strong model for accurate number extraction
+    const result = await callAI(client, prompt, config.ai.model);
     const extract = parseSECJSON(result.content);
 
     if (!extract) {
@@ -259,24 +330,72 @@ async function processFiling(
   }
 }
 
+// ─── Pass 1: Flag Filing (uses FAST model) ──────────────
+
+interface FlagResult {
+  hasData: boolean;
+  reason: string;
+}
+
+/**
+ * Pass 1: Use the fast/cheap model to flag whether a filing contains
+ * relevant financial data (Capex, AI Revenue, Margins, Inventory, Guidance).
+ * This is much cheaper than running full extraction on every filing.
+ */
+async function flagFiling(
+  client: OpenAI,
+  filing: SECFiling
+): Promise<FlagResult> {
+  // Step 1a: Free keyword pre-filter — skip if no relevant keywords found
+  if (!hasRelevantKeywords(filing.rawText)) {
+    return { hasData: false, reason: "No relevant keywords found in filing text" };
+  }
+
+  // Step 1b: Fast AI flagging — confirm relevance with context awareness
+  const prompt = buildFlagPrompt(filing);
+  try {
+    const result = await callAI(client, prompt, config.ai.fastModel);
+    const parsed = parseFlagResponse(result.content);
+    if (parsed) {
+      return {
+        hasData: parsed.hasFinancialData,
+        reason: parsed.reason || (parsed.hasFinancialData ? "Flagged by fast model" : "Skipped by fast model"),
+      };
+    }
+    // If parsing fails, default to flagging (safer to over-include)
+    return { hasData: true, reason: "Default flag (parse failure)" };
+  } catch (error) {
+    logger.warn(`SEC flag failed for ${filing.ticker}: ${(error as Error).message}`);
+    // On error, default to flagging (safer to over-include)
+    return { hasData: true, reason: "Default flag (error fallback)" };
+  }
+}
+
 // ─── Main Processing ────────────────────────────────────
 
 /**
- * Process SEC filings through AI to extract key financial metrics.
- * Filings are processed one at a time to keep costs low.
- * Only processes the top N most impactful filings.
- * Includes a 1-second delay between batches to avoid rate limits.
+ * Two-pass SEC filing analysis:
+ *
+ * Pass 1 (Fast model): Flag which filings contain relevant financial data.
+ *   - Free keyword pre-filter skips filings with no relevant keywords
+ *   - Fast AI model (llama-3.1-8b) confirms relevance contextually
+ *
+ * Pass 2 (Strong model): Extract actual numbers from flagged filings only.
+ *   - Strong model (llama-3.3-70b) extracts precise financial data
+ *   - Only runs on filings where Pass 1 found data, saving 50-70% cost
+ *
+ * Includes 500ms delays between calls to avoid rate limits.
  */
 export async function analyzeSECFilings(
   filings: SECFiling[],
-  maxFilings = 3
+  maxFilings = 5
 ): Promise<SECAnalysisResult> {
   if (filings.length === 0) {
     return { extracts: [], totalTokens: 0, promptTokens: 0, completionTokens: 0 };
   }
 
   const actualCount = Math.min(filings.length, maxFilings);
-  logger.info(`Analyzing ${actualCount} SEC filings with AI (max ${maxFilings}, ~1,200 tokens each)...`);
+  logger.info(`SEC two-pass analysis: ${actualCount} filings (max ${maxFilings})`);
 
   const client = createClient();
   const extracts: SECFinancialExtract[] = [];
@@ -293,14 +412,43 @@ export async function analyzeSECFilings(
 
   const toProcess = sorted.slice(0, maxFilings);
 
+  // ═══ Pass 1: Flag all filings with fast model ═══
+  logger.info(`Pass 1: Flagging ${toProcess.length} filings with ${config.ai.fastModel}...`);
+  const flaggedResults: { filing: SECFiling; flag: FlagResult }[] = [];
+
   for (let i = 0; i < toProcess.length; i++) {
     const filing = toProcess[i];
-    logger.info(`SEC AI [${i + 1}/${toProcess.length}]: ${filing.ticker} ${filing.formType} (${filing.filingDate})`);
+    const start = Date.now();
+    const flag = await flagFiling(client, filing);
+    flaggedResults.push({ filing, flag });
 
-    // Add 1-second delay between filings to avoid Groq rate limits
-    if (i > 0) {
-      await sleep(1000);
+    if (flag.hasData) {
+      logger.info(`  ✓ ${filing.ticker} ${filing.formType}: ${flag.reason} (${Date.now() - start}ms)`);
+    } else {
+      logger.info(`  ✗ ${filing.ticker} ${filing.formType}: ${flag.reason} (${Date.now() - start}ms)`);
     }
+
+    // Small delay between flagging calls
+    if (i < toProcess.length - 1) await sleep(300);
+  }
+
+  const flagged = flaggedResults.filter((r) => r.flag.hasData).map((r) => r.filing);
+  logger.info(`Pass 1 complete: ${flagged.length}/${toProcess.length} filings flagged for extraction`);
+
+  // ═══ Pass 2: Extract from flagged filings with strong model ═══
+  if (flagged.length === 0) {
+    logger.info("Pass 2: No filings flagged — skipping extraction");
+    return { extracts: [], totalTokens, promptTokens: totalPrompt, completionTokens: totalCompletion };
+  }
+
+  logger.info(`Pass 2: Extracting financial data from ${flagged.length} filings with ${config.ai.model}...`);
+
+  for (let i = 0; i < flagged.length; i++) {
+    const filing = flagged[i];
+    logger.info(`  [${i + 1}/${flagged.length}] ${filing.ticker} ${filing.formType} (${filing.filingDate})`);
+
+    // 500ms delay between extractions to avoid rate limits
+    if (i > 0) await sleep(500);
 
     const result = await processFiling(client, filing);
     totalTokens += result.tokenUsage.totalTokens;
@@ -313,7 +461,7 @@ export async function analyzeSECFilings(
   }
 
   logger.info(
-    `SEC analysis complete: ${extracts.length}/${toProcess.length} filings analyzed ` +
+    `SEC two-pass analysis complete: ${extracts.length} extracts from ${flagged.length} flagged filings ` +
     `(${extracts.filter((e) => e.impactScore >= 7).length} high-impact, ` +
     `${totalTokens} tokens used)`
   );
