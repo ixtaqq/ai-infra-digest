@@ -16,7 +16,7 @@
 
 import { logger } from "./utils/logger";
 import { supabase } from "./utils/supabase";
-import { runPipeline } from "./index";
+import { generateDigest, deliverDigest, persistDigestMetrics } from "./index";
 import { startInteractiveBot } from "./sender/telegram";
 
 // ─── Time Helpers ───────────────────────────────────────
@@ -110,39 +110,42 @@ async function schedulerMain(): Promise<void> {
 
   logger.info(`Delivering digest to ${pendingUsers.length} user(s)`);
 
-  // Run the full pipeline once (feeds + AI + formatting), then deliver per-user
-  // To avoid hitting RSS feeds and AI multiple times, we run the pipeline once
-  // and re-deliver the formatted result. But since runPipeline handles sending
-  // inline, we need to run it per user.
-  //
-  // For efficiency: we collect articles once, process AI once, then format+send
-  // per user based on their watchlist. But as a first implementation, run the
-  // full pipeline for each user (this also respects per-user watchlist filtering).
+  // Generate the digest ONCE, then fan out the same formatted message to every
+  // matching user. This is the whole point of the scheduler: the expensive work
+  // (RSS crawl + AI + SEC + earnings + stock prices) happens a single time per
+  // run regardless of how many users are due, instead of once per user.
+  const generated = await generateDigest();
+  if (!generated) {
+    logger.error("Digest generation failed — no deliveries performed this run");
+    return;
+  }
+
   let successCount = 0;
   let failCount = 0;
 
   for (const user of pendingUsers) {
-    logger.info(`Delivering digest to user ${user.first_name || user.chat_id} (chat: ${user.chat_id})`);
-
     try {
-      // Run the pipeline targeting this specific user
-      const success = await runPipeline(user.chat_id);
-      if (success) {
-        successCount++;
-      } else {
-        failCount++;
-      }
+      const result = await deliverDigest(generated, user.chat_id);
+      if (result.success) successCount++;
+      else failCount++;
     } catch (error) {
       failCount++;
       logger.error(`Delivery failed for user ${user.chat_id}: ${(error as Error).message}`);
     }
   }
 
+  // Record run metrics once for this single generation — not once per user.
+  await persistDigestMetrics(
+    generated,
+    successCount > 0 ? "success" : "failed",
+    failCount > 0 ? `${failCount} of ${pendingUsers.length} user deliveries failed` : undefined
+  );
+
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   logger.info(
     `✅ Scheduled delivery complete in ${elapsed}s — ` +
-      `${successCount} delivered, ${failCount} failed` +
-      ` (${pendingUsers.length} target users)`
+      `${successCount} delivered, ${failCount} failed ` +
+      `(${pendingUsers.length} users, 1 generation)`
   );
 }
 

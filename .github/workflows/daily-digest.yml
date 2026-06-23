@@ -19,17 +19,13 @@ jobs:
         with:
           node-version: "22"
           cache: "npm"
-          cache-dependency-path: ai-infra-digest/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: |
-          cd ai-infra-digest
-          npm ci
+        run: npm ci
 
       - name: Build TypeScript
-        run: |
-          cd ai-infra-digest
-          npm run build
+        run: npm run build
 
       - name: Generate and send AI Infrastructure Digest
         env:
@@ -41,6 +37,4 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           TZ: Asia/Kuala_Lumpur
-        run: |
-          cd ai-infra-digest
-          node dist/index.js
+        run: node dist/index.js

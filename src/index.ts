@@ -9,6 +9,7 @@ import {
   startInteractiveBot,
   registerCommand,
 } from "./sender/telegram";
+import type { SendResult } from "./sender/telegram";
 import { deduplicateArticles } from "./utils/dedup";
 import { fetchStockPrices } from "./utils/stocks";
 import { supabase } from "./utils/supabase";
@@ -29,17 +30,31 @@ import type { EarningsAnalysis } from "./processor/earnings";
 const MAX_ARTICLES_FOR_AI = 35;
 
 /**
- * Run the full digest pipeline — collect, dedup, AI process, format, deliver.
- * If `targetChatId` is provided, sends the digest to that user instead of
- * the default chat, and logs per-user delivery to user_delivery_log.
- *
- * Returns true on success, false on failure.
+ * Bundle produced by {@link generateDigest} and consumed by {@link deliverDigest}
+ * and {@link persistDigestMetrics}. Generating once and reusing this bundle lets a
+ * single pipeline run be fanned out to many users without recomputing anything.
  */
-export async function runPipeline(targetChatId?: number): Promise<boolean> {
+export interface GeneratedDigest {
+  runDate: string;
+  startTime: number;
+  formattedMessage: string;
+  digest: import("./processor/ai").DigestResult;
+  articlesCollected: number;
+  feedStatuses: FeedResult[];
+  secExtracts: SECFinancialExtract[];
+  stockPrices: Map<string, import("./utils/stocks").StockPrice>;
+}
+
+/**
+ * Generate the daily digest ONCE — collect, dedup, AI process, SEC, earnings,
+ * stock prices, and format. Fires high-impact and SEC alerts. Does NOT send or
+ * persist; callers deliver + persist separately so one generation can serve many
+ * users. Returns the bundle, or null if nothing could be produced (no articles,
+ * or a generation error — in which case a failed run is recorded and an alert sent).
+ */
+export async function generateDigest(): Promise<GeneratedDigest | null> {
   const startTime = Date.now();
   const runDate = new Date().toISOString().split("T")[0];
-  let digestRunId: number | null = null;
-  let overallSuccess = false;
 
   try {
     // ─── Conditional RSS: skip consistently failing feeds ──
@@ -103,7 +118,7 @@ export async function runPipeline(targetChatId?: number): Promise<boolean> {
           "This could mean: RSS feeds are down, or no AI-relevant articles were found.\n" +
           "Check the logs for details."
       );
-      return false;
+      return null;
     }
 
     // ─── Step 1b: SEC Filing Collection ──────────────
@@ -234,198 +249,21 @@ export async function runPipeline(targetChatId?: number): Promise<boolean> {
       earningsAnalyses: earningsAnalyses.length > 0 ? earningsAnalyses : undefined,
     });
 
-    // ─── Step 4: Send to Telegram ───────────────
-    logger.info("Step 4/4: Sending digest to Telegram...");
-    let sendResult;
-    if (targetChatId) {
-      // Per-user delivery — send to the target user
-      sendResult = await sendDigestMessageToUser(targetChatId, formattedMessage);
-      // Log to user_delivery_log
-      if (supabase.isConfigured()) {
-        await supabase.logUserDelivery(
-          targetChatId,
-          runDate,
-          sendResult.success ? "success" : "failed",
-          sendResult.error
-        );
-      }
-    } else {
-      sendResult = await sendDigestMessage(formattedMessage);
-    }
-
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-
-    // ─── Emit delivery metric ────────────────────
-    emitDigestDelivery(
-      sendResult.success ? "success" : "failed",
-      digest.articles.length,
-      stockPrices.size,
-      parseFloat(elapsed),
-      digest.usage.totalTokens,
-      sendResult.error
+    logger.info(
+      `✅ Digest generated in ${((Date.now() - startTime) / 1000).toFixed(1)}s — ` +
+        `${digest.articles.length} articles across ${Object.keys(digest.categories).length} sectors, ${stockPrices.size} prices`
     );
 
-    if (sendResult.success) {
-      logger.info(
-        `✅ Digest delivered successfully in ${elapsed}s — ` +
-          `${digest.articles.length} articles, ${stockPrices.size} prices, ${digest.topStocks.length} stocks`
-      );
-    } else {
-      emitError("telegram", "error", `Digest delivery failed: ${sendResult.error}`);
-      logger.error("Failed to deliver digest", { error: sendResult.error });
-    }
-
-    // ─── Step 5: Write to Supabase ──────────────
-    if (supabase.isConfigured()) {
-      logger.info("Step 5/5: Writing metrics to Supabase...");
-
-      // Create digest run record
-      digestRunId = await supabase.createDigestRun({
-        run_date: runDate,
-        status: sendResult.success ? "success" : "failed",
-        articles_collected: articles.length,
-        articles_processed: digest.articles.length,
-        batches_run: digest.batchesRun,
-        ai_provider: "groq",
-        ai_model: config.ai.model,
-        ai_fast_model: config.ai.fastModel,
-        total_tokens_used: digest.usage.totalTokens,
-        duration_seconds: parseFloat(elapsed),
-        error_message: sendResult.success ? undefined : sendResult.error,
-      });
-
-      if (digestRunId) {
-        // Articles
-        await supabase.insertArticles(
-          digestRunId,
-          digest.articles.map((a) => ({
-            title: a.title,
-            url: a.url,
-            source: a.source,
-            impact: a.impact,
-            impact_score: a.impactScore,
-            category: a.category,
-            affected_stocks: a.affectedStocks,
-            summary: a.summary,
-            reason: a.reason,
-            is_sec_filing: a.isSECFiling || undefined,
-          }))
-        );
-
-        // Pipeline health
-        await supabase.insertPipelineHealth(
-          digestRunId,
-          feedStatuses.map((f) => ({
-            feed_name: f.name,
-            feed_url: f.url,
-            status: f.status,
-            articles_fetched: f.articlesFetched,
-            error_message: f.error,
-          }))
-        );
-      }
-
-      // Sector activity
-      const sectorCounts: Record<string, { count: number; totalScore: number; bullish: number; bearish: number; neutral: number }> = {};
-      for (const article of digest.articles) {
-        const cat = article.category || NEWS_CATEGORIES[0];
-        if (!sectorCounts[cat]) sectorCounts[cat] = { count: 0, totalScore: 0, bullish: 0, bearish: 0, neutral: 0 };
-        sectorCounts[cat].count++;
-        sectorCounts[cat].totalScore += article.impactScore;
-        if (article.impact === "Bullish") sectorCounts[cat].bullish++;
-        else if (article.impact === "Bearish") sectorCounts[cat].bearish++;
-        else sectorCounts[cat].neutral++;
-      }
-
-      await supabase.updateSectorActivity(
-        runDate,
-        Object.entries(sectorCounts).map(([sector, data]) => ({
-          sector,
-          article_count: data.count,
-          avg_impact_score: Math.round((data.totalScore / data.count) * 10) / 10,
-          bullish_count: data.bullish,
-          bearish_count: data.bearish,
-          neutral_count: data.neutral,
-        }))
-      );
-
-      // Stock mentions
-      const mentionMap: Record<string, { count: number; totalSentiment: number; totalScore: number }> = {};
-      for (const article of digest.articles) {
-        for (const ticker of article.affectedStocks) {
-          if (!mentionMap[ticker]) mentionMap[ticker] = { count: 0, totalSentiment: 0, totalScore: 0 };
-          mentionMap[ticker].count++;
-          mentionMap[ticker].totalSentiment += article.impact === "Bullish" ? 1 : article.impact === "Bearish" ? -1 : 0;
-          mentionMap[ticker].totalScore += article.impactScore;
-        }
-      }
-
-      await supabase.updateStockMentions(
-        runDate,
-        Object.entries(mentionMap).map(([ticker, data]) => ({
-          ticker,
-          mention_count: data.count,
-          avg_sentiment: Math.round((data.totalSentiment / data.count) * 10) / 10,
-          avg_impact_score: Math.round((data.totalScore / data.count) * 10) / 10,
-          price: stockPrices.get(ticker)?.price,
-          price_change_percent: stockPrices.get(ticker)?.changePercent
-            ? Math.round(stockPrices.get(ticker)!.changePercent * 100) / 100
-            : undefined,
-        }))
-      );
-
-      // Stock prices
-      await supabase.insertStockPrices(
-        [...stockPrices.values()].map((sp) => ({
-          date: runDate,
-          ticker: sp.ticker,
-          price: Math.round(sp.price * 100) / 100,
-          change: Math.round(sp.change * 100) / 100,
-          change_percent: Math.round(sp.changePercent * 100) / 100,
-          previous_close: Math.round(sp.previousClose * 100) / 100,
-        }))
-      );
-
-      // Daily metrics
-      const healthyFeeds = feedStatuses.filter((f) => f.status === "success").length;
-      const failingFeeds = feedStatuses.filter((f) => f.status === "failed").length;
-      const activeSectors = Object.keys(digest.categories).length;
-      const secFilingCount = secExtracts.length;
-
-      // Estimate cost based on provider pricing
-      const costPer1KTokens = 0.00015; // Groq Llama pricing ~$0.15/1M tokens
-      const estimatedCost = digest.usage.totalTokens * costPer1KTokens / 1000;
-
-      // Extract capex tracking from SEC filings
-      const grossCapex = secExtracts.reduce((sum, e) => sum + (e.capex || 0), 0);
-      const totalAiRev = secExtracts.reduce((sum, e) => sum + (e.aiRevenue || 0), 0);
-
-      await supabase.updateDailyMetrics(runDate, {
-        total_articles_processed: digest.articles.length,
-        total_stocks_tracked: allTickers.length,
-        sectors_active: activeSectors,
-        feeds_healthy: healthyFeeds,
-        feeds_failing: failingFeeds,
-        total_tokens_used: digest.usage.totalTokens,
-        estimated_cost: Math.round(estimatedCost * 1000000) / 1000000,
-        top_sector: Object.entries(sectorCounts).sort((a, b) => b[1].count - a[1].count)[0]?.[0] || null,
-        top_ticker: Object.entries(mentionMap).sort((a, b) => b[1].count - a[1].count)[0]?.[0] || null,
-        digest_status: sendResult.success ? "success" : "failed",
-        sec_filings_processed: secFilingCount,
-        sec_capex_total: grossCapex > 0 ? grossCapex : undefined,
-        sec_ai_revenue_total: totalAiRev > 0 ? totalAiRev : undefined,
-      });
-
-      logger.info("✅ Metrics written to Supabase");
-    }
-
-    // ─── Write Trending Now ──────────────────────
-    if (supabase.isConfigured() && digestRunId) {
-      await computeAndStoreTrending(runDate, digest);
-    }
-
-    logger.info("✅ Digest pipeline completed successfully");
-    return true;
+    return {
+      runDate,
+      startTime,
+      formattedMessage,
+      digest,
+      articlesCollected: articles.length,
+      feedStatuses,
+      secExtracts,
+      stockPrices,
+    };
 
   } catch (error) {
     const errMsg = (error as Error).message;
@@ -474,8 +312,246 @@ export async function runPipeline(targetChatId?: number): Promise<boolean> {
       // Ignore send errors
     }
 
-    return false;
+    return null;
   }
+}
+
+/**
+ * Deliver an already-generated digest to a single target (or the default chat
+ * when no `targetChatId` is given). Logs per-user delivery and emits a delivery
+ * metric. Cheap — safe to call many times for one {@link GeneratedDigest}.
+ */
+export async function deliverDigest(
+  generated: GeneratedDigest,
+  targetChatId?: number
+): Promise<SendResult> {
+  const { formattedMessage, runDate, digest, stockPrices, startTime } = generated;
+
+  logger.info(
+    targetChatId ? `Delivering digest to user ${targetChatId}...` : "Sending digest to default chat..."
+  );
+
+  let sendResult: SendResult;
+  if (targetChatId) {
+    sendResult = await sendDigestMessageToUser(targetChatId, formattedMessage);
+    if (supabase.isConfigured()) {
+      await supabase.logUserDelivery(
+        targetChatId,
+        runDate,
+        sendResult.success ? "success" : "failed",
+        sendResult.error
+      );
+    }
+  } else {
+    sendResult = await sendDigestMessage(formattedMessage);
+  }
+
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  emitDigestDelivery(
+    sendResult.success ? "success" : "failed",
+    digest.articles.length,
+    stockPrices.size,
+    parseFloat(elapsed),
+    digest.usage.totalTokens,
+    sendResult.error
+  );
+
+  if (sendResult.success) {
+    logger.info(
+      `✅ Digest delivered in ${elapsed}s — ` +
+        `${digest.articles.length} articles, ${stockPrices.size} prices, ${digest.topStocks.length} stocks`
+    );
+  } else {
+    emitError("telegram", "error", `Digest delivery failed: ${sendResult.error}`);
+    logger.error("Failed to deliver digest", { error: sendResult.error });
+  }
+
+  return sendResult;
+}
+
+/**
+ * Persist run metrics for a generated digest to Supabase (digest_runs, articles,
+ * sector activity, stock mentions/prices, daily metrics, trending). Call ONCE per
+ * generation, after delivery — not once per user.
+ */
+export async function persistDigestMetrics(
+  generated: GeneratedDigest,
+  status: "success" | "failed",
+  errorMessage?: string
+): Promise<void> {
+  if (!supabase.isConfigured()) return;
+
+  const { runDate, startTime, digest, articlesCollected, feedStatuses, secExtracts, stockPrices } = generated;
+  const durationSeconds = Math.round(((Date.now() - startTime) / 1000) * 10) / 10;
+
+  logger.info("Writing metrics to Supabase...");
+
+  const allTickers = [
+    ...new Set([
+      ...digest.articles.flatMap((a) => a.affectedStocks),
+      ...digest.topStocks.map((s) => s.ticker),
+    ]),
+  ];
+
+  const digestRunId = await supabase.createDigestRun({
+    run_date: runDate,
+    status,
+    articles_collected: articlesCollected,
+    articles_processed: digest.articles.length,
+    batches_run: digest.batchesRun,
+    ai_provider: "groq",
+    ai_model: config.ai.model,
+    ai_fast_model: config.ai.fastModel,
+    total_tokens_used: digest.usage.totalTokens,
+    duration_seconds: durationSeconds,
+    error_message: status === "success" ? undefined : errorMessage,
+  });
+
+  if (digestRunId) {
+    await supabase.insertArticles(
+      digestRunId,
+      digest.articles.map((a) => ({
+        title: a.title,
+        url: a.url,
+        source: a.source,
+        impact: a.impact,
+        impact_score: a.impactScore,
+        category: a.category,
+        affected_stocks: a.affectedStocks,
+        summary: a.summary,
+        reason: a.reason,
+        is_sec_filing: a.isSECFiling || undefined,
+      }))
+    );
+
+    await supabase.insertPipelineHealth(
+      digestRunId,
+      feedStatuses.map((f) => ({
+        feed_name: f.name,
+        feed_url: f.url,
+        status: f.status,
+        articles_fetched: f.articlesFetched,
+        error_message: f.error,
+      }))
+    );
+  }
+
+  // Sector activity
+  const sectorCounts: Record<string, { count: number; totalScore: number; bullish: number; bearish: number; neutral: number }> = {};
+  for (const article of digest.articles) {
+    const cat = article.category || NEWS_CATEGORIES[0];
+    if (!sectorCounts[cat]) sectorCounts[cat] = { count: 0, totalScore: 0, bullish: 0, bearish: 0, neutral: 0 };
+    sectorCounts[cat].count++;
+    sectorCounts[cat].totalScore += article.impactScore;
+    if (article.impact === "Bullish") sectorCounts[cat].bullish++;
+    else if (article.impact === "Bearish") sectorCounts[cat].bearish++;
+    else sectorCounts[cat].neutral++;
+  }
+
+  await supabase.updateSectorActivity(
+    runDate,
+    Object.entries(sectorCounts).map(([sector, data]) => ({
+      sector,
+      article_count: data.count,
+      avg_impact_score: Math.round((data.totalScore / data.count) * 10) / 10,
+      bullish_count: data.bullish,
+      bearish_count: data.bearish,
+      neutral_count: data.neutral,
+    }))
+  );
+
+  // Stock mentions
+  const mentionMap: Record<string, { count: number; totalSentiment: number; totalScore: number }> = {};
+  for (const article of digest.articles) {
+    for (const ticker of article.affectedStocks) {
+      if (!mentionMap[ticker]) mentionMap[ticker] = { count: 0, totalSentiment: 0, totalScore: 0 };
+      mentionMap[ticker].count++;
+      mentionMap[ticker].totalSentiment += article.impact === "Bullish" ? 1 : article.impact === "Bearish" ? -1 : 0;
+      mentionMap[ticker].totalScore += article.impactScore;
+    }
+  }
+
+  await supabase.updateStockMentions(
+    runDate,
+    Object.entries(mentionMap).map(([ticker, data]) => ({
+      ticker,
+      mention_count: data.count,
+      avg_sentiment: Math.round((data.totalSentiment / data.count) * 10) / 10,
+      avg_impact_score: Math.round((data.totalScore / data.count) * 10) / 10,
+      price: stockPrices.get(ticker)?.price,
+      price_change_percent: stockPrices.get(ticker)?.changePercent
+        ? Math.round(stockPrices.get(ticker)!.changePercent * 100) / 100
+        : undefined,
+    }))
+  );
+
+  // Stock prices
+  await supabase.insertStockPrices(
+    [...stockPrices.values()].map((sp) => ({
+      date: runDate,
+      ticker: sp.ticker,
+      price: Math.round(sp.price * 100) / 100,
+      change: Math.round(sp.change * 100) / 100,
+      change_percent: Math.round(sp.changePercent * 100) / 100,
+      previous_close: Math.round(sp.previousClose * 100) / 100,
+    }))
+  );
+
+  // Daily metrics
+  const healthyFeeds = feedStatuses.filter((f) => f.status === "success").length;
+  const failingFeeds = feedStatuses.filter((f) => f.status === "failed").length;
+  const activeSectors = Object.keys(digest.categories).length;
+  const secFilingCount = secExtracts.length;
+
+  const costPer1KTokens = 0.00015; // Groq Llama pricing ~$0.15/1M tokens
+  const estimatedCost = digest.usage.totalTokens * costPer1KTokens / 1000;
+
+  const grossCapex = secExtracts.reduce((sum, e) => sum + (e.capex || 0), 0);
+  const totalAiRev = secExtracts.reduce((sum, e) => sum + (e.aiRevenue || 0), 0);
+
+  await supabase.updateDailyMetrics(runDate, {
+    total_articles_processed: digest.articles.length,
+    total_stocks_tracked: allTickers.length,
+    sectors_active: activeSectors,
+    feeds_healthy: healthyFeeds,
+    feeds_failing: failingFeeds,
+    total_tokens_used: digest.usage.totalTokens,
+    estimated_cost: Math.round(estimatedCost * 1000000) / 1000000,
+    top_sector: Object.entries(sectorCounts).sort((a, b) => b[1].count - a[1].count)[0]?.[0] || null,
+    top_ticker: Object.entries(mentionMap).sort((a, b) => b[1].count - a[1].count)[0]?.[0] || null,
+    digest_status: status,
+    sec_filings_processed: secFilingCount,
+    sec_capex_total: grossCapex > 0 ? grossCapex : undefined,
+    sec_ai_revenue_total: totalAiRev > 0 ? totalAiRev : undefined,
+  });
+
+  if (digestRunId) {
+    await computeAndStoreTrending(runDate, digest);
+  }
+
+  logger.info("✅ Metrics written to Supabase");
+}
+
+/**
+ * Run the full pipeline for a single delivery target — generate, deliver, persist.
+ * Used by the daily workflow (no target → default chat). For multi-user fan-out,
+ * call {@link generateDigest} once and {@link deliverDigest} per user instead.
+ *
+ * Returns true on successful delivery.
+ */
+export async function runPipeline(targetChatId?: number): Promise<boolean> {
+  const generated = await generateDigest();
+  if (!generated) return false;
+
+  const sendResult = await deliverDigest(generated, targetChatId);
+  await persistDigestMetrics(
+    generated,
+    sendResult.success ? "success" : "failed",
+    sendResult.error
+  );
+
+  logger.info("✅ Digest pipeline completed");
+  return sendResult.success;
 }
 
 async function main() {

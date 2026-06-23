@@ -4,14 +4,34 @@ import { logger } from "../utils/logger";
 
 let bot: TelegramBot | null = null;
 let commandHandlersRegistered = false;
+let useWebhook = false;
+
+/**
+ * Switch the (lazily-created) bot into webhook mode — it will be created with
+ * polling disabled. MUST be called before the first getBot()/startInteractiveBot()
+ * call (i.e., at the very top of the webhook server entry point). In webhook mode,
+ * updates are fed in via {@link handleWebhookUpdate} instead of long polling.
+ */
+export function enableWebhookMode(): void {
+  useWebhook = true;
+}
 
 function getBot(): TelegramBot {
   if (!bot) {
-    // Always create with polling: true so interactive commands work.
-    // A polling bot can also send outgoing messages via sendMessage().
-    bot = new TelegramBot(config.telegram.botToken, { polling: true });
+    // Polling for local/CI runs; disabled in webhook mode so a serverless or
+    // always-on host can push updates via processUpdate(). A non-polling bot can
+    // still send outgoing messages via sendMessage().
+    bot = new TelegramBot(config.telegram.botToken, { polling: !useWebhook });
   }
   return bot;
+}
+
+/**
+ * Feed a raw Telegram update (a webhook POST body) to the bot's registered
+ * command handlers. Call enableWebhookMode() + startInteractiveBot() first.
+ */
+export function handleWebhookUpdate(update: TelegramBot.Update): void {
+  getBot().processUpdate(update);
 }
 
 export interface SendResult {
@@ -404,7 +424,11 @@ function initCommands() {
     }
   });
 
-  logger.info("Telegram bot polling started — interactive commands ready");
+  logger.info(
+    useWebhook
+      ? "Telegram command handlers registered — webhook mode (updates via processUpdate)"
+      : "Telegram bot polling started — interactive commands ready"
+  );
 }
 
 async function upsertUser(msg: TelegramBot.Message): Promise<void> {

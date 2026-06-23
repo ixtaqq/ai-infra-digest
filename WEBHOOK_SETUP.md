@@ -4,128 +4,80 @@ Switching from long polling to a webhook makes the bot more reliable in producti
 Polling works by repeatedly calling `getUpdates`, which wastes resources and can hit
 Telegram's rate limits. A webhook pushes updates to your server immediately.
 
-## How It Works
+## Why this matters
 
-The bot already has full webhook support built in:
+The daily-digest and scheduled-delivery GitHub Actions runs start the polling bot,
+do their work, then `process.exit(0)` within ~2 minutes. GitHub Actions has no
+long-running process, so interactive commands (`/digest`, `/sec`, `/watchlist`,
+`/alert`, `/feedback`, …) only respond during that brief window. To make them work
+**24/7**, run the webhook server on an always-on host.
 
-- `setupWebhook(url, opts?)` — stops polling, deletes old webhook, sets new one
-- `startWebhookBot(url, opts?)` — registers commands + sets webhook in one call
-- `switchToPolling()` — deletes webhook, resumes polling (for local dev)
-- `getWebhookInfo()` — returns webhook URL, pending update count, last error
+## Built-in webhook server
 
-## Option 1: Vercel (Recommended)
+There is now a ready-to-run server: [`src/webhook.ts`](src/webhook.ts) (zero extra
+deps — uses Node's `http`). It:
 
-Vercel's serverless functions can receive Telegram updates easily.
+- registers all command handlers and puts the bot in **non-polling** mode
+  (`enableWebhookMode()`),
+- receives Telegram updates at `POST {WEBHOOK_PATH}` and dispatches them via
+  `processUpdate`,
+- verifies the `X-Telegram-Bot-Api-Secret-Token` header against `WEBHOOK_SECRET`
+  (returns `403` on mismatch),
+- auto-registers the webhook with Telegram on startup when `WEBHOOK_URL` is set.
 
-### 1. Create `api/webhook.ts`
+### Environment
 
-```ts
-import type { VercelRequest, VercelResponse } from "@vercel/node";
-import TelegramBot from "node-telegram-bot-api";
+| Var | Required | Default | Purpose |
+|---|---|---|---|
+| `WEBHOOK_URL` | for auto-register | — | Public base URL, e.g. `https://my-bot.onrender.com` |
+| `WEBHOOK_PATH` | ❌ | `/telegram/webhook` | Path that receives updates |
+| `WEBHOOK_SECRET` | recommended | — | Shared secret; rejects requests without it |
+| `PORT` | ❌ | `3000` | Most hosts inject this automatically |
 
-const TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
+Plus the usual `TELEGRAM_BOT_TOKEN` (and `AI_API_KEY` / `SUPABASE_*` if commands
+hit them).
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "POST") {
-    return res.status(405).send("Method Not Allowed");
-  }
-
-  const bot = new TelegramBot(TOKEN, { polling: false });
-  try {
-    await bot.processUpdate(req.body);
-    res.status(200).send("OK");
-  } catch (err) {
-    res.status(500).send((err as Error).message);
-  }
-}
-```
-
-### 2. Deploy + Set Webhook
+### Run it
 
 ```bash
-# Deploy to Vercel
-npx vercel --prod
-
-# Set the webhook (run once after deploy)
-curl -X POST "https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook?url=https://your-domain.vercel.app/api/webhook"
-
-# Verify
-curl "https://api.telegram.org/bot<YOUR_TOKEN>/getWebhookInfo"
+npm run webhook            # local dev (tsx)
+npm run build && npm run start:webhook   # production (compiled)
 ```
 
-## Option 2: Cloudflare Workers
+Locally, expose it with a tunnel (`ngrok http 3000`) and set `WEBHOOK_URL` to the
+tunnel URL so Telegram can reach you.
 
-### 1. Create `worker.js`
+## Deploy (Render / Railway / Fly.io / any container host)
 
-```js
-const TOKEN = TELEGRAM_BOT_TOKEN;
-const BOT_HOST = "https://api.telegram.org";
+A [`Dockerfile`](Dockerfile) is included — it builds and runs `dist/webhook.js`.
 
-async function handleUpdate(update) {
-  // Forward update to your bot's processing endpoint
-  // or process inline with grammY/telegraf
-  const chatId = update.message?.chat?.id;
-  if (!chatId) return new Response("OK");
+1. Point your host at this directory (Docker build context = `ai-infra-digest/`).
+2. Set env vars: `TELEGRAM_BOT_TOKEN`, `WEBHOOK_SECRET` (any random string),
+   `WEBHOOK_URL` (your service's public URL), and `AI_API_KEY` / `SUPABASE_*` as
+   needed. The host sets `PORT`.
+3. Deploy. On boot the server registers the webhook automatically (look for
+   `Webhook registered with Telegram` in the logs).
 
-  // Send response back
-  await fetch(`${BOT_HOST}/bot${TOKEN}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text: "🤖 I'm alive!",
-    }),
-  });
+Render example: New → Web Service → "Deploy from a Dockerfile", set root directory
+to `ai-infra-digest`, add the env vars above (`WEBHOOK_URL` =
+`https://<service>.onrender.com`).
 
-  return new Response("OK");
-}
-
-export default {
-  async fetch(request) {
-    if (request.method === "POST") {
-      return handleUpdate(await request.json());
-    }
-    return new Response("OK");
-  },
-};
-```
-
-### 2. Deploy + Set Webhook
+### Manual webhook registration (if you skip `WEBHOOK_URL`)
 
 ```bash
-npx wrangler deploy worker.js
-# Then set webhook via Telegram API as above
+curl -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook" \
+  -d "url=https://your-host/telegram/webhook" \
+  -d "secret_token=<WEBHOOK_SECRET>"
+
+curl "https://api.telegram.org/bot<TOKEN>/getWebhookInfo"
 ```
 
-## Option 3: Railway / Render / Fly.io (Express)
+## Serverless (Vercel / Cloudflare) option
 
-For a long-running Node server:
-
-```ts
-import express from "express";
-import TelegramBot from "node-telegram-bot-api";
-
-const app = express();
-app.use(express.json());
-
-const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN!, { polling: false });
-
-app.post("/webhook", async (req, res) => {
-  try {
-    await bot.processUpdate(req.body);
-    res.sendStatus(200);
-  } catch (err) {
-    console.error("Webhook error:", err);
-    res.sendStatus(500);
-  }
-});
-
-// Set webhook on startup
-const domain = process.env.RAILWAY_PUBLIC_DOMAIN!;
-await bot.setWebHook(`https://${domain}/webhook`);
-
-app.listen(process.env.PORT || 3000);
-```
+Each Telegram update is a single POST, so a serverless function works too — reuse
+the pure router `decideWebhook(...)` from `src/webhook.ts` to validate the secret
+and parse the body, then call `handleWebhookUpdate(update)`. (Note: Vercel and
+GitHub Actions can't host the *polling* bot; only a webhook fits serverless.)
 
 ## Verifying Webhook Health
 
