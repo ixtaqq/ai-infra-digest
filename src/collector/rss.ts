@@ -145,7 +145,7 @@ const AI_KEYWORDS = [
   "GlobalFoundries", "GFS", "Samsung",
 ];
 
-function matchesKeywords(title: string, content: string): boolean {
+export function matchesKeywords(title: string, content: string): boolean {
   const text = `${title} ${content}`.toLowerCase();
   return AI_KEYWORDS.some((kw) => text.includes(kw.toLowerCase()));
 }

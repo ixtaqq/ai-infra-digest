@@ -38,6 +38,8 @@ jobs:
           AI_PROVIDER: ${{ vars.AI_PROVIDER || 'groq' }}
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
           AI_MODEL: ${{ vars.AI_MODEL || 'llama-3.3-70b-versatile' }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           TZ: Asia/Kuala_Lumpur
         run: |
           cd ai-infra-digest

@@ -8,20 +8,29 @@
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "test-digest": "tsx scripts/test-digest.ts",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
-  "keywords": ["ai", "infrastructure", "telegram-bot", "news-digest", "stock-market"],
+  "keywords": [
+    "ai",
+    "infrastructure",
+    "telegram-bot",
+    "news-digest",
+    "stock-market"
+  ],
   "license": "MIT",
   "dependencies": {
-    "rss-parser": "^3.13.0",
+    "dotenv": "^16.4.5",
     "node-telegram-bot-api": "^0.66.0",
     "openai": "^4.73.0",
-    "dotenv": "^16.4.5"
+    "rss-parser": "^3.13.0"
   },
   "devDependencies": {
-    "typescript": "^5.6.0",
-    "tsx": "^4.19.0",
     "@types/node": "^22.5.0",
-    "@types/node-telegram-bot-api": "^0.64.7"
+    "@types/node-telegram-bot-api": "^0.64.7",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.9"
   }
 }

@@ -95,7 +95,7 @@ async function main() {
         batches_run: Math.ceil(articlesToProcess.length / 10),
         ai_provider: "groq",
         ai_model: "llama-3.3-70b-versatile",
-        total_tokens_used: 0, // Tracked separately if needed
+        total_tokens_used: digest.usage.totalTokens,
         duration_seconds: parseFloat(elapsed),
         error_message: sendResult.success ? undefined : sendResult.error,
       });
@@ -196,14 +196,18 @@ async function main() {
       const failingFeeds = feedStatuses.filter((f) => f.status === "failed").length;
       const activeSectors = Object.keys(digest.categories).length;
 
+      // Estimate cost based on provider pricing
+      const costPer1KTokens = 0.00015; // Groq Llama pricing ~$0.15/1M tokens
+      const estimatedCost = digest.usage.totalTokens * costPer1KTokens / 1000;
+
       await supabase.updateDailyMetrics(runDate, {
         total_articles_processed: digest.articles.length,
         total_stocks_tracked: allTickers.length,
         sectors_active: activeSectors,
         feeds_healthy: healthyFeeds,
         feeds_failing: failingFeeds,
-        total_tokens_used: 0,
-        estimated_cost: 0,
+        total_tokens_used: digest.usage.totalTokens,
+        estimated_cost: Math.round(estimatedCost * 1000000) / 1000000,
         top_sector: Object.entries(sectorCounts).sort((a, b) => b[1].count - a[1].count)[0]?.[0] || null,
         top_ticker: Object.entries(mentionMap).sort((a, b) => b[1].count - a[1].count)[0]?.[0] || null,
         digest_status: sendResult.success ? "success" : "failed",
@@ -216,9 +220,7 @@ async function main() {
     logger.error("Digest generation failed", {
       error: (error as Error).message,
       stack: (error as Error).stack?.slice(0, 500),
-    });
-
-    // Record failure in Supabase
+    });      // Record failure in Supabase
     if (supabase.isConfigured()) {
       await supabase.createDigestRun({
         run_date: runDate,

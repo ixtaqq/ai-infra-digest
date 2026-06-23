@@ -32,12 +32,19 @@ export interface ProcessedArticle {
   category: NewsCategory;
 }
 
+export interface AIUsage {
+  totalTokens: number;
+  promptTokens: number;
+  completionTokens: number;
+}
+
 export interface DigestResult {
   articles: ProcessedArticle[];
   topStocks: { ticker: string; reason: string; sentiment: "positive" | "negative" | "neutral" }[];
   marketOutlook: string;
   summary: string;
   categories: Record<NewsCategory, ProcessedArticle[]>;
+  usage: AIUsage;
 }
 
 const BATCH_SIZE = 10;
@@ -156,8 +163,17 @@ function parseJSON<T>(text: string): T | null {
   }
 }
 
+export interface CallAIResult {
+  content: string;
+  usage: {
+    totalTokens: number;
+    promptTokens: number;
+    completionTokens: number;
+  };
+}
+
 // ─── Call AI with Retry ──────────────────────────────
-async function callAI(client: OpenAI, prompt: string): Promise<string> {
+async function callAI(client: OpenAI, prompt: string): Promise<CallAIResult> {
   const response = await client.chat.completions.create({
     model: config.ai.model,
     messages: [
@@ -176,7 +192,23 @@ async function callAI(client: OpenAI, prompt: string): Promise<string> {
 
   const content = response.choices[0]?.message?.content;
   if (!content) throw new Error("Empty AI response");
-  return content;
+
+  const usage = response.usage;
+  return {
+    content,
+    usage: {
+      totalTokens: usage?.total_tokens ?? 0,
+      promptTokens: usage?.prompt_tokens ?? 0,
+      completionTokens: usage?.completion_tokens ?? 0,
+    },
+  };
+}
+
+interface BatchResult {
+  articles: ProcessedArticle[];
+  totalTokens: number;
+  promptTokens: number;
+  completionTokens: number;
 }
 
 // ─── Process Articles in Batches ─────────────────────
@@ -185,23 +217,34 @@ async function processBatch(
   batch: Article[],
   batchNum: number,
   totalBatches: number
-): Promise<ProcessedArticle[]> {
+): Promise<BatchResult> {
   const prompt = buildBatchPrompt(batch, batchNum, totalBatches);
-  const content = await callAI(client, prompt);
+  const { content, usage } = await callAI(client, prompt);
   const result = parseJSON<{ articles: ProcessedArticle[] }>(content);
 
   if (!result?.articles) {
     logger.warn(`Batch ${batchNum} returned unparseable result, retrying...`);
-    const retryContent = await callAI(client, prompt);
-    const retryResult = parseJSON<{ articles: ProcessedArticle[] }>(retryContent);
-    if (!retryResult?.articles) {
+    const retryResult = await callAI(client, prompt);
+    const retryContent = retryResult.content;
+    const retryParsed = parseJSON<{ articles: ProcessedArticle[] }>(retryContent);
+    if (!retryParsed?.articles) {
       logger.error(`Batch ${batchNum} failed after retry`);
-      return [];
+      return { articles: [], totalTokens: 0, promptTokens: 0, completionTokens: 0 };
     }
-    return retryResult.articles;
+    return {
+      articles: retryParsed.articles,
+      totalTokens: retryResult.usage.totalTokens + usage.totalTokens,
+      promptTokens: retryResult.usage.promptTokens + usage.promptTokens,
+      completionTokens: retryResult.usage.completionTokens + usage.completionTokens,
+    };
   }
 
-  return result.articles;
+  return {
+    articles: result.articles,
+    totalTokens: usage.totalTokens,
+    promptTokens: usage.promptTokens,
+    completionTokens: usage.completionTokens,
+  };
 }
 
 // ─── Main Processing ──────────────────────────────────
@@ -225,12 +268,19 @@ export async function processArticles(
 
   // Process all batches
   const allBatchResults: ProcessedArticle[] = [];
+  let totalTokens = 0;
+  let totalPromptTokens = 0;
+  let totalCompletionTokens = 0;
+
   for (let i = 0; i < batches.length; i++) {
     logger.info(`Processing batch ${i + 1}/${batches.length} (${batches[i].length} articles)...`);
     try {
-      const batchResults = await processBatch(client, batches[i], i + 1, batches.length);
-      allBatchResults.push(...batchResults);
-      logger.info(`Batch ${i + 1}: ${batchResults.length} articles analyzed`);
+      const result = await processBatch(client, batches[i], i + 1, batches.length);
+      allBatchResults.push(...result.articles);
+      totalTokens += result.totalTokens;
+      totalPromptTokens += result.promptTokens;
+      totalCompletionTokens += result.completionTokens;
+      logger.info(`Batch ${i + 1}: ${result.articles.length} articles, ${result.totalTokens} tokens`);
     } catch (error) {
       logger.error(`Batch ${i + 1} failed`, { error: (error as Error).message });
     }
@@ -251,12 +301,15 @@ export async function processArticles(
 
   try {
     const synthesisPrompt = buildSynthesisPrompt(allBatchResults);
-    const synthesisContent = await callAI(client, synthesisPrompt);
+    const synthesisResult = await callAI(client, synthesisPrompt);
+    totalTokens += synthesisResult.usage.totalTokens;
+    totalPromptTokens += synthesisResult.usage.promptTokens;
+    totalCompletionTokens += synthesisResult.usage.completionTokens;
     const synthesis = parseJSON<{
       topStocks: DigestResult["topStocks"];
       marketOutlook: string;
       summary: string;
-    }>(synthesisContent);
+    }>(synthesisResult.content);
 
     if (synthesis) {
       topStocks = synthesis.topStocks || [];
@@ -274,7 +327,7 @@ export async function processArticles(
   ) as Record<NewsCategory, ProcessedArticle[]>;
 
   logger.info(
-    `AI processing complete: ${allBatchResults.length} articles across ${Object.keys(categoriesWithContent).length} categories`
+    `AI processing complete: ${allBatchResults.length} articles across ${Object.keys(categoriesWithContent).length} categories (${totalTokens} tokens used)`
   );
 
   return {
@@ -283,5 +336,10 @@ export async function processArticles(
     marketOutlook,
     summary,
     categories: categoriesWithContent,
+    usage: {
+      totalTokens,
+      promptTokens: totalPromptTokens,
+      completionTokens: totalCompletionTokens,
+    },
   };
 }
