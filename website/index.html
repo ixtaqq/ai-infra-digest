@@ -727,8 +727,9 @@
 
       <p>
         Collects <strong>57 RSS feeds</strong>, analyzes them with <strong>two-tier AI routing</strong>,
-        extracts <strong>SEC filings</strong> from 35 companies via two-pass extraction, and delivers a curated
-        morning digest — straight to your Telegram and live analytics dashboard.
+        extracts <strong>SEC filings</strong> from 35 companies via two-pass extraction,
+        mines <strong>earnings call transcripts</strong> from 15 companies with guidance delta,
+        and delivers a curated morning digest — straight to your Telegram and live analytics dashboard.
       </p>
 
       <div class="hero-actions">
@@ -792,18 +793,18 @@
     <div class="ticker-track" id="tickerTrack">
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:00</span> NVIDIA files 8-K — $26B capex</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:02</span> Article analysis complete — 142 articles processed</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:05</span> AI synthesis pass — market outlook generated</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:07</span> SEC filings analyzed — 5 new filings</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:10</span> Stock prices updated — 30 tickers</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:12</span> Digest delivered to Telegram</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:15</span> Supabase metrics written</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:04</span> Earnings transcripts fetched — 5 calls analyzed</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:07</span> SEC filings analyzed — 5 new filings, 2 high-impact</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:10</span> Stock prices updated — 30 tickers via Yahoo Finance</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:12</span> 🎙️ Earnings Watch generated — guidance delta computed</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:15</span> Digest delivered to Telegram + Supabase written</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:00</span> NVIDIA files 8-K — $26B capex</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:02</span> Article analysis complete — 142 articles processed</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:05</span> AI synthesis pass — market outlook generated</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:07</span> SEC filings analyzed — 5 new filings</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:10</span> Stock prices updated — 30 tickers</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:12</span> Digest delivered to Telegram</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:15</span> Supabase metrics written</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:04</span> Earnings transcripts fetched — 5 calls analyzed</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:07</span> SEC filings analyzed — 5 new filings, 2 high-impact</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:10</span> Stock prices updated — 30 tickers via Yahoo Finance</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:12</span> 🎙️ Earnings Watch generated — guidance delta computed</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:15</span> Digest delivered to Telegram + Supabase written</span>
     </div>
   </div>
 
@@ -860,22 +861,27 @@
         <div class="feature-card delay-2">
           <span class="icon">📊</span>
           <h3>Stock &amp; Market Data</h3>
-          <p>Real‑time price snapshots via Yahoo Finance. Tracks changes and sector rotation for every mentioned ticker.</p>
+          <p>Yahoo Finance price snapshots for 30+ tickers. Tracks changes and sector rotation for every mentioned stock.</p>
         </div>
         <div class="feature-card delay-2">
-          <span class="icon">🤖</span>
-          <h3>Telegram Bot Delivery</h3>
-          <p>Digest delivered at your preferred time with interactive commands: /digest, /trending, /feedback, /alert, /sec, and /watchlist.</p>
+          <span class="icon">🎙️</span>
+          <h3>Earnings Transcript Mining</h3>
+          <p>Fetches earnings calls via Roic.ai API for 15 AI companies. Two-pass AI: topic segmentation (fast) + guidance extraction &amp; tone (strong). QoQ guidance delta with &#x2191;&#x2193; arrows.</p>
         </div>
         <div class="feature-card delay-3">
           <span class="icon">🏛️</span>
           <h3>SEC Two-Pass Extraction</h3>
-          <p>Keyword pre-filter (free) → fast model flagging (~$0.0005) → strong model extraction (~$0.01). Extracts Capex, AI Revenue, Margins, Guidance from 35 companies. 🏛️ badge on filing articles.</p>
+          <p>Keyword pre-filter (free) → fast model flagging (~$0.0005) → strong model extraction (~$0.01). Capex, AI Revenue, Margins, Guidance from 35 companies. 🏛️ badge on filing articles.</p>
+        </div>
+        <div class="feature-card delay-3">
+          <span class="icon">🤖</span>
+          <h3>Telegram Bot + Digest</h3>
+          <p>Delivered at your preferred time with /digest, /trending, /feedback, /alert, /sec commands. 🏛️ SEC badges + 🎙️ Earnings Watch sections included.</p>
         </div>
         <div class="feature-card delay-3">
           <span class="icon">🖥️</span>
           <h3>Premium Live Dashboard</h3>
-          <p>Gold fintech UI with 6 charts, SEC filings table (capex/AI revenue/margins), full‑text search, trending analysis, and delivery logs.</p>
+          <p>Gold fintech UI with 6 charts, SEC filings table, full‑text search, trending analysis, earnings data, and delivery logs.</p>
         </div>
       </div>
     </div>
@@ -988,9 +994,9 @@
             </div>
             <div class="phase-title-text">Interaction.</div>
             <ul class="feature-list">
-              <li>Earnings transcript mining — download and analyze calls for guidance &amp; tone</li>
-              <li>Management tone + guidance delta — QoQ comparison, CEO/CFO sentiment analysis</li>
-              <li>Dashboard 2.0 — Supabase Auth, public digest pages, SEC charts</li>
+              <li>Dashboard 2.0 — Supabase Auth, public digest pages, earnings trend charts</li>
+              <li>Earnings transcript archive &amp; historical charts on dashboard</li>
+              <li>Guidance delta visualization — capex barometer, AI revenue index</li>
               <li>CMD+K search for SEC filings &amp; transcript archive</li>
             </ul>
           </div>
@@ -1095,10 +1101,11 @@
       { id: 'termLine2', text: '→ Dedup: 142 unique articles (23 duplicates)', delay: 1400 },
       { id: 'termLine3', text: '→ AI: Processing batch 1/4 — 12 articles', delay: 2400 },
       { id: 'termLine4', text: '→ AI: Synthesis pass — market outlook generated', delay: 3600 },
-      { id: 'termLine5', text: '→ SEC: 5 new filings analyzed — 2 high-impact', delay: 4800 },
-      { id: 'termLine6', text: '→ Stocks: 30 tickers updated via Yahoo Finance', delay: 6000 },
-      { id: 'termLine7', text: '→ Telegram: Digest sent — 142 articles, 8 sections', delay: 7200 },
-      { id: 'termLine8', text: '→ Supabase: 11 tables written — dashboard updated', delay: 8400 },
+      { id: 'termLine5', text: '→ Earnings: 5 transcripts analyzed — guidance delta computed', delay: 4200 },
+      { id: 'termLine6', text: '→ SEC: 5 new filings analyzed — 2 high-impact', delay: 5200 },
+      { id: 'termLine7', text: '→ Stocks: 30 tickers updated via Yahoo Finance', delay: 6200 },
+      { id: 'termLine8', text: '→ Telegram: Digest sent — 142 articles, 8 sections + Earnings Watch', delay: 7200 },
+      { id: 'termLine9', text: '→ Supabase: 13 tables written — dashboard updated', delay: 8400 },
     ];
 
     function typeLine(element, text, callback) {

@@ -1,25 +1,11 @@
 {
   "version": 2,
+  "framework": null,
   "buildCommand": null,
   "outputDirectory": ".",
   "routes": [
-    { "src": "^/dashboard(/.*)?$", "dest": "/dashboard/index.html" },
-    { "handle": "filesystem" },
-    { "src": "/(.*)", "dest": "/index.html" }
-  ],
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "X-Frame-Options", "value": "DENY" },
-        { "key": "X-XSS-Protection", "value": "1; mode=block" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
-      ]
-    }
-  ],
-  "trailingSlash": true,
-  "rewrites": [
-    { "source": "/dashboard", "destination": "/dashboard/" }
+    { "src": "/", "dest": "/index.html" },
+    { "src": "/dashboard", "dest": "/dashboard/index.html" },
+    { "src": "/dashboard/(.*)", "dest": "/dashboard/index.html" }
   ]
 }

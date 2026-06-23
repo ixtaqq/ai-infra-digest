@@ -35,6 +35,18 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 - **`/sec` command** — query latest filings by ticker (e.g., `/sec NVDA`)
 - **SEC Highlights section** in daily digest — top 1-2 impactful filings shown with key numbers
 
+### 🎙️ Earnings Transcript Mining
+- **Roic.ai API** integration — fetches earnings call transcripts for 15 AI infrastructure companies (NVDA, AMD, AVGO, MSFT, AMZN, etc.)
+- **Free tier** — 5 requests/min, 2-year history, structured JSON format
+- **Two-pass AI analysis**:
+  - **Pass 1 — Topic segmentation** (fast model): splits transcript into capex, AI revenue, supply chain, macro outlook, guidance segments
+  - **Pass 2 — Financial extraction** (strong model): extracts revenue/EPS/capex guidance, AI revenue mentioned, management tone
+- **Guidance delta** — compares current quarter's guidance with previous quarter's stored data from Supabase, computes percentage changes and tone direction
+- **Management tone analysis** — overall tone (bullish/cautious/neutral/bearish), confidence score (1-10), key phrase, risks mentioned
+- **🎙️ Earnings Watch section** in daily digest — shows guidance changes, delta arrows, tone indicators
+- **Supabase storage** — analyzed transcripts stored in `earnings_transcripts` table for historical comparison
+- **Graceful degradation** — skips when `ROIC_AI_API_KEY` is not configured, handles API failures per-ticker
+
 ### 💰 Stock Prices
 - **Yahoo Finance** integration — daily price snapshots for 30+ tracked tickers
 - Automatically fetches prices for every mentioned stock after AI analysis
@@ -84,7 +96,7 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 - **Auto-refresh** every 60 seconds
 
 ### 🗄️ Database (Supabase)
-- **11 tables**: `digest_runs`, `articles`, `sector_activity`, `stock_mentions`, `pipeline_health`, `capex_tracking`, `ai_usage`, `daily_metrics`, `stock_prices`, `user_preferences`, `user_delivery_log`
+- **13 tables**: `digest_runs`, `articles`, `sector_activity`, `stock_mentions`, `pipeline_health`, `capex_tracking`, `ai_usage`, `daily_metrics`, `stock_prices`, `user_preferences`, `user_delivery_log`, `sec_filings`, `earnings_transcripts`
 - `digest_runs` tracks **both models** (`ai_model` for strong model, `ai_fast_model` for fast model)
 - `articles` has **`is_sec_filing`** boolean flag for article enrichment
 - `sec_filings` table stores extracted financial data from SEC EDGAR
@@ -147,24 +159,30 @@ Step 2: AI Processor (two-tier routing)
       │
       ├── Classification: Fast Model (llama-3.1-8b-instant) — 40-60% cheaper
       ├── Synthesis: Strong Model (llama-3.3-70b-versatile) — market outlook
-      └── SEC Two-Pass: Flag (fast) → Extract (strong) — saves 50-70% on SEC AI costs
+      └── SEC Two-Pass: Flag (fast) → Extract (strong) — saves 50-70%
       │
       ▼
-Step 2b: Article Enrichment (🏛️ SEC badge detection via regex)
+Step 2b: Article Enrichment (🏛️ SEC badge via regex)
       │
       ▼
-Step 2c: Yahoo Finance (stock prices for mentioned tickers)
+Step 2c: Earnings Transcript Mining (🎙️ Roic.ai API + two-pass AI)
+      │
+      │  ├── Pass 1: Topic segmentation (fast model)
+      │  └── Pass 2: Guidance extraction + tone + delta (strong model)
       │
       ▼
-Step 3: Telegram Formatter (HTML, categorized, with SEC highlights + badge)
+Step 2d: Yahoo Finance (stock prices for mentioned tickers)
+      │
+      ▼
+Step 3: Telegram Formatter (HTML, categorized, with SEC + Earnings Watch)
       │
       ▼
 Step 4: Telegram Bot (send + interactive commands + webhook support)
       │
       ▼
-Step 5: Supabase (11 tables + per-user delivery logging)
+Step 5: Supabase (13 tables + per-user delivery logging)
       │
-      ├── Dashboard (premium HTML/JS — reads from Supabase)
+      ├── Dashboard (gold fintech UI — reads from Supabase)
       └── NDJSON logs (per-day files + stdout streaming)
 ```
 
@@ -204,6 +222,7 @@ nano .env
 | `AI_FAST_MODEL` | ❌ | `llama-3.1-8b-instant` | Fast/cheap model for classification & SEC flagging |
 | `SUPABASE_URL` | ❌ | — | Supabase project URL (for dashboard) |
 | `SUPABASE_SERVICE_KEY` | ❌ | — | Supabase service role key (for dashboard) |
+| `ROIC_AI_API_KEY` | ❌ | — | Roic.ai API key for earnings call transcript mining (free tier: 5 req/min, 2yr history) |
 
 ### Get Your Telegram Chat ID
 
@@ -255,6 +274,7 @@ The workflow in `.github/workflows/scheduled-delivery.yml` runs **every 30 minut
 | `AI_PROVIDER` | `groq` |
 | `AI_MODEL` | `llama-3.3-70b-versatile` |
 | `AI_FAST_MODEL` | `llama-3.1-8b-instant` |
+| `ROIC_AI_API_KEY` | Your Roic.ai API key |
 
 ## Dashboard
 
@@ -348,11 +368,12 @@ Tom's Hardware, AnandTech, Ars Technica, TechCrunch, The Verge, Seeking Alpha, S
 - **v3.0a** — Two-tier AI routing — classification via fast model (llama-3.1-8b), synthesis via strong model (llama-3.3-70b). Saves 40-60% on AI costs
 - **v3.0b** — Two-pass SEC extraction — keyword pre-filter (free) → fast model flagging (~$0.0005) → strong model extraction (~$0.01). Saves 50-70% on SEC AI costs
 - **v3.0c** — Article enrichment — 🏛️ SEC alert badge on filing articles, stored in Supabase as `is_sec_filing`
+- **v3.1** — Earnings transcript mining — Roic.ai API integration, two-pass AI analysis (topic segmentation → extraction + tone + delta). Guidance delta QoQ comparison. 🎙️ Earnings Watch in digest
 
 ### Phase III · Interaction. 🔨 Building
-- **v3.1** — Earnings transcript mining — download and analyze calls. Extract Capex guidance, AI revenue mentions, management tone signals
-- **v3.1a** — Management tone + guidance delta — sentiment analysis on CEO/CFO tone, QoQ guidance comparison
-- **v3.2** — Dashboard 2.0 — Supabase Auth, public digest pages, SEC-derived charts (capex barometer, AI revenue index), CMD+K search for SEC filings
+- **v3.2** — Dashboard 2.0 — Supabase Auth, public digest pages, SEC-derived charts (capex barometer, AI revenue index, earnings chart), CMD+K search for SEC filings
+- **v3.2a** — Earnings transcript archive & historical trend charts on dashboard
+- **v3.3** — Management tone + guidance delta visualization on dashboard
 
 ### Phase IV · Research. 🔭 Future
 - **v4** — Article archival & historical trend analysis across sectors and tickers. Price threshold alerts
