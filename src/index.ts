@@ -1,18 +1,18 @@
 import { config } from "./config";
 import { logger } from "./utils/logger";
-import { collectArticles } from "./collector/rss";
+import { collectArticles, skipFeed, resetSkippedFeeds } from "./collector/rss";
 import { processArticles, NEWS_CATEGORIES } from "./processor/ai";
 import { formatDigestTelegram } from "./formatter/telegram";
 import {
   sendDigestMessage,
+  sendTelegramMessage,
   startInteractiveBot,
   registerCommand,
 } from "./sender/telegram";
 import { deduplicateArticles } from "./utils/dedup";
 import { fetchStockPrices } from "./utils/stocks";
 import { supabase } from "./utils/supabase";
-import type { Article } from "./collector/rss";
-import type { FeedResult } from "./collector/rss";
+import type { Article, FeedResult } from "./collector/rss";
 
 const MAX_ARTICLES_FOR_AI = 35;
 
@@ -26,9 +26,45 @@ async function main() {    logger.info("🚀 AI Infrastructure Daily Digest — 
   startInteractiveBot();
 
   try {
+    // ─── Conditional RSS: skip consistently failing feeds ──
+    const skipFeeds = new Set<string>();
+    if (supabase.isConfigured()) {
+      try {
+        const cfg = getSupabaseConfig()!;
+        const resp = await fetch(
+          `${cfg.url}/rest/v1/pipeline_health?select=feed_name,status&order=created_at.desc&limit=200`,
+          { headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` } }
+        );
+        if (resp.ok) {
+          const data = (await resp.json()) as { feed_name: string; status: string }[];
+          // Count consecutive failures per feed
+          const lastSeen = new Map<string, { fails: number; checked: boolean }>();
+          for (const row of data) {
+            const entry = lastSeen.get(row.feed_name) || { fails: 0, checked: false };
+            if (!entry.checked) {
+              entry.checked = true;
+              if (row.status === "failed") entry.fails++;
+            }
+            lastSeen.set(row.feed_name, entry);
+          }
+          for (const [name, info] of lastSeen) {
+            if (info.fails >= 2) {
+              skipFeeds.add(name);
+              skipFeed(name);
+            }
+          }
+          if (skipFeeds.size > 0) {
+            logger.info(`Conditional RSS: skipping ${skipFeeds.size} consistently failing feeds`);
+          }
+        }
+      } catch {
+        // Proceed without conditional skipping
+      }
+    }
+
     // ─── Step 1: Collect News ────────────────────
     logger.info("Step 1/4: Collecting news from RSS feeds...");
-    const { articles, feedStatuses } = await collectArticles();
+    const { articles, feedStatuses } = await collectArticles(skipFeeds);
 
     // ─── Health Alert: Check feed failure rate ────
     if (supabase.isConfigured()) {
@@ -66,6 +102,11 @@ async function main() {    logger.info("🚀 AI Infrastructure Daily Digest — 
     // ─── Step 2: AI Processing ───────────────────
     logger.info(`Step 2/4: Processing articles with AI (${articlesToProcess.length} articles)...`);
     const digest = await processArticles(articlesToProcess);
+
+    // ─── Alert System: send instant alerts for high-impact articles ──
+    if (supabase.isConfigured()) {
+      await sendHighImpactAlerts(digest.articles);
+    }
 
     // ─── Step 2b: Fetch Stock Prices ────────────
     const allTickers = [
@@ -267,6 +308,53 @@ async function main() {    logger.info("🚀 AI Infrastructure Daily Digest — 
   }
 }
 
+// ─── High-Impact Alert System ─────────────────────────
+
+/** Send instant alerts for articles with impactScore >= 8 to opted-in users. */
+async function sendHighImpactAlerts(articles: import("./processor/ai").ProcessedArticle[]): Promise<void> {
+  const { default: TelegramBot } = await import("node-telegram-bot-api");
+  const bot = new TelegramBot(config.telegram.botToken, { polling: false });
+
+  const highImpact = articles.filter((a) => a.impactScore >= 8);
+  if (highImpact.length === 0) return;
+
+  const users = await supabase.getAllActiveUsers();
+  const optedIn = users.filter((u) => u.alerts_enabled);
+  if (optedIn.length === 0) {
+    logger.info(`Alert system: ${highImpact.length} high-impact articles found, but no users opted in`);
+    return;
+  }
+
+  logger.info(`Alert system: ${highImpact.length} high-impact articles for ${optedIn.length} users`);
+
+  for (const article of highImpact.slice(0, 5)) {
+    const emoji = article.impact === "Bullish" ? "🟢" : article.impact === "Bearish" ? "🔴" : "⚪";
+    const text =
+      `🚨 <b>HIGH IMPACT ALERT</b>\n\n` +
+      `${emoji} <b>${escapeHtml(article.title)}</b>\n` +
+      `Impact: ${article.impact} (${article.impactScore}/10)\n` +
+      `Sector: ${article.category}\n` +
+      `Stocks: ${article.affectedStocks.slice(0, 5).join(", ") || "N/A"}\n\n` +
+      `📝 ${escapeHtml(article.summary.split("\\n")[0] || article.summary.slice(0, 200))}\n\n` +
+      `${article.url ? `<a href="${article.url}">Read full article</a>` : ""}`;
+
+    for (const user of optedIn) {
+      try {
+        const minScore = user.alerts_min_score ?? 8;
+        if (article.impactScore < minScore) continue;
+        await bot.sendMessage(user.chat_id, text, { parse_mode: "HTML", disable_web_page_preview: true });
+        logger.info(`Alert sent for article "${article.title.slice(0, 60)}..." to user ${user.chat_id}`);
+      } catch {
+        // Ignore per-user send errors
+      }
+    }
+  }
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
 // ─── Feed Health Monitoring ────────────────────────────
 
 /** Send an alert if >20% of RSS feeds are failing. */
@@ -297,8 +385,85 @@ async function checkFeedHealth(feedStatuses: FeedResult[]): Promise<void> {
 
 /** Register /digest, /sources, /last handlers for the interactive bot. */
 export function registerDigestCommands(): void {
-  registerCommand("digest", async () => {
-    return "⏳ Run the daily digest via the GitHub Actions workflow or use <code>npm run dev</code> locally.\n\nUse /last to see the most recent digest summary.";
+  registerCommand("digest", async (ctx) => {
+    // Parse optional parameters: /digest watchlist, /digest sector=Chips
+    const parts = ctx.text.split(/\s+/).slice(1);
+    const useWatchlist = parts.includes("watchlist");
+    const sectorParam = parts.find((p) => p.startsWith("sector="));
+    const sector = sectorParam ? sectorParam.split("=")[1].replace(/_/g, " ") : null;
+
+    if (!useWatchlist && !sector) {
+      return "⏳ Run the daily digest via the GitHub Actions workflow or use <code>npm run dev</code> locally.\n\n" +
+        "<b>Options:</b>\n" +
+        "• <code>/digest watchlist</code> — Filter by your saved watchlist\n" +
+        "• <code>/digest sector=Chips_&_GPUs</code> — Filter by sector\n" +
+        "• Use /last to see the most recent digest summary.";
+    }
+
+    // Personalized digest mode — filter from Supabase
+    if (!supabase.isConfigured()) {
+      return "Supabase not configured. Connect it to use personalized digests.";
+    }
+
+    const prefs = await supabase.getUserPreferences(ctx.chatId);
+    if (!prefs && (useWatchlist || sector)) {
+      return "No preferences found. Use /watchlist to set your tickers, or /start to register.";
+    }
+
+    const cfg = getSupabaseConfig();
+    if (!cfg) return "Database not available.";
+
+    try {
+      const resp = await fetch(
+        `${cfg.url}/rest/v1/articles?order=created_at.desc&limit=30&select=title,url,source,impact,impact_score,category,affected_stocks,summary`,
+        { headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` } }
+      );
+      if (!resp.ok) return "Could not fetch articles.";
+      let articles = (await resp.json()) as Record<string, unknown>[];
+
+      // Filter by watchlist
+      if (useWatchlist && prefs?.watchlist?.length) {
+        const watchlist = prefs.watchlist.map((t: string) => t.toUpperCase());
+        articles = articles.filter((a: Record<string, unknown>) =>
+          ((a.affected_stocks as string[]) || []).some((s: string) => watchlist.includes(s))
+        );
+      }
+
+      // Filter by sector
+      if (sector) {
+        articles = articles.filter((a: Record<string, unknown>) => a.category === sector);
+      }
+
+      if (articles.length === 0) {
+        return "No matching articles found.";
+      }
+
+      const maxShow = Math.min(articles.length, 10);
+      const lines = [`📋 <b>Filtered Digest</b> (${articles.length} articles)`];
+      if (useWatchlist && prefs?.watchlist?.length) {
+        lines.push(`Watchlist: <code>${prefs.watchlist.join(", ")}</code>`);
+      }
+      if (sector) lines.push(`Sector: ${sector}`);
+      lines.push("");
+
+      for (const a of articles.slice(0, maxShow)) {
+        const score = a.impact_score as number;
+        const emoji = score >= 8 ? "🔥" : score >= 6 ? "📈" : score >= 4 ? "📊" : "📌";
+        lines.push(
+          `${emoji} <b>${(a.title as string).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</b>`
+        );
+        lines.push(`   ${a.impact as string} (${score}/10) | ${a.category as string}`);
+        lines.push("");
+      }
+
+      if (articles.length > maxShow) {
+        lines.push(`<i>... and ${articles.length - maxShow} more</i>`);
+      }
+
+      return { text: lines.join("\n") };
+    } catch {
+      return "Could not fetch personalized digest.";
+    }
   });
 
   registerCommand("sources", async () => {
@@ -404,6 +569,70 @@ export function registerDigestCommands(): void {
     }
   });
 }
+
+  registerCommand("alert", async (ctx) => {
+    const parts = ctx.text.split(/\s+/).slice(1);
+    const setting = parts[0]?.toLowerCase();
+
+    if (setting === "on") {
+      if (!supabase.isConfigured()) {
+        return "Supabase not configured. Alert preferences require a database.";
+      }
+      const ok = await supabase.upsertUserPreferences({
+        chat_id: ctx.chatId,
+        alerts_enabled: true,
+      });
+      if (ok) {
+        return "🚨 <b>Alerts Enabled</b>\n\nYou'll now receive instant notifications for high-impact articles (score 8+).\n\nUse <code>/alert threshold 9</code> to change the minimum score.\nUse <code>/alert off</code> to disable.";
+      }
+      return "Could not save alert preference.";
+    }
+
+    if (setting === "off") {
+      if (!supabase.isConfigured()) {
+        return "Supabase not configured.";
+      }
+      const ok = await supabase.upsertUserPreferences({
+        chat_id: ctx.chatId,
+        alerts_enabled: false,
+      });
+      return ok
+        ? "🔕 Alerts disabled. You won't receive instant notifications."
+        : "Could not save alert preference.";
+    }
+
+    if (setting === "threshold") {
+      const val = parseInt(parts[1], 10);
+      if (isNaN(val) || val < 1 || val > 10) {
+        return "Threshold must be a number between 1 and 10.\n\nUsage: <code>/alert threshold 9</code>";
+      }
+      if (!supabase.isConfigured()) return "Supabase not configured.";
+      const ok = await supabase.upsertUserPreferences({
+        chat_id: ctx.chatId,
+        alerts_min_score: val,
+      });
+      return ok
+        ? `✅ Alert threshold set to <b>${val}/10</b>. Only articles scoring ${val}+ will trigger alerts.`
+        : "Could not save threshold.";
+    }
+
+    // Show status
+    if (!supabase.isConfigured()) {
+      return "Supabase not configured. Alerts require a database.\n\n<b>Commands:</b>\n• <code>/alert on</code> — Enable high-impact alerts\n• <code>/alert off</code> — Disable alerts";
+    }
+    const prefs = await supabase.getUserPreferences(ctx.chatId);
+    const status = prefs?.alerts_enabled ? "✅ Enabled" : "❌ Disabled";
+    const threshold = prefs?.alerts_min_score ?? 8;
+    return (
+      `🚨 <b>Alert Settings</b>\n\n` +
+      `Status: ${status}\n` +
+      `Threshold: ${threshold}/10\n\n` +
+      `<b>Commands:</b>\n` +
+      `• <code>/alert on</code> — Enable alerts\n` +
+      `• <code>/alert off</code> — Disable alerts\n` +
+      `• <code>/alert threshold 9</code> — Set minimum impact score`
+    );
+  });
 
 function getSupabaseConfig(): { url: string; key: string } | null {
   const url = config.app.supabaseUrl;

@@ -72,6 +72,8 @@ export interface UserPreferencesData {
   timezone?: string;
   categories_enabled?: string[];
   min_impact_score?: number;
+  alerts_enabled?: boolean;
+  alerts_min_score?: number;
   is_active?: boolean;
 }
 

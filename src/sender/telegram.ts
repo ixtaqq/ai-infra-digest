@@ -254,7 +254,7 @@ function initCommands() {
   pollingBot.onText(/^\//, async (msg) => {
     const chatId = msg.chat.id;
     const text = msg.text?.toLowerCase() || "";
-    const knownCommands = ["/start", "/help", "/digest", "/sources", "/last", "/settings", "/watchlist"];
+    const knownCommands = ["/start", "/help", "/digest", "/sources", "/last", "/settings", "/watchlist", "/alert"];
     const isKnown = knownCommands.some((cmd) => text.startsWith(cmd));
     if (!isKnown) {
       await pollingBot.sendMessage(

@@ -435,6 +435,12 @@
 
       <div class="table-card">
         <h3>📰 Latest Articles</h3>
+        <div class="filter-bar" style="margin-bottom:8px">
+          <span class="filter-label">Search</span>
+          <input class="filter-search" id="fullTextSearch" placeholder="Full-text search articles..." style="width:260px" onkeydown="if(event.key==='Enter')doFullTextSearch()">
+          <button class="filter-pill" onclick="doFullTextSearch()" style="background:var(--accent);color:#000;border-color:var(--accent);font-weight:600">🔍 Search DB</button>
+          <span id="searchStatus" style="font-size:11px;color:var(--text-muted)"></span>
+        </div>
         <div class="filter-bar" id="filterBar">
           <span class="filter-label">Sector</span>
           <div class="filter-group" id="sectorFilters"></div>
@@ -992,6 +998,67 @@
       const tbody=document.getElementById('capexBody');
       if(!capex.length) { tbody.innerHTML='<tr><td colspan="4" style="padding:24px;text-align:center;color:var(--text-dim)">No capex tracked yet</td></tr>'; return; }
       tbody.innerHTML=capex.map(c=>`<tr><td><strong>${c.company}</strong></td><td><span style="font-family:'JetBrains Mono',monospace;font-weight:600">${c.amount||'—'}</span></td><td><span style="font-size:11px;background:var(--bg-hover);padding:2px 8px;border-radius:20px">${c.category||'—'}</span></td><td style="color:var(--text-dim);font-size:12px">${c.description||''}</td></tr>`).join('');
+    }
+
+    // ─── Full-Text Search ──
+    async function doFullTextSearch() {
+      const input = document.getElementById('fullTextSearch');
+      const status = document.getElementById('searchStatus');
+      const query = input.value.trim();
+
+      if (!query || query.length < 2) {
+        status.textContent = 'Type at least 2 characters';
+        status.style.color = 'var(--warn)';
+        return;
+      }
+
+      status.textContent = '🔍 Searching...';
+      status.style.color = 'var(--text-dim)';
+
+      try {
+        // Use Supabase full-text search via `fts` operator on title + summary
+        const searchUrl = `${SUPABASE_URL}/rest/v1/articles?select=title,url,source,impact,impact_score,category,affected_stocks,summary,created_at&order=impact_score.desc&limit=25`;
+        const res = await fetch(searchUrl, {
+          headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+        });
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        let articles = await res.json();
+
+        // Client-side text filter (Supabase free tier may not have pgweb FTS enabled)
+        const q = query.toLowerCase();
+        articles = articles.filter(a =>
+          (a.title||'').toLowerCase().includes(q) ||
+          (a.summary||'').toLowerCase().includes(q) ||
+          (a.source||'').toLowerCase().includes(q) ||
+          (a.category||'').toLowerCase().includes(q) ||
+          (a.affected_stocks||[]).some(s => s.toLowerCase().includes(q))
+        );
+
+        if (articles.length === 0) {
+          status.textContent = '❌ No results found';
+          status.style.color = 'var(--danger)';
+          renderArticles([]);
+          return;
+        }
+
+        status.textContent = `✅ ${articles.length} results`;
+        status.style.color = 'var(--accent2)';
+
+        // Set filter state to show search results
+        activeFilters.search = query;
+        allArticlesCache = articles;
+        renderArticles(articles, true);
+
+        // Show count
+        const countEl = document.getElementById('articlesCount');
+        if (countEl) countEl.textContent = `Search: ${articles.length} results for "${query}"`;
+
+      } catch(e) {
+        status.textContent = `❌ Error: ${e.message}`;
+        status.style.color = 'var(--danger)';
+      }
     }
 
     // ─── CORS Help ──

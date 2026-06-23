@@ -219,13 +219,37 @@ async function fetchFeedWithStatus(
 }
 
 // ─── Main collection ──────────────────────────────────
-export async function collectArticles(): Promise<{
+
+/** Feed names to skip (consistently failing). */
+export const SKIPPED_FEEDS = new Set<string>();
+
+/** Mark a feed to be skipped on future runs (e.g., after repeated failures). */
+export function skipFeed(name: string): void {
+  SKIPPED_FEEDS.add(name);
+  logger.info(`Conditional RSS: skipping "${name}" on future runs`);
+}
+
+/** Reset skipped feeds list. */
+export function resetSkippedFeeds(): void {
+  SKIPPED_FEEDS.clear();
+}
+
+export async function collectArticles(
+  skipFeeds?: Set<string>
+): Promise<{
   articles: Article[];
   feedStatuses: FeedResult[];
 }> {
   logger.info("Starting news collection...");
 
-  const allFeeds = [...TIER_1_FEEDS, ...TIER_2_FEEDS];
+  let allFeeds = [...TIER_1_FEEDS, ...TIER_2_FEEDS];
+
+  // Apply conditional skipping
+  const combinedSkip = new Set([...SKIPPED_FEEDS, ...(skipFeeds || [])]);
+  if (combinedSkip.size > 0) {
+    allFeeds = allFeeds.filter((f) => !combinedSkip.has(f.name));
+    logger.info(`Skipping ${combinedSkip.size} feeds: ${[...combinedSkip].slice(0, 10).join(", ")}${combinedSkip.size > 10 ? ` +${combinedSkip.size - 10} more` : ""}`);
+  }
   const feedResults = await Promise.all(
     allFeeds.map((feed) => fetchFeedWithStatus(feed, config.app.maxArticlesPerSource))
   );

@@ -168,6 +168,8 @@ CREATE TABLE user_preferences (
   timezone TEXT DEFAULT 'Asia/Kuala_Lumpur',
   categories_enabled TEXT[] DEFAULT '{}',
   min_impact_score INT DEFAULT 0 CHECK (min_impact_score >= 0 AND min_impact_score <= 10),
+  alerts_enabled BOOLEAN DEFAULT FALSE,
+  alerts_min_score INT DEFAULT 8 CHECK (alerts_min_score >= 1 AND alerts_min_score <= 10),
   is_active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
