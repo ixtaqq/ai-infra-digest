@@ -18,7 +18,10 @@ import {
   emitDigestDelivery,
   emitError,
 } from "./utils/metrics";
+import { collectSECFilings, getTopFilings } from "./collector/sec";
+import { analyzeSECFilings, formatSECExtract } from "./processor/sec";
 import type { Article, FeedResult } from "./collector/rss";
+import type { SECFinancialExtract } from "./processor/sec";
 
 const MAX_ARTICLES_FOR_AI = 35;
 
@@ -100,7 +103,38 @@ export async function runPipeline(targetChatId?: number): Promise<boolean> {
       return false;
     }
 
-    // ─── Step 1b: Deduplicate ───────────────────
+    // ─── Step 1b: SEC Filing Collection ──────────────
+    logger.info("Step 1b: Collecting recent SEC filings...");
+    let secExtracts: SECFinancialExtract[] = [];
+    try {
+      const secResult = await collectSECFilings();
+      if (secResult.newFilings.length > 0) {
+        logger.info(`SEC: ${secResult.newFilings.length} new filings found, analyzing top ones...`);
+        const topFilings = getTopFilings(secResult.newFilings, 5);
+        const secAnalysis = await analyzeSECFilings(topFilings, 5);
+        secExtracts = secAnalysis.extracts;
+        logger.info(`SEC analysis: ${secExtracts.length} filings analyzed (${secExtracts.filter(e => e.impactScore >= 7).length} high-impact)`);
+
+        // Trigger alert system for high-impact SEC filings
+        const highImpact = secExtracts.filter((e) => e.impactScore >= 8);
+        if (highImpact.length > 0) {
+          logger.info(`SEC alerts: ${highImpact.length} high-impact filings detected, sending alerts...`);
+          for (const h of highImpact) {
+            emitError("sec_filing", "warn",
+              `${h.companyName} (${h.ticker}) filed ${h.formType}: ${h.impactRationale}`,
+              undefined, `Review the SEC filing at the SEC EDGAR website for details.`);
+          }
+        }
+      } else {
+        logger.info("SEC: No new filings found");
+      }
+    } catch (secError) {
+      logger.warn(`SEC collection failed: ${(secError as Error).message}`);
+      emitError("sec", "error", `SEC filing collection failed: ${(secError as Error).message}`,
+        undefined, "SEC API may be rate-limiting or temporarily unavailable.");
+    }
+
+    // ─── Step 1c: Deduplicate ───────────────────
     logger.info(`Step 1b: Deduplicating ${articles.length} articles...`);
     const uniqueArticles = deduplicateArticles(articles);
 
@@ -157,7 +191,10 @@ export async function runPipeline(targetChatId?: number): Promise<boolean> {
 
     // ─── Step 3: Format Digest ───────────────────
     logger.info("Step 3/4: Formatting digest for Telegram...");
-    const formattedMessage = formatDigestTelegram(digest, { stockPrices });
+    const formattedMessage = formatDigestTelegram(digest, {
+      stockPrices,
+      secExtracts: secExtracts.length > 0 ? secExtracts : undefined,
+    });
 
     // ─── Step 4: Send to Telegram ───────────────
     logger.info("Step 4/4: Sending digest to Telegram...");
@@ -313,10 +350,15 @@ export async function runPipeline(targetChatId?: number): Promise<boolean> {
       const healthyFeeds = feedStatuses.filter((f) => f.status === "success").length;
       const failingFeeds = feedStatuses.filter((f) => f.status === "failed").length;
       const activeSectors = Object.keys(digest.categories).length;
+      const secFilingCount = secExtracts.length;
 
       // Estimate cost based on provider pricing
       const costPer1KTokens = 0.00015; // Groq Llama pricing ~$0.15/1M tokens
       const estimatedCost = digest.usage.totalTokens * costPer1KTokens / 1000;
+
+      // Extract capex tracking from SEC filings
+      const grossCapex = secExtracts.reduce((sum, e) => sum + (e.capex || 0), 0);
+      const totalAiRev = secExtracts.reduce((sum, e) => sum + (e.aiRevenue || 0), 0);
 
       await supabase.updateDailyMetrics(runDate, {
         total_articles_processed: digest.articles.length,
@@ -329,6 +371,9 @@ export async function runPipeline(targetChatId?: number): Promise<boolean> {
         top_sector: Object.entries(sectorCounts).sort((a, b) => b[1].count - a[1].count)[0]?.[0] || null,
         top_ticker: Object.entries(mentionMap).sort((a, b) => b[1].count - a[1].count)[0]?.[0] || null,
         digest_status: sendResult.success ? "success" : "failed",
+        sec_filings_processed: secFilingCount,
+        sec_capex_total: grossCapex > 0 ? grossCapex : undefined,
+        sec_ai_revenue_total: totalAiRev > 0 ? totalAiRev : undefined,
       });
 
       logger.info("✅ Metrics written to Supabase");

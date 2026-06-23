@@ -1,5 +1,6 @@
 import type { DigestResult, NewsCategory } from "../processor/ai";
 import type { StockPrice } from "../utils/stocks";
+import type { SECFinancialExtract } from "../processor/sec";
 
 function formatDate(): string {
   const now = new Date();
@@ -55,6 +56,7 @@ function escapeHtml(text: string): string {
 
 export interface FormatOptions {
   stockPrices?: Map<string, StockPrice>;
+  secExtracts?: SECFinancialExtract[];
 }
 
 export function formatDigestTelegram(
@@ -159,6 +161,32 @@ export function formatDigestTelegram(
     lines.push("");
     lines.push(escapeHtml(digest.summary));
     lines.push("");
+  }
+
+  // ─── SEC Filing Highlights (top 1-2 most impactful) ─
+  const secExtracts = options?.secExtracts;
+  if (secExtracts && secExtracts.length > 0 && secExtracts[0].impactScore >= 7) {
+    lines.push("📜 <b>SEC HIGHLIGHTS</b>");
+    lines.push("");
+    const topSec = secExtracts.slice(0, 2);
+    for (const extract of topSec) {
+      lines.push(`  <b>${escapeHtml(extract.companyName)} (${extract.ticker})</b> — ${extract.formType}`);
+      const data: string[] = [];
+      if (extract.capex !== null) data.push(`💰 Capex: $${extract.capex.toFixed(0)}M`);
+      if (extract.capexGuidance !== null) data.push(`📊 Capex Guide: $${extract.capexGuidance.toFixed(0)}M`);
+      if (extract.aiRevenue !== null) {
+        const g = extract.aiRevenueGrowthPct !== null ? ` (${extract.aiRevenueGrowthPct >= 0 ? "+" : ""}${extract.aiRevenueGrowthPct.toFixed(0)}%)` : "";
+        data.push(`🤖 AI Rev: $${extract.aiRevenue.toFixed(0)}M${g}`);
+      }
+      if (extract.grossMargin !== null) data.push(`📈 GM: ${extract.grossMargin.toFixed(1)}%`);
+      if (extract.operatingMargin !== null) data.push(`📉 OM: ${extract.operatingMargin.toFixed(1)}%`);
+      if (extract.revenueGuidance !== null) data.push(`🎯 Rev Guide: $${extract.revenueGuidance.toFixed(0)}M`);
+      if (data.length > 0) lines.push(`    ${data.join(" · ")}`);
+      if (extract.keyTakeaways.length > 0) {
+        lines.push(`    <i>${escapeHtml(extract.keyTakeaways.slice(0, 2).join(" · "))}</i>`);
+      }
+      lines.push("");
+    }
   }
 
   // ─── Value Chain Coverage Indicator ───────────────

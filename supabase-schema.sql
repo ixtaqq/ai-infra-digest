@@ -157,7 +157,54 @@ CREATE TABLE stock_prices (
 CREATE INDEX idx_stock_prices_date ON stock_prices(date DESC);
 CREATE INDEX idx_stock_prices_ticker ON stock_prices(ticker);
 
--- 10. USER PREFERENCES — Interactive Telegram bot user settings
+-- 10. SEC FILINGS — Tracked SEC filing analysis from EDGAR
+CREATE TABLE sec_filings (
+  id BIGSERIAL PRIMARY KEY,
+  date DATE NOT NULL DEFAULT CURRENT_DATE,
+  ticker TEXT NOT NULL,
+  company_name TEXT NOT NULL,
+  form_type TEXT NOT NULL CHECK (form_type IN ('8-K', '10-K', '10-Q', '10-K/A', '10-Q/A', '8-K/A')),
+  filing_date DATE NOT NULL,
+  accession_number TEXT,
+  primary_document_url TEXT,
+  items TEXT[] DEFAULT '{}',
+
+  -- Extracted financial data
+  capex NUMERIC(15,2),
+  capex_guidance NUMERIC(15,2),
+  capex_source TEXT,
+  ai_revenue NUMERIC(15,2),
+  ai_revenue_growth_pct NUMERIC(6,2),
+  ai_revenue_source TEXT,
+  gross_margin NUMERIC(5,2),
+  operating_margin NUMERIC(5,2),
+  margin_source TEXT,
+  inventory NUMERIC(15,2),
+  inventory_turnover NUMERIC(10,2),
+  inventory_source TEXT,
+  revenue_guidance NUMERIC(15,2),
+  eps_guidance NUMERIC(10,4),
+  guidance_text TEXT,
+
+  -- Impact assessment
+  impact_score INT CHECK (impact_score >= 1 AND impact_score <= 10),
+  impact_rationale TEXT,
+  key_takeaways TEXT[],
+
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(ticker, accession_number)
+);
+
+CREATE INDEX idx_sec_filings_date ON sec_filings(filing_date DESC);
+CREATE INDEX idx_sec_filings_ticker ON sec_filings(ticker);
+CREATE INDEX idx_sec_filings_impact ON sec_filings(impact_score DESC);
+
+-- Add SEC columns to daily_metrics
+ALTER TABLE daily_metrics ADD COLUMN IF NOT EXISTS sec_filings_processed INT DEFAULT 0;
+ALTER TABLE daily_metrics ADD COLUMN IF NOT EXISTS sec_capex_total NUMERIC(15,2);
+ALTER TABLE daily_metrics ADD COLUMN IF NOT EXISTS sec_ai_revenue_total NUMERIC(15,2);
+
+-- 11. USER PREFERENCES — Interactive Telegram bot user settings
 CREATE TABLE user_preferences (
   id BIGSERIAL PRIMARY KEY,
   chat_id BIGINT NOT NULL UNIQUE,

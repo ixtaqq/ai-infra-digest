@@ -55,7 +55,7 @@ export interface DigestDeliveryEvent extends MetricsEvent {
 
 export interface ErrorEvent extends MetricsEvent {
   event: "error";
-  source: "ai" | "yahoo_finance" | "supabase" | "rss" | "telegram";
+  source: "ai" | "yahoo_finance" | "supabase" | "rss" | "telegram" | "sec" | "sec_filing" | "unknown";
   severity: "warn" | "error" | "critical";
   status_code?: number;
   message: string;
