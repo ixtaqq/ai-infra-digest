@@ -125,13 +125,16 @@ async function supabaseFetch(
   if (params) url += `?${params}`;
 
   try {
+    const prefer = params?.includes("on_conflict")
+      ? "return=minimal,resolution=merge-duplicates"
+      : "return=minimal";
     const response = await fetch(url, {
       method,
       headers: {
         "Content-Type": "application/json",
         "apikey": cfg.key,
         "Authorization": `Bearer ${cfg.key}`,
-        "Prefer": "return=minimal",
+        "Prefer": prefer,
       },
       body: body ? JSON.stringify(body) : undefined,
     });
