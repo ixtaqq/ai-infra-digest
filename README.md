@@ -26,10 +26,15 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 ### 📱 Interactive Telegram Bot
 - **`/start`** — Welcome & register your preferences
 - **`/digest`** — Request the latest digest
+- **`/digest watchlist`** — Filter digest by your saved watchlist tickers
+- **`/digest sector=Chips_&_GPUs`** — Filter digest by sector
 - **`/sources`** — List all 57 tracked RSS feeds with health status
 - **`/last`** — Show the most recent digest summary from Supabase
 - **`/settings`** — View your user preferences
 - **`/watchlist NVDA,AMD,AVGO`** — Set your ticker watchlist
+- **`/alert on`** — Enable instant high-impact alerts (score 8+)
+- **`/alert off`** — Disable alerts
+- **`/alert threshold 9`** — Set minimum impact score for alerts
 - **`/help`** — Show available commands
 
 ### 📊 Premium Dashboard
@@ -37,17 +42,20 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 - **Glassmorphism design** with gradient accents, shimmer loading skeletons, staggered entrance animations
 - **Dark/light theme** toggle
 - **Interactive article filtering** — click sector chart bars or use filter pills (sector, impact, search)
+- **Full-text article search** — search bar queries Supabase by title, summary, source, category, and stocks
 - **Auto-refresh** every 60 seconds
 - **Chart.js** with rounded bar corners, gradient fills, custom tooltips
 
 ### 🗄️ Database (Supabase)
-- **9 tables**: `digest_runs`, `articles`, `sector_activity`, `stock_mentions`, `pipeline_health`, `capex_tracking`, `ai_usage`, `daily_metrics`, `stock_prices`, `user_preferences`
+- **10 tables**: `digest_runs`, `articles`, `sector_activity`, `stock_mentions`, `pipeline_health`, `capex_tracking`, `ai_usage`, `daily_metrics`, `stock_prices`, `user_preferences`
 - All pipeline data written automatically after each digest run
 - Dashboard reads directly from Supabase REST API
-- User preferences stored per Telegram chat ID
+- User preferences stored per Telegram chat ID (watchlist, alert settings, categories)
 
-### 🔔 Health Monitoring
+### 🔔 Health Monitoring & Alerts
 - **Source health alerts** — if >20% of RSS feeds fail, Telegram admin is notified with failing feed names
+- **Conditional RSS fetching** — consistently failing feeds (2+ consecutive failures) are automatically skipped to reduce runtime and avoid rate limits
+- **High-impact alert system** — articles scoring 8+/10 trigger instant Telegram notifications to opted-in users via `/alert on`
 - **Error recording** — failed pipeline runs logged to Supabase with error details
 - **GitHub Actions integration** — workflow secrets for `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`
 
@@ -190,7 +198,8 @@ ai-infra-digest/
 │   ├── index.html                  # Premium dashboard (glassmorphism, 6 charts, filtering)
 │   └── server.js                   # Static file server
 ├── scripts/
-│   └── test-digest.ts             # Manual pipeline test
+│   ├── test-digest.ts             # Manual pipeline test
+│   └── migration-v2.sql           # Supabase migration for alert system columns
 ├── src/
 │   ├── index.ts                   # Main orchestrator & command handler registration
 │   ├── config.ts                  # Environment config loader
@@ -240,10 +249,10 @@ Tom's Hardware, AnandTech, Ars Technica, TechCrunch, The Verge, Seeking Alpha, S
 - [x] **v1.1** — Supabase metrics, stock prices, dashboard, dedup
 - [x] **v1.2** — Token tracking, unit tests (26 tests), premium dashboard
 - [x] **v1.3** — Interactive Telegram commands, user management, health alerts, exponential backoff, Jaccard dedup
-- [ ] **v2** — SEC filing deep analysis, earnings transcript parsing
-- [ ] **v3** — Article search/archive (dashboard), alert system (price thresholds, breaking news)
-- [ ] **v4** — Bull/bear theses, competitive landscape analysis
-- [ ] **v5** — Portfolio tracking with P&L simulation, trade recommendations
+- [x] **v2.0** — Watchlist filtering (`/digest watchlist`), conditional RSS fetching, alert system (`/alert on/off/threshold`), dashboard full-text search
+- [ ] **v3** — SEC filing deep analysis, earnings transcript parsing
+- [ ] **v4** — Article archival & historical trend analysis, price threshold alerts
+- [ ] **v5** — Bull/bear theses, competitive landscape analysis, portfolio tracking
 
 ## Disclaimer
 
