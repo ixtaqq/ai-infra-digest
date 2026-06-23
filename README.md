@@ -56,14 +56,17 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 - **GitHub Actions cron** — runs every 30 minutes, checks all active users, delivers only to those at their preferred time
 
 ### 📊 Premium Dashboard
-- **6 interactive charts**: Stock price history, sector trend, digest performance, token usage, sector bar, stock movers
-- **Glassmorphism design** with gradient accents, shimmer loading skeletons, staggered entrance animations
-- **Dark/light theme** toggle
+- **Luxury fintech design** — gold `#D4A24C` accent, warm dark `#080605` background, Playfair Display serif typography
+- **Fixed sidebar navigation** — Overview, Pipeline, Stocks, SEC Filings, Articles, Feedback sections
+- **KPI cards** with animated value counters and gold-trimmed hover effects
+- **Sector activity chart** with 7d/30d/90d range tabs, gold progress bars for top sectors
+- **Quote widget** — AI infrastructure intelligence quote in serif italic
+- **6 interactive charts**: Stock price history, sector trends, capex/AI spending, digest performance, token usage, feedback pulse
+- **Chart.js** with gold palette, custom glass tooltips, smooth animations
 - **Interactive article filtering** — click sector chart bars or use filter pills (sector, impact, search)
 - **Dashboard pagination** — "Load More" button fetches additional 20 articles via cursor, dedup by URL
-- **Full-text article search** — search bar queries Supabase by title, summary, source, category, and stocks
+- **Full-text article search** — search bar queries Supabase by title, summary, source, category, and stocks, with Cmd+K shortcut
 - **Auto-refresh** every 60 seconds
-- **Chart.js** with rounded bar corners, gradient fills, custom tooltips
 
 ### 🗄️ Database (Supabase)
 - **11 tables**: `digest_runs`, `articles`, `sector_activity`, `stock_mentions`, `pipeline_health`, `capex_tracking`, `ai_usage`, `daily_metrics`, `stock_prices`, `user_preferences`, `user_delivery_log`
@@ -245,7 +248,7 @@ ai-infra-digest/
 │   └── scheduled-delivery.yml            # Every 30 min (per-user delivery)
 ├── WEBHOOK_SETUP.md                      # Production webhook deployment guide
 ├── dashboard/
-│   ├── index.html                        # Premium dashboard (glassmorphism, 6 charts, pagination)
+│   ├── index.html                        # Premium dashboard (gold fintech, sidebar nav, 6 charts)
 │   └── server.js                         # Static file server
 ├── scripts/
 │   ├── test-digest.ts                    # Manual pipeline test
@@ -298,16 +301,28 @@ Tom's Hardware, AnandTech, Ars Technica, TechCrunch, The Verge, Seeking Alpha, S
 
 ## Roadmap
 
-- [x] **v1** — Core pipeline: RSS → AI → Telegram → GitHub Actions cron
-- [x] **v1.1** — Supabase metrics, stock prices, dashboard, dedup
-- [x] **v1.2** — Token tracking, unit tests (26 tests), premium dashboard
-- [x] **v1.3** — Interactive Telegram commands, user management, health alerts, exponential backoff, Jaccard dedup
-- [x] **v2.0** — Watchlist filtering (`/digest watchlist`), conditional RSS fetching, alert system (`/alert on/off/threshold`), dashboard full-text search + pagination
-- [x] **v2.1** — Structured logging & metrics (NDJSON), RSS conditional GET caching, enhanced error alerts with recovery actions, production webhook support (`WEBHOOK_SETUP.md`)
-- [x] **v2.2** — `/feedback` with inline keyboard, `/trending` (7-day rolling trend), per-user scheduled delivery (cron), `user_delivery_log` idempotency
-- [ ] **v3** — SEC filing deep analysis, earnings transcript parsing
-- [ ] **v4** — Article archival & historical trend analysis, price threshold alerts
-- [ ] **v5** — Bull/bear theses, competitive landscape analysis, portfolio tracking
+### Phase I · Foundation. ✅ Shipped
+- **v1** — Core pipeline: RSS → AI → Telegram → GitHub Actions cron. 57 feeds, 10 sectors, keyword filtering, conditional GET caching
+- **v1.1** — Supabase metrics, stock prices (Yahoo Finance), premium dashboard, URL + Jaccard dedup
+- **v1.2** — Token tracking, 58 unit tests (Vitest), dashboard upgrades with shimmer loading animations
+- **v1.3** — Interactive Telegram commands, user management, health alerts, exponential backoff, Jaccard dedup v2
+- **v2.0** — Watchlist filtering, alert system (on/off/threshold), dashboard search + pagination, conditional RSS fetching
+- **v2.1** — NDJSON structured logging, enhanced error alerts with recovery actions, production webhook support
+- **v2.2** — Feedback with inline keyboard, trending (7-day rolling), per-user scheduled delivery, idempotent delivery log
+
+### Phase II · Intelligence. 🔨 Building
+- **v3** — SEC filing deep analysis — parse 8-K, 10-K, 10-Q filings for 35 companies. Extract Capex, AI Revenue, Margins, Inventory, forward guidance
+- **v3** — Earnings transcript parsing — download and analyze calls. Extract Capex guidance, AI revenue mentions, management tone signals
+
+### Phase III · Interaction. 📈 Planned
+- Telegram bot enhancement — /digest, /trending, /watchlist, /alert, /sec, /feedback
+- Watchlist filtering & price threshold alert system
+- Premium live dashboard — 6 charts, search, pagination, gold fintech aesthetic
+- Per-user scheduled delivery with timezone-aware cron
+
+### Phase IV · Research. 🔭 Future
+- **v4** — Article archival & historical trend analysis across sectors and tickers. Price threshold alerts
+- **v5** — Bull/bear thesis generation per ticker, competitive landscape analysis, personal portfolio tracking with P&L
 
 ## Disclaimer
 
