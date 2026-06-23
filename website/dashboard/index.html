@@ -174,9 +174,9 @@
     }
     .stat-card:nth-child(2)::before { background: linear-gradient(90deg, transparent, #10b981, transparent); }
     .stat-card:nth-child(3)::before { background: linear-gradient(90deg, transparent, var(--warn), transparent); }
-    .stat-card:nth-child(4)::before { background: linear-gradient(90deg, transparent, #8b5cf6, transparent); }
-    .stat-card:nth-child(5)::before { background: linear-gradient(90deg, transparent, #ec4899, transparent); }
-    .stat-card:nth-child(6)::before { background: linear-gradient(90deg, transparent, #f97316, transparent); }
+    .stat-card:nth-child(4)::before { background: linear-gradient(90deg, transparent, #fbbf24, transparent); }
+    .stat-card:nth-child(5)::before { background: linear-gradient(90deg, transparent, #d4a843, transparent); }
+    .stat-card:nth-child(6)::before { background: linear-gradient(90deg, transparent, #f59e0b, transparent); }
     .stat-card .label {
       font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
       color: var(--text-muted); margin-bottom: 6px; font-weight: 600;
@@ -194,28 +194,28 @@
     }
     .chart-card:hover { border-color: var(--border); box-shadow: var(--shadow-hover); }
 
-    /* ─── AI/Token Card — purple accent ── */
+    /* ─── AI/Token Card — gold accent ── */
     .card-ai {
-      background: linear-gradient(145deg, rgba(17,24,39,0.9) 0%, rgba(88,28,135,0.25) 100%);
-      border-color: rgba(139,92,246,0.25);
+      background: linear-gradient(145deg, rgba(17,24,39,0.9) 0%, rgba(251,191,36,0.08) 100%);
+      border-color: rgba(251,191,36,0.2);
       position: relative;
     }
     .card-ai::before {
       content: ''; position: absolute; top: -1px; left: -1px; right: -1px; bottom: -1px;
       border-radius: var(--radius);
-      background: linear-gradient(135deg, rgba(139,92,246,0.25), transparent, rgba(139,92,246,0.1));
+      background: linear-gradient(135deg, rgba(251,191,36,0.2), transparent, rgba(251,191,36,0.08));
       z-index: -1; opacity: 0.5;
     }
-    .card-ai h3 { color: #c4b5fd; }
+    .card-ai h3 { color: #fbbf24; }
     .card-ai:hover {
-      border-color: rgba(139,92,246,0.4);
-      box-shadow: 0 12px 48px rgba(0,0,0,0.4), 0 0 20px rgba(139,92,246,0.1);
+      border-color: rgba(251,191,36,0.35);
+      box-shadow: 0 12px 48px rgba(0,0,0,0.4), 0 0 20px rgba(251,191,36,0.1);
     }
-    .card-ai canvas { filter: hue-rotate(10deg) saturate(1.1); }
+    .card-ai canvas { filter: none; }
     .card-ai::after {
       content: ''; position: absolute; top: 50%; left: 50%;
       width: 200px; height: 200px;
-      background: radial-gradient(circle, rgba(255,107,53,0.12) 0%, rgba(139,92,246,0.15) 50%, transparent 70%);
+      background: radial-gradient(circle, rgba(251,191,36,0.1) 0%, rgba(245,158,11,0.12) 50%, transparent 70%);
       transform: translate(-50%, -50%);
       pointer-events: none;
     }
@@ -293,7 +293,7 @@
       padding: 5px 14px; color: var(--text); font-size: 12px; font-family: 'Inter', sans-serif;
       width: 180px; outline: none; transition: border-color 0.2s;
     }
-    .filter-search:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--glow-cyan); }
+    .filter-search:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(255,107,53,0.2); }
     .filter-search::placeholder { color: var(--text-muted); }
     .filter-clear {
       font-size: 11px; color: var(--text-muted); cursor: pointer;
@@ -348,7 +348,7 @@
       color: var(--text); font-size: 13px; margin-bottom: 16px;
       font-family: 'JetBrains Mono', monospace; transition: border-color 0.2s;
     }
-    .config-form input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--glow-cyan); }
+    .config-form input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(255,107,53,0.2); }
     .config-form button {
       background: var(--gradient-1); color: #000; border: none;
       padding: 10px 24px; border-radius: var(--radius-sm); cursor: pointer;
@@ -544,8 +544,8 @@
       '#ff6b35', '#f97316', '#fd8a3a', '#fbbf24', '#f59e0b',
       '#ef4444', '#dc2626', '#b91c1c',
       '#10b981', '#059669',
-      '#6366f1', '#8b5cf6',
-      '#ec4899', '#a78bfa', '#14b8a6',
+      '#d4a843', '#e8c547',
+      '#f59e0b', '#d97706', '#c9a84c',
     ];
 
     const SECTOR_COLORS = {
@@ -553,7 +553,7 @@
       'Datacenters': '#fd8a3a', 'Networking': '#fbbf24',
       'Power & Utilities': '#f59e0b', 'Cooling Infrastructure': '#ef4444',
       'AI Models & Labs': '#10b981', 'Semiconductor Manufacturing': '#dc2626',
-      'M&A and Partnerships': '#6366f1', 'Earnings & Guidance': '#8b5cf6',
+      'M&A and Partnerships': '#d4a843', 'Earnings & Guidance': '#f59e0b',
     };
 
     // ─── Chart.js defaults for premium look ──
@@ -865,7 +865,7 @@
           labels: valid.map(v => v.date),
           datasets: [
             { label:'Avg Rating', data:valid.map(v => v.avg), borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.08)', fill:true, tension:0.35, pointRadius:4, pointHoverRadius:7, borderWidth:2 },
-            { label:'Votes', data:valid.map(v => v.votes), borderColor:'#8b5cf6', backgroundColor:'rgba(139,92,246,0.08)', fill:true, tension:0.35, pointRadius:3, pointHoverRadius:6, borderWidth:1, yAxisID:'y1' },
+            { label:'Votes', data:valid.map(v => v.votes), borderColor:'#fbbf24', backgroundColor:'rgba(251,191,36,0.08)', fill:true, tension:0.35, pointRadius:3, pointHoverRadius:6, borderWidth:1, yAxisID:'y1' },
           ]
         },
         options:{
@@ -1043,8 +1043,13 @@
       if(!dates.length) return;
 
       const datasets = allSectors.map(sector => {
-        const color = SECTOR_COLORS[sector] || '#6366f1';
+        const color = SECTOR_COLORS[sector] || '#d4a843';
         return { label: sector, data: dates.map(d => byDate[d][sector]||0), backgroundColor: color + '55', borderColor: color, borderWidth: 1, fill: true, tension: 0.3, pointRadius: 0 };
+      });
+
+      const ctx = document.getElementById('sectorTrendChart').getContext('2d');
+      const c = chartTextColor(), gc = chartGridColor();
+      charts.sectorTrend = new Chart(ctx, {
       });
 
       const ctx = document.getElementById('sectorTrendChart').getContext('2d');
@@ -1287,7 +1292,7 @@
       html += `<table><thead><tr><th>Company</th><th>Form</th><th>Date</th><th>Capex</th><th>AI Revenue</th><th>Margins</th><th>Guide</th><th>Impact</th></tr></thead><tbody>`;
 
       for (const f of filings.slice(0, 20)) {
-        const formColor = f.form_type === '8-K' ? 'var(--warn)' : f.form_type === '10-Q' ? 'var(--accent)' : '#6366f1';
+        const formColor = f.form_type === '8-K' ? 'var(--warn)' : f.form_type === '10-Q' ? 'var(--accent)' : '#d4a843';
         const impactColor = (f.impact_score || 0) >= 8 ? 'var(--danger)' : (f.impact_score || 0) >= 6 ? 'var(--warn)' : 'var(--text-muted)';
 
         // Format financial data with tooltips
