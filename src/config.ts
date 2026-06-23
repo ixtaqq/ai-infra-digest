@@ -18,6 +18,8 @@ export interface Config {
     timezone: string;
     cacheDir: string;
     maxArticlesPerSource: number;
+    supabaseUrl?: string;
+    supabaseServiceKey?: string;
   };
 }
 
@@ -64,6 +66,8 @@ function loadConfig(): Config {
       timezone: process.env.TZ || "Asia/Kuala_Lumpur",
       cacheDir: path.resolve(__dirname, "../.cache"),
       maxArticlesPerSource: 5,
+      supabaseUrl: process.env.SUPABASE_URL || undefined,
+      supabaseServiceKey: process.env.SUPABASE_SERVICE_KEY || undefined,
     },
   };
 }

@@ -11,12 +11,9 @@ const parser = new Parser({
 
 // ─── Tier 1: Major company news + Financial news ───────
 const TIER_1_FEEDS = [
-  // AI chip & semiconductor companies
   { url: "https://nvidianews.nvidia.com/news-rss", name: "NVIDIA" },
   { url: "https://news.microsoft.com/feed/", name: "Microsoft" },
   { url: "https://www.amd.com/en/newsroom/press-releases/rss.html", name: "AMD" },
-
-  // More AI infrastructure companies (via Google News topic RSS)
   { url: "https://news.google.com/rss/search?q=Broadcom+AI&hl=en-US&gl=US&ceid=US:en", name: "Broadcom" },
   { url: "https://news.google.com/rss/search?q=Amazon+AWS+AI+infrastructure&hl=en-US&gl=US&ceid=US:en", name: "Amazon" },
   { url: "https://news.google.com/rss/search?q=Google+AI+infrastructure+datacenter&hl=en-US&gl=US&ceid=US:en", name: "Google" },
@@ -31,45 +28,29 @@ const TIER_1_FEEDS = [
   { url: "https://news.google.com/rss/search?q=Super+Micro+AI+servers&hl=en-US&gl=US&ceid=US:en", name: "Super Micro" },
   { url: "https://news.google.com/rss/search?q=Dell+AI+servers+infrastructure&hl=en-US&gl=US&ceid=US:en", name: "Dell" },
   { url: "https://news.google.com/rss/search?q=ARM+AI+chips+architecture&hl=en-US&gl=US&ceid=US:en", name: "ARM" },
-
-  // Networking
   { url: "https://news.google.com/rss/search?q=Arista+Networks+AI+networking&hl=en-US&gl=US&ceid=US:en", name: "Arista" },
   { url: "https://news.google.com/rss/search?q=Cisco+AI+networking&hl=en-US&gl=US&ceid=US:en", name: "Cisco" },
   { url: "https://news.google.com/rss/search?q=Marvell+AI+networking&hl=en-US&gl=US&ceid=US:en", name: "Marvell" },
-
-  // Semiconductor equipment
   { url: "https://news.google.com/rss/search?q=Applied+Materials+semiconductor&hl=en-US&gl=US&ceid=US:en", name: "Applied Materials" },
   { url: "https://news.google.com/rss/search?q=Lam+Research+semiconductor&hl=en-US&gl=US&ceid=US:en", name: "Lam Research" },
   { url: "https://news.google.com/rss/search?q=KLA+semiconductor+inspection&hl=en-US&gl=US&ceid=US:en", name: "KLA" },
   { url: "https://news.google.com/rss/search?q=Tokyo+Electron+semiconductor&hl=en-US&gl=US&ceid=US:en", name: "Tokyo Electron" },
-
-  // Datacenter REITs
   { url: "https://news.google.com/rss/search?q=Digital+Realty+datacenter+AI&hl=en-US&gl=US&ceid=US:en", name: "Digital Realty" },
   { url: "https://news.google.com/rss/search?q=Equinix+datacenter+AI&hl=en-US&gl=US&ceid=US:en", name: "Equinix" },
-
-  // Power & Energy
   { url: "https://news.google.com/rss/search?q=Constellation+Energy+nuclear+AI+power&hl=en-US&gl=US&ceid=US:en", name: "Constellation Energy" },
   { url: "https://news.google.com/rss/search?q=Vistra+AI+power+demand&hl=en-US&gl=US&ceid=US:en", name: "Vistra" },
   { url: "https://news.google.com/rss/search?q=GE+Vernova+AI+power+grid&hl=en-US&gl=US&ceid=US:en", name: "GE Vernova" },
   { url: "https://news.google.com/rss/search?q=Siemens+Energy+AI+power&hl=en-US&gl=US&ceid=US:en", name: "Siemens Energy" },
-
-  // Cooling infrastructure
   { url: "https://news.google.com/rss/search?q=Vertiv+AI+cooling+datacenter&hl=en-US&gl=US&ceid=US:en", name: "Vertiv" },
   { url: "https://news.google.com/rss/search?q=Schneider+Electric+AI+datacenter&hl=en-US&gl=US&ceid=US:en", name: "Schneider Electric" },
   { url: "https://news.google.com/rss/search?q=Eaton+AI+power+management&hl=en-US&gl=US&ceid=US:en", name: "Eaton" },
-
-  // AI model companies
   { url: "https://news.google.com/rss/search?q=Anthropic+AI+Claude&hl=en-US&gl=US&ceid=US:en", name: "Anthropic" },
   { url: "https://news.google.com/rss/search?q=xAI+Grok+AI&hl=en-US&gl=US&ceid=US:en", name: "xAI" },
   { url: "https://news.google.com/rss/search?q=Mistral+AI&hl=en-US&gl=US&ceid=US:en", name: "Mistral AI" },
   { url: "https://news.google.com/rss/search?q=Cohere+AI+enterprise&hl=en-US&gl=US&ceid=US:en", name: "Cohere" },
-
-  // Memory & Storage
   { url: "https://news.google.com/rss/search?q=SK+hynix+HBM+memory+AI&hl=en-US&gl=US&ceid=US:en", name: "SK hynix" },
   { url: "https://news.google.com/rss/search?q=Samsung+HBM+AI+memory&hl=en-US&gl=US&ceid=US:en", name: "Samsung" },
   { url: "https://news.google.com/rss/search?q=GlobalFoundries+AI+chips&hl=en-US&gl=US&ceid=US:en", name: "GlobalFoundries" },
-
-  // Financial news
   { url: "https://feeds.content.dowjones.io/public/rss/mw_topstories", name: "MarketWatch" },
   { url: "https://finance.yahoo.com/news/rssindex", name: "Yahoo Finance" },
   { url: "https://www.cnbc.com/id/100003114/device/rss/rss.html", name: "CNBC" },
@@ -79,8 +60,6 @@ const TIER_1_FEEDS = [
   { url: "https://www.barrons.com/feed/top-stories", name: "Barron's" },
   { url: "https://feeds.a.dj.com/rss/RSSMarketsMain.xml", name: "WSJ Markets" },
   { url: "https://www.investors.com/category/news/feed/", name: "Investor's Business Daily" },
-
-  // SEC filings (EDGAR RSS)
   { url: "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&CIK=&type=8-K&company=&dateb=&owner=include&start=0&count=20&output=atom", name: "SEC Filings" },
 ];
 
@@ -96,8 +75,6 @@ const TIER_2_FEEDS = [
   { url: "https://www.theregister.com/headlines.rss", name: "The Register" },
   { url: "https://www.datacenterdynamics.com/en/feed/", name: "Datacenter Dynamics" },
   { url: "https://semiengineering.com/feed/", name: "Semiconductor Engineering" },
-
-  // AI-specific
   { url: "https://blog.google/technology/ai/rss/", name: "Google AI Blog" },
   { url: "https://openai.com/blog/rss/", name: "OpenAI" },
   { url: "https://aws.amazon.com/blogs/ai/feed/", name: "AWS AI" },
@@ -108,9 +85,8 @@ const TIER_2_FEEDS = [
   { url: "https://www.zdnet.com/topic/artificial-intelligence/rss.xml", name: "ZDNet AI" },
 ];
 
-// ─── AI/Semiconductor keywords for filtering ────────────
+// ─── Keywords ──────────────────────────────────────────
 const AI_KEYWORDS = [
-  // Core AI infrastructure
   "AI infrastructure", "GPU", "Blackwell", "datacenter", "data center",
   "inference", "training", "LLM", "AI spending", "cloud AI",
   "power demand", "semiconductor", "chip", "accelerator",
@@ -121,8 +97,6 @@ const AI_KEYWORDS = [
   "memory", "HBM", "CoWoS", "TSMC",
   "fabrication", "fab", "node", "process technology",
   "foundry", "wafer", "yield", "packaging", "advanced packaging",
-
-  // Company names & tickers
   "NVIDIA", "NVDA", "AMD", "Broadcom", "AVGO",
   "Microsoft", "MSFT", "Amazon", "AMZN", "AWS",
   "Google", "GOOGL", "GOOG", "Alphabet",
@@ -138,56 +112,36 @@ const AI_KEYWORDS = [
   "Marvell", "MRVL", "Arista", "ANET",
   "CrowdStrike", "Palantir", "PLTR", "Snowflake", "SNOW",
   "ServiceNow", "NOW", "Salesforce", "CRM",
-
-  // GPU & AI hardware
   "H100", "H200", "B100", "B200", "B300",
   "MI300", "MI350", "MI400",
   "Gaudi", "Habana", "Trainium", "Inferentia",
   "TPU", "Trillium", "Dojo", "D1X",
   "Radeon", "Instinct", "CDNA", "ROCm",
   "CUDA", "Tensor Core", "TensorRT",
-
-  // Semiconductor equipment
   "ASML", "Applied Materials", "AMAT", "Lam Research", "LRCX",
   "KLA", "KLAC", "Tokyo Electron",
   "EUV", "DUV", "lithography", "wafer fab", "deposition", "etch",
-
-  // Networking
   "Arista", "ANET", "Cisco", "CSCO", "Juniper", "JNPR",
   "InfiniBand", "Ethernet AI", "AI networking", "optical interconnect",
   "network switch", "data center networking", "smart NIC", "DPU",
-
-  // Memory & Storage
   "HBM", "HBM3E", "HBM4", "DDR5", "GDDR7",
   "memory shortage", "SK hynix", "Samsung memory",
-
-  // Datacenter REITs
   "Digital Realty", "DLR", "Equinix", "EQIX",
-  "colocation", "AI capacity", "datacenter expansion", "data center leasing",
-
-  // Power & Energy
+  "colocation", "AI capacity", "datacenter expansion",
   "Constellation Energy", "CEG", "Vistra", "VST",
   "GE Vernova", "GEV", "Siemens Energy",
   "power demand", "grid upgrades", "nuclear power", "AI electricity",
   "renewable energy", "SMR", "small modular reactor",
-
-  // Cooling
   "Vertiv", "VRT", "Schneider Electric", "Eaton", "ETN",
   "liquid cooling", "immersion cooling", "thermal management",
   "datacenter cooling", "Trane", "TT",
-
-  // AI model companies
   "Anthropic", "Claude", "xAI", "Grok",
   "Mistral AI", "Cohere", "AI model", "frontier model",
   "foundation model", "open source model",
-
-  // Sector categories
   "semiconductor manufacturing", "chip design",
   "M&A", "partnership", "joint venture",
   "guidance", "earnings report", "revenue guidance",
   "capex", "capital expenditure", "buyback", "dividend",
-
-  // Additional tickers
   "GlobalFoundries", "GFS", "Samsung",
 ];
 
@@ -196,6 +150,7 @@ function matchesKeywords(title: string, content: string): boolean {
   return AI_KEYWORDS.some((kw) => text.includes(kw.toLowerCase()));
 }
 
+// ─── Types ────────────────────────────────────────────
 export interface Article {
   title: string;
   url: string;
@@ -205,25 +160,33 @@ export interface Article {
   contentSnippet: string;
 }
 
-async function fetchFeed(
+export interface FeedResult {
+  name: string;
+  url: string;
+  status: "success" | "failed";
+  articlesFetched: number;
+  articles: Article[];
+  error?: string;
+}
+
+// ─── Fetch with status tracking ────────────────────────
+async function fetchFeedWithStatus(
   feed: { url: string; name: string },
   maxArticles: number
-): Promise<Article[]> {
+): Promise<FeedResult> {
+  const startTime = Date.now();
   try {
     const result = await parser.parseURL(feed.url);
     const articles: Article[] = [];
 
     for (const item of result.items) {
       if (articles.length >= maxArticles) break;
-
       const title = item.title?.trim();
       if (!title) continue;
-
       const contentSnippet =
         item.contentSnippet?.trim() ||
         item.content?.replace(/<[^>]*>/g, "").trim() ||
         "";
-
       articles.push({
         title,
         url: item.link || "",
@@ -234,38 +197,53 @@ async function fetchFeed(
       });
     }
 
-    logger.info(`Fetched ${articles.length} articles from ${feed.name}`);
-    return articles;
+    logger.info(`Fetched ${articles.length} articles from ${feed.name} (${Date.now() - startTime}ms)`);
+    return {
+      name: feed.name,
+      url: feed.url,
+      status: "success",
+      articlesFetched: articles.length,
+      articles,
+    };
   } catch (error) {
     logger.warn(`Failed to fetch ${feed.name}: ${(error as Error).message}`);
-    return [];
+    return {
+      name: feed.name,
+      url: feed.url,
+      status: "failed",
+      articlesFetched: 0,
+      articles: [],
+      error: (error as Error).message,
+    };
   }
 }
 
-export async function collectArticles(): Promise<Article[]> {
+// ─── Main collection ──────────────────────────────────
+export async function collectArticles(): Promise<{
+  articles: Article[];
+  feedStatuses: FeedResult[];
+}> {
   logger.info("Starting news collection...");
 
   const allFeeds = [...TIER_1_FEEDS, ...TIER_2_FEEDS];
-  const results = await Promise.all(
-    allFeeds.map((feed) => fetchFeed(feed, config.app.maxArticlesPerSource))
+  const feedResults = await Promise.all(
+    allFeeds.map((feed) => fetchFeedWithStatus(feed, config.app.maxArticlesPerSource))
   );
 
-  let articles = results.flat();
+  let articles = feedResults.flatMap((r) => r.articles);
 
   // Filter by AI/semiconductor keywords
   const filtered = articles.filter((a) =>
     matchesKeywords(a.title, a.contentSnippet)
   );
 
+  const finalArticles = filtered.length > 0
+    ? filtered
+    : articles.slice(0, 30);
+
   logger.info(
-    `Collection complete: ${articles.length} total, ${filtered.length} AI-relevant`
+    `Collection complete: ${articles.length} total, ${finalArticles.length} AI-relevant (${feedResults.filter(r => r.status === 'success').length}/${feedResults.length} feeds healthy)`
   );
 
-  if (filtered.length === 0) {
-    // If keyword filtering removes everything, return top articles anyway
-    logger.warn("No AI-relevant articles found by keywords, using all articles");
-    return articles.slice(0, 30);
-  }
-
-  return filtered;
+  return { articles: finalArticles, feedStatuses: feedResults };
 }
