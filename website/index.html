@@ -781,8 +781,8 @@
           <div class="stat-label">SEC Companies</div>
         </div>
         <div class="stat-item animate delay-2">
-          <div class="stat-number"><span class="green">58</span></div>
-          <div class="stat-label">Unit Tests Passing</div>
+          <div class="stat-number"><span class="green">14</span></div>
+          <div class="stat-label">Database Tables</div>
         </div>
       </div>
     </div>
@@ -797,14 +797,18 @@
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:07</span> SEC filings analyzed — 5 new filings, 2 high-impact</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:10</span> Stock prices updated — 30 tickers via Yahoo Finance</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:12</span> 🎙️ Earnings Watch generated — guidance delta computed</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:15</span> Digest delivered to Telegram + Supabase written</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:13</span> 📊 Derived metrics: 45 rows written to daily_derived_metrics</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:14</span> 📊 Market Pulse: NVDA mentions +32% WoW · Datacenters +18% WoW</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:15</span> Digest delivered to Telegram + 14 tables updated in Supabase</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:00</span> NVIDIA files 8-K — $26B capex</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:02</span> Article analysis complete — 142 articles processed</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:04</span> Earnings transcripts fetched — 5 calls analyzed</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:07</span> SEC filings analyzed — 5 new filings, 2 high-impact</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:10</span> Stock prices updated — 30 tickers via Yahoo Finance</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:12</span> 🎙️ Earnings Watch generated — guidance delta computed</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:15</span> Digest delivered to Telegram + Supabase written</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:13</span> 📊 Derived metrics: 45 rows written to daily_derived_metrics</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:14</span> 📊 Market Pulse: NVDA mentions +32% WoW · Datacenters +18% WoW</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:15</span> Digest delivered to Telegram + 14 tables updated in Supabase</span>
     </div>
   </div>
 
@@ -874,14 +878,19 @@
           <p>Keyword pre-filter (free) → fast model flagging (~$0.0005) → strong model extraction (~$0.01). Capex, AI Revenue, Margins, Guidance from 35 companies. 🏛️ badge on filing articles.</p>
         </div>
         <div class="feature-card delay-3">
+          <span class="icon">📈</span>
+          <h3>Intelligence Layer</h3>
+          <p>Materializes a <code>daily_derived_metrics</code> table every run. "What Changed" Market Pulse block in each digest shows WoW mention movers ≥20%. <code>/trends NVDA 30d</code> renders a Unicode sparkline + delta.</p>
+        </div>
+        <div class="feature-card delay-3">
           <span class="icon">🤖</span>
           <h3>Telegram Bot + Digest</h3>
-          <p>Delivered at your preferred time with /digest, /trending, /feedback, /alert, /sec commands. 🏛️ SEC badges + 🎙️ Earnings Watch sections included.</p>
+          <p>Delivered at your preferred time with /digest, /trends, /trending, /feedback, /alert, /sec commands. 🏛️ SEC badges + 🎙️ Earnings Watch + 📊 Market Pulse included.</p>
         </div>
         <div class="feature-card delay-3">
           <span class="icon">🖥️</span>
           <h3>Premium Live Dashboard</h3>
-          <p>Gold fintech UI with 6 charts, SEC filings table, full‑text search, trending analysis, earnings data, and delivery logs.</p>
+          <p>Graphite + copper terminal UI. Auth gate, 6 charts, SEC filings table, full‑text search, expandable article rows with inline summaries, and auto-refresh every 60 s.</p>
         </div>
       </div>
     </div>
@@ -900,25 +909,25 @@
         <div class="pipeline-step">
           <div class="num">1</div>
           <div class="step-label">Collect</div>
-          <div class="step-desc">57 RSS feeds + 35 SEC filings + stock prices</div>
+          <div class="step-desc">57 RSS feeds + SEC EDGAR + earnings transcripts</div>
         </div>
         <span class="pipeline-arrow">→</span>
         <div class="pipeline-step">
           <div class="num">2</div>
           <div class="step-label">Analyze</div>
-          <div class="step-desc">AI classifies, scores impact, extracts financial data</div>
+          <div class="step-desc">Two-tier AI · SEC two-pass · cached responses</div>
         </div>
         <span class="pipeline-arrow">→</span>
         <div class="pipeline-step">
           <div class="num">3</div>
-          <div class="step-label">Format</div>
-          <div class="step-desc">Telegram HTML message + Supabase storage</div>
+          <div class="step-label">Materialize</div>
+          <div class="step-desc">Write daily_derived_metrics · compute WoW movers</div>
         </div>
         <span class="pipeline-arrow">→</span>
         <div class="pipeline-step">
           <div class="num">4</div>
           <div class="step-label">Deliver</div>
-          <div class="step-desc">Telegram bot + live dashboard</div>
+          <div class="step-desc">Fan-out per user · Market Pulse header · dashboard</div>
         </div>
       </div>
     </div>
@@ -955,64 +964,65 @@
         </div>
 
         <div class="roadmap-grid">
-          <!-- Phase I -->
+          <!-- Phase I+II -->
           <div class="phase-card status-live delay-1">
             <div class="phase-top">
-              <span class="phase-num">Phase I</span>
-              <span class="badge badge-live">Live</span>
+              <span class="phase-num">Phase I &amp; II</span>
+              <span class="badge badge-live">Shipped</span>
             </div>
-            <div class="phase-title-text">Foundation.</div>
+            <div class="phase-title-text">Foundation + Intelligence.</div>
             <ul class="feature-list">
-              <li>57 RSS feeds across 10 sectors — conditional GET caching, 304 responses</li>
-              <li>Smart dedup — URL hash + Jaccard similarity (0.65 threshold)</li>
-              <li>Keyword filtering &amp; categorization with ticker extraction</li>
-              <li>58 unit tests passing — Vitest, integration, and E2E coverage</li>
-              <li>Per-user scheduled delivery with timezone-aware cron</li>
+              <li>57 RSS feeds · conditional GET caching · Jaccard dedup</li>
+              <li>Two-tier AI routing — 8B classification + 70B synthesis, 40–60% cheaper</li>
+              <li>SEC EDGAR two-pass extraction for 35 companies</li>
+              <li>🎙️ Earnings transcript mining with QoQ guidance delta</li>
+              <li>Yahoo Finance snapshots · 30+ tickers with price deltas</li>
             </ul>
           </div>
 
-          <!-- Phase II -->
+          <!-- Phase III+IV -->
           <div class="phase-card status-live delay-2">
             <div class="phase-top">
-              <span class="phase-num">Phase II</span>
-              <span class="badge badge-live">Live</span>
+              <span class="phase-num">Phase III &amp; IV</span>
+              <span class="badge badge-live">Shipped</span>
             </div>
-            <div class="phase-title-text">Intelligence.</div>
+            <div class="phase-title-text">Reliability + Platform.</div>
             <ul class="feature-list">
-              <li>Two-tier AI routing — fast 8B classification + strong 70B synthesis, 40-60% cheaper</li>
-              <li>SEC two-pass extraction — free keyword filter → fast flag → strong extract, 50-70% cheaper</li>
-              <li>SEC alert badge 🏛️ — articles auto-tagged via regex (8-K, 10-Q, 10-K), stored in Supabase</li>
-              <li>Yahoo Finance snapshots — 30 tickers tracked with price deltas</li>
+              <li>Fan-out delivery — generate once, personalize per user</li>
+              <li>4-step onboarding · digest_length · watchlist · alert threshold</li>
+              <li>AI response cache (SHA-256, 23h TTL) · budget cap alerts</li>
+              <li>Dashboard auth gate · expandable article rows · 6 Chart.js charts</li>
+              <li>34 unit tests · CI on every push · Supabase CLI migrations</li>
             </ul>
           </div>
 
-          <!-- Phase III -->
-          <div class="phase-card status-next delay-2">
+          <!-- Phase V -->
+          <div class="phase-card status-live delay-2">
             <div class="phase-top">
-              <span class="phase-num">Phase III</span>
+              <span class="phase-num">Phase V</span>
+              <span class="badge badge-live">Shipped</span>
+            </div>
+            <div class="phase-title-text">Intelligence Layer.</div>
+            <ul class="feature-list">
+              <li>daily_derived_metrics — ticker &amp; sector rows, every pipeline run</li>
+              <li>"What Changed" Market Pulse block in digest header (WoW movers ≥20%)</li>
+              <li>/trends NVDA 30d — Unicode sparkline ▁▂▄▆█ + WoW delta + price</li>
+              <li>Backfill script — seeds up to 90 days from historical data, idempotent</li>
+            </ul>
+          </div>
+
+          <!-- Phase VI -->
+          <div class="phase-card status-next delay-3">
+            <div class="phase-top">
+              <span class="phase-num">Phase VI</span>
               <span class="badge badge-next">Next</span>
             </div>
-            <div class="phase-title-text">Interaction.</div>
+            <div class="phase-title-text">Monetization.</div>
             <ul class="feature-list">
-              <li>Dashboard 2.0 — Supabase Auth, public digest pages, earnings trend charts</li>
-              <li>Earnings transcript archive &amp; historical charts on dashboard</li>
-              <li>Guidance delta visualization — capex barometer, AI revenue index</li>
-              <li>CMD+K search for SEC filings &amp; transcript archive</li>
-            </ul>
-          </div>
-
-          <!-- Phase IV -->
-          <div class="phase-card status-future delay-3">
-            <div class="phase-top">
-              <span class="phase-num">Phase IV</span>
-              <span class="badge badge-future">Future</span>
-            </div>
-            <div class="phase-title-text">Research.</div>
-            <ul class="feature-list">
-              <li>Bull/bear thesis generation per ticker with competitive landscape analysis</li>
-              <li>Personal portfolio tracking with P&amp;L &amp; price threshold alerts</li>
-              <li>Real-time SEC filing alerts with instant AI summary</li>
-              <li>Automated research reports &amp; sector rotation detection</li>
+              <li>Public REST API over daily_derived_metrics — rate-limited tiers</li>
+              <li>Stripe subscription gate · free vs. paid tiers</li>
+              <li>Price threshold alerts — user-defined ticker targets</li>
+              <li>Bull/bear thesis per ticker — AI narrative updated weekly</li>
             </ul>
           </div>
         </div>
@@ -1042,9 +1052,9 @@
         <div><span class="comment"># Or test with sample data</span></div>
         <div><span class="prompt">$</span> <span class="cmd">npm run test-digest</span></div>
         <div>&nbsp;</div>
-        <div><span class="comment"># 58 tests pass out of the box</span></div>
-        <div><span class="prompt">$</span> <span class="cmd">npm test</span></div>
-        <div><span class="output">  ✓ 58 tests passing</span></div>
+        <div><span class="comment"># 34 unit tests, no credentials needed</span></div>
+        <div><span class="prompt">$</span> <span class="cmd">npm run test:unit</span></div>
+        <div><span class="output">  ✓ 34 tests passing</span></div>
       </div>
     </div>
   </section>
@@ -1104,8 +1114,8 @@
       { id: 'termLine5', text: '→ Earnings: 5 transcripts analyzed — guidance delta computed', delay: 4200 },
       { id: 'termLine6', text: '→ SEC: 5 new filings analyzed — 2 high-impact', delay: 5200 },
       { id: 'termLine7', text: '→ Stocks: 30 tickers updated via Yahoo Finance', delay: 6200 },
-      { id: 'termLine8', text: '→ Telegram: Digest sent — 142 articles, 8 sections + Earnings Watch', delay: 7200 },
-      { id: 'termLine9', text: '→ Supabase: 13 tables written — dashboard updated', delay: 8400 },
+      { id: 'termLine8', text: '→ Metrics: 45 rows → daily_derived_metrics · Market Pulse: NVDA +32% WoW', delay: 7200 },
+      { id: 'termLine9', text: '→ Telegram: Digest sent — 142 articles + Earnings Watch + Market Pulse', delay: 8400 },
     ];
 
     function typeLine(element, text, callback) {
