@@ -12,7 +12,7 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 - **57 RSS feeds** across 2 tiers (company news + industry analysis)
 - **Smart deduplication** — URL matching + **Jaccard similarity** (catches near-identical headlines from different sources)
 - **10-sector classification**: Chips & GPUs, Cloud & Hyperscalers, Datacenters, Networking, Semiconductor Manufacturing, Power & Utilities, Cooling Infrastructure, AI Models & Labs, M&A, Earnings
-- **200+ keyword filter** — AI/semiconductor relevance gate
+- **Relevance scoring filter** — AI scores each article's relevance to AI infrastructure (1–10); articles < 4 dropped before ranking
 - **Conditional GET caching** — ETag/Last-Modified headers per feed, 304 for unchanged content
 - **Consecutive failure tracking** — feeds failing 2+ runs in a row are automatically skipped
 - **RSS retry with exponential backoff** — up to 2 retries with full-jitter backoff
@@ -23,6 +23,7 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 - **Two-tier model routing** — fast/cheap model (llama-3.1-8b-instant) for classification; strong model (llama-3.3-70b-versatile) for synthesis — saves **40–60% on AI costs**
 - **Dynamic batch sizing** — 5–15 articles/batch, targeting ~4 batches
 - **Batch processing** with exponential backoff (full-jitter, up to 3 attempts)
+- **Anchored impact rubric** — 1–10 scale with tier anchors: 1–3 routine, 4–6 notable, 7–8 significant surprise, 9–10 market-moving; scores ≥ 8 require a justification sentence
 - **Synthesis pass** — market outlook, top stocks, daily summary
 - **Token tracking** — `prompt_tokens`, `completion_tokens`, `total_tokens` per run, both model names stored in Supabase
 - **AI response caching** — SHA-256 hash of article URLs as cache key; 23-hour TTL prevents redundant AI spend on same article set during dev re-runs
@@ -155,17 +156,19 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 - **Structured error events** — AI 429, Yahoo Finance failures, Supabase errors all emit `ErrorEvent` with recovery suggestions
 
 ### 🧪 Testing & CI
-- **66 tests** with **Vitest**:
+- **75 tests** with **Vitest**:
   - Deduplication: 5 unit tests
   - Keyword matching: 13 unit tests
   - Stock price fetching: 3 unit tests
   - Telegram formatter: 5 unit tests
   - Webhook router: 8 unit tests
   - Fan-out regression: 1 test — proves `collectArticles` called once for N deliveries
+  - Source credibility: 6 unit tests (`getSourceCredibility`, `isPRWireSource`)
+  - Novelty detection: 4 unit tests (`flagRehashes` — fetch success, empty, non-ok, network error)
   - Supabase integration: 15 tests (requires live credentials)
   - Telegram integration: 9 tests (requires live credentials)
   - Stocks integration: 8 tests (requires live credentials)
-- **34 unit tests** run offline; integration tests require live credentials — use `npm run test:unit` for offline CI
+- **43 unit tests** run offline; integration tests require live credentials — use `npm run test:unit` for offline CI
 - **CI workflow** — `.github/workflows/ci.yml` runs `npm run test:unit` (unit tests only) on every push/PR to main
 - **TypeScript strict mode** — entire project compiles cleanly with `tsc --noEmit`
 
@@ -277,7 +280,7 @@ cp .env.example .env
 npm run dev          # Run pipeline once (polling mode)
 npm run scheduler    # Run per-user delivery check
 npm run webhook      # Start webhook server (tsx, local dev)
-npm run test:unit    # Run 34 unit tests (offline, no credentials needed)
+npm run test:unit    # Run 43 unit tests (offline, no credentials needed)
 npm test             # Run all tests (integration tests need live credentials)
 
 # Backfill historical derived metrics (run once after first pipeline runs)
@@ -334,7 +337,7 @@ npm run db:pull      # Sync remote schema to local
 
 ### CI
 
-`.github/workflows/ci.yml` — runs on every push and PR to `main`. Executes lint + unit tests (34 tests, no credentials needed, fast).
+`.github/workflows/ci.yml` — runs on every push and PR to `main`. Executes lint + unit tests (43 tests, no credentials needed, fast).
 
 ### Required Secrets
 
@@ -410,7 +413,8 @@ ai-infra-digest/
 │       ├── ai-cache.ts                       # File-based AI response cache (SHA-256 key, 23h TTL)
 │       ├── derived-metrics.ts                # daily_derived_metrics writer + query helpers
 │       ├── dedup.ts                          # URL + Jaccard dedup + buildCorroborationMap()
-│       ├── source-credibility.ts             # Static source-name → credibility multiplier (High/Neutral/Low editorial tiers)
+│       ├── source-credibility.ts             # Static source-name → credibility multiplier + isPRWireSource() PR wire detection
+│       ├── novelty.ts                        # 48h rehash detection — flags isRehash via Jaccard similarity against recent DB articles
 │       ├── trust-scores.ts                   # Vote-learned source/sector multipliers from article_validations (1h TTL cache)
 │       ├── logger.ts                         # Structured timestamped logger
 │       ├── metrics.ts                        # NDJSON event logging
@@ -493,7 +497,14 @@ Tom's Hardware, AnandTech, Ars Technica, TechCrunch, The Verge, Seeking Alpha, S
 - **v6.2** — Static Source Credibility + Corroboration — cold-start fix: deterministic source-name → multiplier map (High 1.2x for TechCrunch/Reuters/WSJ/etc., Low 0.8x for vendor PR blogs, default 1.0x); `buildCorroborationMap()` clusters same-story articles via Jaccard similarity and adds +5% per extra corroborating source
 - **v6.3** — Devil's Advocate bear cases — second AI pass for articles scoring ≥ 7/10 generates a skeptical 1–2 sentence counter-argument; stored in `bear_case TEXT` column; rendered as `⚠️` italic line in each digest article
 
-### Phase VII · Next Steps 🔭 Exploring
+### Phase VII · Sharper Signal ✅ Shipped
+- **v7.0** — Relevance scoring pass — `relevanceScore` (1–10) added to batch AI prompt; articles scoring < 4 dropped before ranking; `effectiveScore` promoted to real typed field on `ProcessedArticle` (removed `as` casts)
+- **v7.1** — Score calibration + PR wire dampening — anchored 1–10 impact rubric with tier examples; `isPRWireSource()` identifies BusinessWire/PRNewswire/GlobeNewswire etc.; PR wire articles capped at `effectiveScore = 6` regardless of content; PR wires added to credibility map at 0.8×
+- **v7.2** — Novelty flag — `flagRehashes()` queries articles from the past 48 hours, computes Jaccard similarity (threshold 0.5) against incoming titles, tags matches as `isRehash`; rehashed articles get a 0.6× multiplier in the effectiveScore chain so breaking news always surfaces above repeated coverage
+- **v7.3** — Test coverage — 10 new unit tests for `source-credibility.ts` and `novelty.ts`; total test count raised to 75
+
+### Phase VIII · Next Steps 🔭 Exploring
+- **Semantic Core** — embeddings + pgvector for semantic dedup, relevance gate, and related coverage
 - Price threshold alerts — user-defined ticker price targets trigger instant Telegram notifications
 - Bull/bear thesis generation — per-ticker AI narrative updated weekly from accumulated mention + price + validation data
 - Source reputation leaderboard — public dashboard view ranking sources by approval rate and hallucination flags
