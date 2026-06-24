@@ -120,15 +120,23 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 - **Backfill script** — `scripts/backfill-derived-metrics.ts` seeds historical data from existing `sector_activity` + `stock_mentions` rows; idempotent (safe to re-run); `--days=90` for full history
 - **Idempotent upsert** — `UNIQUE(date, entity_type, entity)` + `resolution=merge-duplicates`; re-running the pipeline on the same day is always safe
 
+### 👍 Article Validation (v6)
+- **Inline 👍/👎 buttons** — after every digest delivery, a compact "Quick Validation" follow-up message lists the top 3 highest-impact articles with per-article thumbs buttons
+- **`article_validations` table** — one row per user per article (`UNIQUE(article_id, chat_id)`); double-vote silently ignored with "Already rated!" toast
+- **Aggregate counters** — `thumbs_up` / `thumbs_down` columns on `articles` table updated atomically after each new vote
+- **`insertArticles()` returns IDs** — Supabase `return=representation` gives `{id, url}[]` back; IDs flow through `persistDigestMetrics()` → `sendValidationFollowUp()` without changing the fan-out architecture
+- **Fan-out safe** — validation follow-up sent independently to each user in the scheduler loop after the single `persistDigestMetrics()` call; never blocks digest delivery
+
 ### 🗄️ Database (Supabase)
-- **14 tables**: `digest_runs`, `articles`, `sector_activity`, `stock_mentions`, `pipeline_health`, `capex_tracking`, `ai_usage`, `daily_metrics`, `stock_prices`, `user_preferences`, `user_delivery_log`, `sec_filings`, `earnings_transcripts`, `daily_derived_metrics`
+- **15 tables**: `digest_runs`, `articles`, `sector_activity`, `stock_mentions`, `pipeline_health`, `capex_tracking`, `ai_usage`, `daily_metrics`, `stock_prices`, `user_preferences`, `user_delivery_log`, `sec_filings`, `earnings_transcripts`, `daily_derived_metrics`, `article_validations`
 - Managed with **Supabase CLI** — migrations in `supabase/migrations/`
 - `digest_runs` tracks both models (`ai_model` + `ai_fast_model`)
-- `articles` has `is_sec_filing` boolean for SEC badge articles
+- `articles` has `is_sec_filing` boolean, `thumbs_up` / `thumbs_down` aggregate validation counters
 - `user_preferences` has `digest_length` column (`brief` | `standard` | `detailed`)
 - `daily_derived_metrics` has `entity_type`, `entity`, mention counts, sentiment, impact scores, price data
+- `article_validations` — per-user vote log; `UNIQUE(article_id, chat_id)` prevents double-voting
 - RLS enabled on all tables; service role key used for writes, public read for dashboard
-- **Performance indexes** — 15 indexes including GIN full-text search, partial indexes for SEC filings and active users, time-series indexes on `daily_derived_metrics`
+- **Performance indexes** — 16 indexes including GIN full-text search, partial indexes for SEC filings and active users, time-series indexes on `daily_derived_metrics`, article validation lookup
 - **Automated retention** — `cleanup_old_data()` function prunes articles (90d), pipeline_health (30d), ai_usage (90d), delivery_log (90d)
 
 ### 📈 Structured Logging & Metrics
@@ -209,8 +217,13 @@ Step 4: Fan-out delivery loop
       │
       ▼
 Step 5: persistDigestMetrics() — writes to Supabase ONCE per generation
-      ├── digest_runs, articles, sector_activity, stock_prices, daily_metrics
-      └── Dashboard reads live from Supabase REST API
+      ├── digest_runs, articles (returns {id,url}[]), sector_activity, stock_prices, daily_metrics
+      └── Returns Map<url,id> for validation follow-up
+      │
+      ▼
+Step 6: sendValidationFollowUp() — per user, after persist
+      ├── Top-3 articles by impact score → 👍/👎 inline keyboard
+      └── va_* callback handler records vote → article_validations + thumbs counter
 ```
 
 ---
@@ -303,6 +316,7 @@ npm run db:pull      # Sync remote schema to local
 | `20260624120000_v4_indexes_retention.sql` | 13 performance indexes + `cleanup_old_data()` retention function |
 | `20260624150000_v5_digest_length.sql` | `digest_length` column on `user_preferences` |
 | `20260625000000_v6_daily_derived_metrics.sql` | `daily_derived_metrics` table + 2 time-series indexes + RLS |
+| `20260626000000_v7_article_validations.sql` | `article_validations` table + `thumbs_up`/`thumbs_down` on `articles` + RLS |
 
 ---
 
@@ -318,7 +332,7 @@ npm run db:pull      # Sync remote schema to local
 
 ### CI
 
-`.github/workflows/ci.yml` — runs on every push and PR to `main`. Executes lint + unit tests (26 tests, no credentials needed, fast).
+`.github/workflows/ci.yml` — runs on every push and PR to `main`. Executes lint + unit tests (34 tests, no credentials needed, fast).
 
 ### Required Secrets
 
@@ -385,7 +399,7 @@ ai-infra-digest/
 │   │   ├── sec.ts                            # SEC two-pass extraction
 │   │   └── earnings.ts                       # Earnings two-pass analysis + guidance delta
 │   ├── sender/
-│   │   └── telegram.ts                       # Bot API, polling/webhook mode switch, command handlers
+│   │   └── telegram.ts                       # Bot API, command handlers, sendValidationFollowUp, va_* callback
 │   ├── tests/
 │   │   ├── index.faninout.test.ts            # Fan-out regression (generate once, deliver N times)
 │   │   └── webhook.test.ts                   # Webhook router unit tests
@@ -397,8 +411,8 @@ ai-infra-digest/
 │       ├── metrics.ts                        # NDJSON event logging
 │       ├── retry.ts                          # withRetry<T> + tryStage<T> utilities
 │       ├── stocks.ts                         # Yahoo Finance price fetcher
-│       └── supabase.ts                       # Supabase REST CRUD (14 tables)
-├── supabase-schema.sql                       # Full schema reference (13 tables + RLS)
+│       └── supabase.ts                       # Supabase REST CRUD (15 tables); insertArticles returns {id,url}[]
+├── supabase-schema.sql                       # Full schema reference (15 tables + RLS)
 ├── vitest.config.ts
 ├── package.json
 └── tsconfig.json
@@ -468,11 +482,16 @@ Tom's Hardware, AnandTech, Ars Technica, TechCrunch, The Verge, Seeking Alpha, S
 - **v5.2** — `/trends` command — Unicode sparkline + WoW delta + price for any ticker or sector (`/trends NVDA 30d`, `/trends sector Datacenters`)
 - **v5.3** — Backfill script — seeds up to 90 days of historical data from existing `sector_activity` + `stock_mentions`; idempotent (safe to re-run)
 
-### Phase VI · Monetization 🔭 Next
-- **v6** — Public API layer — authenticated REST endpoints over `daily_derived_metrics`; rate-limited tiers; Stripe subscription gate
-- **v6.1** — Feedback loop — structured `feedback` table; sentiment ratings feed back into article scoring weights
-- **v6.2** — Price threshold alerts — user-defined ticker price targets trigger instant Telegram notifications
-- **v6.3** — Bull/bear thesis generation — per-ticker AI narrative updated weekly from accumulated mention + price data
+### Phase VI · Validation Layer ✅ Shipped
+- **v6.0** — Inline 👍/👎 article validation — top-3 articles per digest get a "Quick Validation" follow-up with per-article buttons
+- **v6.1** — `article_validations` table — idempotent per-user votes; "Already rated!" dedup toast; `thumbs_up`/`thumbs_down` aggregate counters on `articles`
+- **v6.2** — `insertArticles()` returns Supabase IDs — `return=representation` threads `{id,url}[]` back through `persistDigestMetrics()` to `sendValidationFollowUp()` without breaking fan-out
+
+### Phase VII · Monetization 🔭 Next
+- **v7** — Public API layer — authenticated REST endpoints over `daily_derived_metrics`; rate-limited tiers; Stripe subscription gate
+- **v7.1** — Validation-weighted scoring — article `thumbs_up`/`thumbs_down` ratios feed back into impact score weights per source
+- **v7.2** — Price threshold alerts — user-defined ticker price targets trigger instant Telegram notifications
+- **v7.3** — Bull/bear thesis generation — per-ticker AI narrative updated weekly from accumulated mention + price + validation data
 
 ---
 
