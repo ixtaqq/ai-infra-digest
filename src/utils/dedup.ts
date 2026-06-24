@@ -13,6 +13,23 @@ interface CacheData {
   entries: CacheEntry[];
 }
 
+// ─── Cosine Similarity ────────────────────────────────
+
+/**
+ * Compute cosine similarity between two equal-length vectors.
+ * Returns a value in [0, 1] where 1 = identical direction.
+ */
+export function cosineSimilarity(a: number[], b: number[]): number {
+  let dot = 0, magA = 0, magB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    magA += a[i] * a[i];
+    magB += b[i] * b[i];
+  }
+  const denom = Math.sqrt(magA) * Math.sqrt(magB);
+  return denom === 0 ? 0 : dot / denom;
+}
+
 // ─── Jaccard Similarity ────────────────────────────────
 
 /** Tokenize a string into a set of lower-cased words (3+ chars). */
@@ -77,26 +94,31 @@ function saveCache(cache: CacheData): void {
 }
 
 /**
- * Cluster a batch of articles by URL + Jaccard title similarity.
- * Returns a Map where each key is the representative URL (first seen in the
- * cluster) and each value is the list of all URLs that belong to that cluster.
- * Used internally by both `deduplicateArticles` and `buildCorroborationMap`.
+ * Cluster a batch of articles by URL + title similarity.
+ * When an embeddingMap is provided, uses cosine similarity (threshold 0.85);
+ * otherwise falls back to Jaccard (threshold 0.65).
  */
 function clusterArticles(
-  articles: Array<{ url: string; title: string }>
+  articles: Array<{ url: string; title: string }>,
+  embeddingMap?: Map<string, number[]>
 ): Map<string, string[]> {
-  const SIMILARITY_THRESHOLD = 0.65;
+  const JACCARD_THRESHOLD = 0.65;
+  const COSINE_THRESHOLD = 0.85;
   const clusters: Array<{ representativeUrl: string; title: string; urls: string[] }> = [];
 
   for (const article of articles) {
     if (!article.url) continue;
 
-    // Check if this article belongs to an existing cluster
-    const match = clusters.find(
-      (c) =>
-        c.representativeUrl === article.url ||
-        jaccardSimilarity(article.title, c.title) >= SIMILARITY_THRESHOLD
-    );
+    const articleEmbed = embeddingMap?.get(article.url);
+
+    const match = clusters.find((c) => {
+      if (c.representativeUrl === article.url) return true;
+      if (articleEmbed) {
+        const clusterEmbed = embeddingMap?.get(c.representativeUrl);
+        if (clusterEmbed) return cosineSimilarity(articleEmbed, clusterEmbed) >= COSINE_THRESHOLD;
+      }
+      return jaccardSimilarity(article.title, c.title) >= JACCARD_THRESHOLD;
+    });
 
     if (match) {
       match.urls.push(article.url);
@@ -126,9 +148,10 @@ function clusterArticles(
  * representative URL matches what the AI pipeline receives.
  */
 export function buildCorroborationMap(
-  articles: Array<{ url: string; title: string }>
+  articles: Array<{ url: string; title: string }>,
+  embeddingMap?: Map<string, number[]>
 ): Map<string, number> {
-  const clusters = clusterArticles(articles);
+  const clusters = clusterArticles(articles, embeddingMap);
   const result = new Map<string, number>();
   for (const [repUrl, urls] of clusters) {
     result.set(repUrl, urls.length);

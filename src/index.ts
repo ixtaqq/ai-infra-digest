@@ -162,7 +162,7 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
     // ─── Step 1c: Deduplicate ───────────────────
     logger.info(`Step 1b: Deduplicating ${articles.length} articles...`);
     // Build corroboration map BEFORE dedup — needs full raw batch to count clusters
-    const corroborationMap = buildCorroborationMap(articles);
+    let corroborationMap = buildCorroborationMap(articles);
     const uniqueArticles = deduplicateArticles(articles);
 
     let articlesToProcess: Article[];
@@ -239,6 +239,9 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
       for (const article of digest.articles) {
         article.embedding = embeddingsStage.value.get(article.url);
       }
+      // v8.1: rebuild corroboration map with semantic similarity now that embeddings exist
+      corroborationMap = buildCorroborationMap(articlesToProcess, embeddingsStage.value);
+      logger.info("Corroboration map rebuilt with semantic (cosine) similarity");
     }
 
     // ─── Step 2b: Earnings Transcript Mining ─────
