@@ -61,6 +61,7 @@ export interface FormatOptions {
   secExtracts?: SECFinancialExtract[];
   earningsAnalyses?: EarningsAnalysis[];
   personalizationNote?: string;
+  whatChanged?: string;
 }
 
 export function formatDigestTelegram(
@@ -75,6 +76,10 @@ export function formatDigestTelegram(
   lines.push(`<i>${formatDate()} • Full value chain coverage</i>`);
   if (options?.personalizationNote) {
     lines.push(`<i>🎯 ${options.personalizationNote}</i>`);
+  }
+  if (options?.whatChanged) {
+    lines.push("");
+    lines.push(options.whatChanged);
   }
   lines.push("");
 

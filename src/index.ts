@@ -26,6 +26,7 @@ import { collectEarningsTranscripts } from "./collector/earnings";
 import { analyzeEarningsTranscripts } from "./processor/earnings";
 import { withRetry, tryStage } from "./utils/retry";
 import { getCached, setCached } from "./utils/ai-cache";
+import { writeDerivedMetrics, queryRecentDerivedMetrics, queryDerivedMetrics } from "./utils/derived-metrics";
 import type { Article, FeedResult } from "./collector/rss";
 import type { SECFinancialExtract } from "./processor/sec";
 import type { EarningsAnalysis } from "./processor/earnings";
@@ -47,6 +48,8 @@ export interface GeneratedDigest {
   secExtracts: SECFinancialExtract[];
   earningsAnalyses: import("./processor/earnings").EarningsAnalysis[];
   stockPrices: Map<string, import("./utils/stocks").StockPrice>;
+  /** WoW delta summary injected into the digest header; undefined if <7 days history */
+  whatChanged?: string;
 }
 
 /**
@@ -249,12 +252,26 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
       logger.info(`SEC badge: ${flaggedCount} articles tagged as SEC filings`);
     }
 
+    // ─── Step 3b: Write derived metrics (time-series intelligence layer) ────────
+    if (supabase.isConfigured()) {
+      await tryStage(
+        () => writeDerivedMetrics(digest, runDate, stockPrices),
+        "derived metrics"
+      );
+    }
+
+    // ─── Step 3c: Build "What Changed" WoW summary ───────────────────────────
+    const whatChanged = supabase.isConfigured()
+      ? await buildWhatChanged()
+      : undefined;
+
     // ─── Step 3: Format Digest ───────────────────
     logger.info("Step 3/4: Formatting digest for Telegram...");
     const formattedMessage = formatDigestTelegram(digest, {
       stockPrices,
       secExtracts: secExtracts.length > 0 ? secExtracts : undefined,
       earningsAnalyses: earningsAnalyses.length > 0 ? earningsAnalyses : undefined,
+      whatChanged,
     });
 
     logger.info(
@@ -272,6 +289,7 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
       secExtracts,
       earningsAnalyses,
       stockPrices,
+      whatChanged,
     };
 
   } catch (error) {
@@ -322,6 +340,61 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
     }
 
     return null;
+  }
+}
+
+/**
+ * Query last 8 days of derived metrics and compute WoW deltas.
+ * Returns a 2–4 line "Market Pulse" string, or undefined if <7 days of data.
+ */
+async function buildWhatChanged(): Promise<string | undefined> {
+  try {
+    const rows = await queryRecentDerivedMetrics();
+    if (!rows.length) return undefined;
+
+    // Group by entity
+    const byEntity = new Map<string, { date: string; mention_count: number; avg_impact_score: number | null }[]>();
+    for (const row of rows) {
+      const key = `${row.entity_type}:${row.entity}`;
+      if (!byEntity.has(key)) byEntity.set(key, []);
+      byEntity.get(key)!.push(row as { date: string; mention_count: number; avg_impact_score: number | null });
+    }
+
+    // Need at least 7 days of history for a meaningful delta
+    const uniqueDates = [...new Set(rows.map((r) => r.date))];
+    if (uniqueDates.length < 7) return undefined;
+
+    const movers: { entity: string; entityType: string; pct: number; direction: "up" | "down" }[] = [];
+
+    for (const [key, entityRows] of byEntity) {
+      if (entityRows.length < 2) continue;
+      const today = entityRows[entityRows.length - 1];
+      const weekAgo = entityRows[Math.max(0, entityRows.length - 8)];
+      if (!weekAgo || weekAgo.date === today.date) continue;
+      const delta = today.mention_count - weekAgo.mention_count;
+      const pct = weekAgo.mention_count > 0 ? (delta / weekAgo.mention_count) * 100 : 0;
+      if (Math.abs(pct) >= 20) {
+        const [entityType, entity] = key.split(":");
+        movers.push({ entity, entityType, pct, direction: pct >= 0 ? "up" : "down" });
+      }
+    }
+
+    if (!movers.length) return undefined;
+
+    movers.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
+    const top = movers.slice(0, 3);
+
+    const lines = ["📊 <b>Market Pulse · WoW</b>"];
+    for (const m of top) {
+      const arrow = m.direction === "up" ? "📈" : "📉";
+      const sign = m.pct >= 0 ? "+" : "";
+      const label = m.entityType === "sector" ? m.entity : `<b>${m.entity}</b>`;
+      lines.push(`${arrow} ${label} mentions ${sign}${m.pct.toFixed(0)}% WoW`);
+    }
+
+    return lines.join("\n");
+  } catch {
+    return undefined;
   }
 }
 
@@ -431,6 +504,7 @@ export async function deliverDigest(
         secExtracts: secExtracts.length > 0 ? secExtracts : undefined,
         earningsAnalyses: earningsAnalyses.length > 0 ? earningsAnalyses : undefined,
         personalizationNote: buildPersonalizationNote(userPrefs!),
+        whatChanged: generated.whatChanged,
       })
     : generated.formattedMessage;
 
@@ -1109,6 +1183,63 @@ export function registerDigestCommands(): void {
       return { text: lines.join("\n") };
     } catch {
       return "Could not fetch trending data.";
+    }
+  });
+
+  // ─── /trends command — time-series sparkline + WoW delta ──
+  registerCommand("trends", async (ctx) => {
+    if (!supabase.isConfigured()) {
+      return "Supabase not configured. Run the digest first to populate trends.";
+    }
+
+    // Parse "/trends NVDA 30d" or "/trends sector Datacenters 30d"
+    const parts = ctx.text.split(/\s+/).slice(1);
+    const daysMatch = parts.find((p: string) => /^\d+d$/i.test(p));
+    const days = daysMatch ? parseInt(daysMatch, 10) : 30;
+    const entityTypePart: "ticker" | "sector" = parts.find((p: string) => p.toLowerCase() === "sector") ? "sector" : "ticker";
+    const entityParts = parts.filter((p: string) => p !== daysMatch && p.toLowerCase() !== "sector");
+    const entity = entityParts.join(" ").toUpperCase() || "NVDA";
+
+    try {
+      const rows = await queryDerivedMetrics(entityTypePart, entity, days);
+      if (!rows.length) {
+        return `No data found for <b>${escapeHtml(entity)}</b> over the last ${days} days. Run more digests to build history.`;
+      }
+
+      // Sparkline from mention_count
+      const counts = rows.map((r) => r.mention_count);
+      const maxCount = Math.max(...counts, 1);
+      const blocks = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
+      const sparkline = counts.map((c) => blocks[Math.min(Math.floor((c / maxCount) * 7), 7)]).join("");
+
+      // WoW delta (today vs 7 days ago)
+      const today = rows[rows.length - 1];
+      const weekAgo = rows.length >= 8 ? rows[rows.length - 8] : rows[0];
+      const delta = today.mention_count - weekAgo.mention_count;
+      const pct = weekAgo.mention_count > 0 ? Math.round((delta / weekAgo.mention_count) * 100) : 0;
+      const wowLine = pct >= 0
+        ? `📈 Mentions <b>+${pct}%</b> WoW (${weekAgo.mention_count} → ${today.mention_count})`
+        : `📉 Mentions <b>${pct}%</b> WoW (${weekAgo.mention_count} → ${today.mention_count})`;
+
+      const lines = [
+        `📊 <b>${escapeHtml(entity)}</b> · Last ${rows.length}d`,
+        `<code>${sparkline}</code>`,
+        wowLine,
+      ];
+
+      if (today.price_close) {
+        const priceChange = today.price_change_pct ?? 0;
+        const priceEmoji = priceChange >= 0 ? "🟢" : "🔴";
+        lines.push(`${priceEmoji} $${today.price_close.toFixed(2)} (${priceChange >= 0 ? "+" : ""}${priceChange.toFixed(2)}%)`);
+      }
+      if (today.avg_impact_score) {
+        lines.push(`⚡ Avg impact score: ${today.avg_impact_score.toFixed(1)}/10`);
+      }
+
+      lines.push("", `<i>${rows[0].date} → ${today.date} · ${entityTypePart}</i>`);
+      return { text: lines.join("\n") };
+    } catch {
+      return "Could not fetch trends data.";
     }
   });
 
