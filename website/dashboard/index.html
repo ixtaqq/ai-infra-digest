@@ -1623,6 +1623,26 @@
       renderArticles(filtered, true);
     }
 
+    let _expandedArticleIdx = null;
+
+    function toggleArticleExpand(idx) {
+      const detailRow = document.getElementById('article-detail-' + idx);
+      const chevron = document.getElementById('article-chevron-' + idx);
+      if (!detailRow) return;
+      const isOpen = detailRow.style.display !== 'none';
+      document.querySelectorAll('[id^="article-detail-"]').forEach(el => { el.style.display = 'none'; });
+      document.querySelectorAll('[id^="article-chevron-"]').forEach(el => { el.style.transform = ''; });
+      document.querySelectorAll('[id^="article-row-"]').forEach(el => { el.style.background = ''; });
+      if (!isOpen) {
+        detailRow.style.display = 'table-row';
+        chevron.style.transform = 'rotate(90deg)';
+        document.getElementById('article-row-' + idx).style.background = 'rgba(212,162,76,0.04)';
+        _expandedArticleIdx = idx;
+      } else {
+        _expandedArticleIdx = null;
+      }
+    }
+
     function renderArticles(articles, filtered) {
       const tbody = document.getElementById('articlesBody');
       const countEl = document.getElementById('articlesCount');
@@ -1632,16 +1652,34 @@
         return;
       }
       const show = articles.slice(0, 20);
-      tbody.innerHTML = show.map(a => {
+      tbody.innerHTML = show.map((a, i) => {
         const isSec = a.is_sec_filing;
         const secBadge = isSec ? '<span style="font-size:11px" title="SEC Filing">\uD83C\uDFDB</span>' : '';
-        return `<tr><td><a href="${a.url || '#'}" target="_blank" rel="noopener">${a.title}</a></td>` +
-        `<td><span style="display:inline-flex;align-items:center;gap:4px"><span style="width:6px;height:6px;border-radius:1px;background:${SECTOR_COLORS[a.category] || 'var(--text-dim)'};display:inline-block"></span>${a.category || '—'}</span></td>` +
-        `<td class="${sentimentClass(a.impact)}">${sentimentArrow(a.impact)} ${a.impact || '—'}</td>` +
-        `<td><span style="font-weight:600;font-family:'JetBrains Mono',monospace">${a.impact_score || '—'}</span><span style="color:var(--text-muted)">/10</span></td>` +
-        `<td>${(a.affected_stocks || []).map(s => `<span style="font-family:'JetBrains Mono',monospace;font-size:10px;background:var(--bg-hover);padding:1px 5px;border-radius:2px;margin:0 1px">${s}</span>`).join('') || '—'}</td>` +
-        `<td style="text-align:center;font-size:11px">${secBadge}</td>` +
-        `<td><a href="${a.url || '#'}" target="_blank" style="font-size:10px;color:var(--gold)">🔗</a></td></tr>`;
+        const stocks = (a.affected_stocks || []).map(s =>
+          `<span style="font-family:'JetBrains Mono',monospace;font-size:10px;background:var(--bg-hover);padding:1px 5px;border-radius:2px;margin:0 1px">${s}</span>`
+        ).join('') || '—';
+        const summary = (a.summary || '').replace(/\n/g, '<br>');
+        const reason = a.reason || '';
+
+        const mainRow = `<tr id="article-row-${i}" style="cursor:pointer;transition:background 0.15s" onclick="toggleArticleExpand(${i})">` +
+          `<td><span style="display:flex;align-items:center;gap:6px">` +
+          `<span id="article-chevron-${i}" style="font-size:8px;color:var(--text-muted);transition:transform 0.2s;flex-shrink:0;user-select:none">&#9658;</span>` +
+          `${secBadge}<span style="color:var(--text)">${a.title}</span></span></td>` +
+          `<td><span style="display:inline-flex;align-items:center;gap:4px"><span style="width:6px;height:6px;border-radius:1px;background:${SECTOR_COLORS[a.category] || 'var(--text-dim)'};display:inline-block;flex-shrink:0"></span>${a.category || '—'}</span></td>` +
+          `<td class="${sentimentClass(a.impact)}">${sentimentArrow(a.impact)} ${a.impact || '—'}</td>` +
+          `<td><span style="font-weight:600;font-family:'JetBrains Mono',monospace">${a.impact_score || '—'}</span><span style="color:var(--text-muted)">/10</span></td>` +
+          `<td>${stocks}</td>` +
+          `<td style="text-align:right"><a href="${a.url || '#'}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-size:10px;color:var(--gold)">&#128279;</a></td></tr>`;
+
+        const detailRow = `<tr id="article-detail-${i}" style="display:none">` +
+          `<td colspan="6" style="padding:0">` +
+          `<div style="padding:12px 14px 14px 28px;background:rgba(212,162,76,0.03);border-top:1px solid var(--border-light);border-bottom:1px solid var(--border-light)">` +
+          (summary ? `<div style="font-size:12px;color:var(--text-dim);margin-bottom:8px;line-height:1.6">${summary}</div>` : '') +
+          (reason ? `<div style="font-size:11px;color:var(--text-muted);font-style:italic;margin-bottom:10px">&#128161; ${reason}</div>` : '') +
+          `<a href="${a.url || '#'}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-size:11px;color:var(--gold);text-decoration:none">Read full article &#8594;</a>` +
+          `</div></td></tr>`;
+
+        return mainRow + detailRow;
       }).join('');
       if (countEl && filtered) countEl.textContent = `Showing ${show.length} of ${articles.length} filtered from ${allArticlesCache.length} articles`;
     }

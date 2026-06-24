@@ -10,6 +10,9 @@ dist/
 # Article cache
 .cache/
 
+# AI response cache
+.ai-cache/
+
 # IDE
 .vscode/
 .idea/

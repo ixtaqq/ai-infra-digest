@@ -25,6 +25,7 @@ import { analyzeSECFilings } from "./processor/sec";
 import { collectEarningsTranscripts } from "./collector/earnings";
 import { analyzeEarningsTranscripts } from "./processor/earnings";
 import { withRetry, tryStage } from "./utils/retry";
+import { getCached, setCached } from "./utils/ai-cache";
 import type { Article, FeedResult } from "./collector/rss";
 import type { SECFinancialExtract } from "./processor/sec";
 import type { EarningsAnalysis } from "./processor/earnings";
@@ -168,7 +169,9 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
 
     // ─── Step 2: AI Processing ───────────────────
     logger.info(`Step 2/4: Processing articles with AI (${articlesToProcess.length} articles)...`);
-    const digest = await withRetry(
+    const articleUrls = articlesToProcess.map((a) => a.url).filter(Boolean);
+    const cached = getCached(articleUrls);
+    const digest = cached ?? await withRetry(
       () => processArticles(articlesToProcess),
       {
         maxAttempts: 2,
@@ -176,7 +179,10 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
         label: "AI processing",
         shouldRetry: (err) => !err.message.includes("401") && !err.message.includes("invalid_api_key"),
       }
-    ).catch((error) => {
+    ).then((result) => {
+      setCached(articleUrls, result);
+      return result;
+    }).catch((error) => {
       const errMsg = (error as Error).message;
       emitError("ai", "error", errMsg, undefined,
         "Check AI API key, rate limits, or model availability. If using Groq, verify your quota at console.groq.com");
