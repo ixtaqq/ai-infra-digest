@@ -14,6 +14,26 @@
  * string, e.g., "TechCrunch"), not a URL domain.
  */
 
+/** PR wire distribution services — press releases, not independent reporting. */
+const PR_WIRE_SOURCES = new Set([
+  "Business Wire",
+  "BusinessWire",
+  "PR Newswire",
+  "PRNewswire",
+  "Globe Newswire",
+  "GlobeNewswire",
+  "Businesswire",
+  "PR Web",
+  "PRWeb",
+  "EIN Presswire",
+  "AccessWire",
+]);
+
+/** Returns true if the source is a PR wire distribution service. */
+export function isPRWireSource(sourceName: string): boolean {
+  return PR_WIRE_SOURCES.has(sourceName);
+}
+
 const SOURCE_CREDIBILITY: Record<string, number> = {
   // ── High-tier: independent, well-resourced editorial ──
   "TechCrunch": 1.2,
@@ -40,6 +60,18 @@ const SOURCE_CREDIBILITY: Record<string, number> = {
   "SemiAnalysis": 1.2,
   "Datacenter Dynamics": 1.2,
   "Data Center Dynamics": 1.2,
+
+  // ── Low-tier: PR wire services (press releases, not independent reporting) ──
+  "Business Wire": 0.8,
+  "BusinessWire": 0.8,
+  "PR Newswire": 0.8,
+  "PRNewswire": 0.8,
+  "Globe Newswire": 0.8,
+  "GlobeNewswire": 0.8,
+  "PR Web": 0.8,
+  "PRWeb": 0.8,
+  "EIN Presswire": 0.8,
+  "AccessWire": 0.8,
 
   // ── Low-tier: first-party vendor PR ──
   "NVIDIA": 0.8,

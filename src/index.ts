@@ -29,7 +29,7 @@ import { withRetry, tryStage } from "./utils/retry";
 import { getCached, setCached } from "./utils/ai-cache";
 import { writeDerivedMetrics, queryRecentDerivedMetrics, queryDerivedMetrics } from "./utils/derived-metrics";
 import { getTrustScores } from "./utils/trust-scores";
-import { getSourceCredibility } from "./utils/source-credibility";
+import { getSourceCredibility, isPRWireSource } from "./utils/source-credibility";
 import { buildCorroborationMap } from "./utils/dedup";
 import { generateBearCases } from "./processor/bear-cases";
 import type { Article, FeedResult } from "./collector/rss";
@@ -303,6 +303,9 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
       const rawCount = corroborationMap.get(article.url) ?? 1;
       const cb = 1 + (rawCount - 1) * 0.05;                       // +5% per extra source
       article.effectiveScore = article.impactScore * sm * sc * cm * cb;
+      if (isPRWireSource(article.source)) {
+        article.effectiveScore = Math.min(article.effectiveScore, 6);
+      }
     }
 
     // Re-sort by effectiveScore so trust-boosted articles surface first

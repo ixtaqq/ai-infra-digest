@@ -137,7 +137,13 @@ For each article:
 1. Summarize in 2-3 bullet points
 2. Impact: Bullish, Bearish, or Neutral
 3. Affected stocks (tickers like NVDA, AMD, AVGO, MSFT, AMZN, GOOGL, META, TSM, ASML, ANET, VRT, CEG)
-4. Impact score 1-10 (how market-moving is this news?)
+4. Impact score 1-10 (how market-moving is this news?):
+   1–3: Routine update, analyst note, minor product patch, generic AI hype
+   4–6: Notable but expected (in-line earnings, incremental product update, industry event)
+   7–8: Significant surprise (major acquisition, unexpected capacity change, regulatory action)
+   9–10: Market-moving (hyperscaler capex shock, geopolitical supply disruption, breakthrough benchmark)
+   Score ≤ 6 for press releases and vendor announcements not independently corroborated.
+   For any score ≥ 8, the "reason" field must include a one-sentence justification.
 5. Relevance score 1-10 (how relevant to AI infrastructure specifically?)
    1 = off-topic (general tech, crypto, consumer AI apps)
    5 = tangential (general cloud, adjacent ML tooling)
