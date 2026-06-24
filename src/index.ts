@@ -29,6 +29,8 @@ import { withRetry, tryStage } from "./utils/retry";
 import { getCached, setCached } from "./utils/ai-cache";
 import { writeDerivedMetrics, queryRecentDerivedMetrics, queryDerivedMetrics } from "./utils/derived-metrics";
 import { getTrustScores } from "./utils/trust-scores";
+import { getSourceCredibility } from "./utils/source-credibility";
+import { buildCorroborationMap } from "./utils/dedup";
 import type { Article, FeedResult } from "./collector/rss";
 import type { SECFinancialExtract } from "./processor/sec";
 import type { EarningsAnalysis } from "./processor/earnings";
@@ -156,6 +158,8 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
 
     // ─── Step 1c: Deduplicate ───────────────────
     logger.info(`Step 1b: Deduplicating ${articles.length} articles...`);
+    // Build corroboration map BEFORE dedup — needs full raw batch to count clusters
+    const corroborationMap = buildCorroborationMap(articles);
     const uniqueArticles = deduplicateArticles(articles);
 
     let articlesToProcess: Article[];
@@ -271,10 +275,13 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
       : { source: new Map<string, number>(), sector: new Map<string, number>() };
 
     for (const article of digest.articles) {
-      const sm = trustScores.source.get(article.source) ?? 1.0;
+      const sm = trustScores.source.get(article.source) ?? 1.0;   // vote-learned
+      const sc = getSourceCredibility(article.source);             // static editorial tier
       const cm = trustScores.sector.get(article.category) ?? 1.0;
+      const rawCount = corroborationMap.get(article.url) ?? 1;
+      const cb = 1 + (rawCount - 1) * 0.05;                       // +5% per extra source
       (article as typeof article & { effectiveScore: number }).effectiveScore =
-        article.impactScore * sm * cm;
+        article.impactScore * sm * sc * cm * cb;
     }
 
     // Re-sort by effectiveScore so trust-boosted articles surface first

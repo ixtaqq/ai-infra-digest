@@ -77,6 +77,66 @@ function saveCache(cache: CacheData): void {
 }
 
 /**
+ * Cluster a batch of articles by URL + Jaccard title similarity.
+ * Returns a Map where each key is the representative URL (first seen in the
+ * cluster) and each value is the list of all URLs that belong to that cluster.
+ * Used internally by both `deduplicateArticles` and `buildCorroborationMap`.
+ */
+function clusterArticles(
+  articles: Array<{ url: string; title: string }>
+): Map<string, string[]> {
+  const SIMILARITY_THRESHOLD = 0.65;
+  const clusters: Array<{ representativeUrl: string; title: string; urls: string[] }> = [];
+
+  for (const article of articles) {
+    if (!article.url) continue;
+
+    // Check if this article belongs to an existing cluster
+    const match = clusters.find(
+      (c) =>
+        c.representativeUrl === article.url ||
+        jaccardSimilarity(article.title, c.title) >= SIMILARITY_THRESHOLD
+    );
+
+    if (match) {
+      match.urls.push(article.url);
+    } else {
+      clusters.push({
+        representativeUrl: article.url,
+        title: article.title,
+        urls: [article.url],
+      });
+    }
+  }
+
+  const result = new Map<string, string[]>();
+  for (const cluster of clusters) {
+    result.set(cluster.representativeUrl, cluster.urls);
+  }
+  return result;
+}
+
+/**
+ * Build a corroboration map for the current article batch.
+ * Returns Map<representativeUrl, sourceCount> where sourceCount is the number
+ * of distinct outlets that reported the same story (cluster size).
+ * Singletons return count = 1. Used to boost effectiveScore for multi-source stories.
+ *
+ * Call this BEFORE deduplicateArticles with the same raw article list so the
+ * representative URL matches what the AI pipeline receives.
+ */
+export function buildCorroborationMap(
+  articles: Array<{ url: string; title: string }>
+): Map<string, number> {
+  const clusters = clusterArticles(articles);
+  const result = new Map<string, number>();
+  for (const [repUrl, urls] of clusters) {
+    result.set(repUrl, urls.length);
+  }
+  return result;
+}
+
+/**
  * Removes entries older than the specified hours and
  * filters out articles that were already processed.
  */
