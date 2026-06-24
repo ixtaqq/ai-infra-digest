@@ -826,6 +826,62 @@
 
   <div id="bgGlow" style="position:fixed;top:-40%;left:-20%;width:80%;height:80%;background:radial-gradient(ellipse,rgba(212,162,76,0.04) 0%,transparent 70%);pointer-events:none;z-index:0;opacity:0.5"></div>
 
+  <!-- ── Auth Gate ─────────────────────────────────────────────────────── -->
+  <div id="authGate" style="
+    display:none;position:fixed;inset:0;z-index:9999;
+    background:#080605;
+    align-items:center;justify-content:center;
+    font-family:'Inter',-apple-system,sans-serif;
+  ">
+    <div style="
+      width:100%;max-width:420px;
+      background:rgba(255,255,255,0.02);
+      border:1px solid rgba(212,162,76,0.15);
+      border-radius:8px;
+      padding:40px 36px 36px;
+      box-shadow:0 8px 40px rgba(0,0,0,0.6);
+    ">
+      <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:700;color:#D4A24C;margin-bottom:4px">Goldirham Stack</div>
+      <div style="font-size:11px;color:rgba(240,237,232,0.4);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:28px">Analytics Dashboard</div>
+
+      <div style="font-size:13px;color:rgba(240,237,232,0.7);margin-bottom:20px;line-height:1.6">
+        Enter your Supabase project credentials to access the dashboard. These are stored locally in your browser and never sent anywhere else.
+      </div>
+
+      <label style="display:block;font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:rgba(240,237,232,0.45);margin-bottom:6px">Supabase URL</label>
+      <input id="gateUrl" type="url" placeholder="https://xxxxxxxxxxxx.supabase.co" spellcheck="false" style="
+        width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(212,162,76,0.15);
+        border-radius:4px;padding:10px 12px;font-size:13px;color:#f0ede8;
+        font-family:'JetBrains Mono',monospace;margin-bottom:14px;outline:none;
+        transition:border-color 0.2s;
+      " onfocus="this.style.borderColor='rgba(212,162,76,0.5)'" onblur="this.style.borderColor='rgba(212,162,76,0.15)'" onkeydown="if(event.key==='Enter')document.getElementById('gateKey').focus()">
+
+      <label style="display:block;font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:rgba(240,237,232,0.45);margin-bottom:6px">Supabase Anon Key</label>
+      <input id="gateKey" type="password" placeholder="eyJhbGciOiJIUzI1NiIs..." spellcheck="false" style="
+        width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(212,162,76,0.15);
+        border-radius:4px;padding:10px 12px;font-size:13px;color:#f0ede8;
+        font-family:'JetBrains Mono',monospace;margin-bottom:20px;outline:none;
+        transition:border-color 0.2s;
+      " onfocus="this.style.borderColor='rgba(212,162,76,0.5)'" onblur="this.style.borderColor='rgba(212,162,76,0.15)'" onkeydown="if(event.key==='Enter')authGateSubmit()">
+
+      <div id="gateError" style="display:none;font-size:11px;color:#ef4444;margin-bottom:14px;padding:8px 12px;background:rgba(239,68,68,0.08);border-radius:4px;border:1px solid rgba(239,68,68,0.2)"></div>
+
+      <button onclick="authGateSubmit()" id="gateBtn" style="
+        width:100%;background:#D4A24C;border:none;color:#080605;
+        padding:11px 0;border-radius:4px;font-size:13px;font-weight:700;
+        font-family:'Inter',sans-serif;cursor:pointer;letter-spacing:0.02em;
+        transition:background 0.2s;
+      " onmouseover="this.style.background='#e8c56b'" onmouseout="this.style.background='#D4A24C'">
+        Connect to Supabase
+      </button>
+
+      <div style="margin-top:16px;font-size:10px;color:rgba(240,237,232,0.25);text-align:center;line-height:1.6">
+        Find credentials in Supabase → Settings → API.<br>
+        Use the <b>anon</b> key (public), not the service key.
+      </div>
+    </div>
+  </div>
+
   <script>
     /* ══════════════════════════════════════════════════
        JavaScript — Goldirham Dashboard
@@ -833,6 +889,60 @@
 
     let SUPABASE_URL = localStorage.getItem('supabase_url') || '';
     let SUPABASE_ANON_KEY = localStorage.getItem('supabase_anon_key') || '';
+
+    // ─── Auth Gate ──
+    async function authGateSubmit() {
+      const urlVal = document.getElementById('gateUrl').value.trim().replace(/\/$/, '');
+      const keyVal = document.getElementById('gateKey').value.trim();
+      const errEl = document.getElementById('gateError');
+      const btn = document.getElementById('gateBtn');
+
+      errEl.style.display = 'none';
+      if (!urlVal || !keyVal) {
+        errEl.textContent = 'Both fields are required.';
+        errEl.style.display = 'block';
+        return;
+      }
+      if (!urlVal.startsWith('https://')) {
+        errEl.textContent = 'URL must start with https://';
+        errEl.style.display = 'block';
+        return;
+      }
+
+      btn.textContent = 'Connecting...';
+      btn.disabled = true;
+      btn.style.opacity = '0.6';
+
+      try {
+        const res = await fetch(`${urlVal}/rest/v1/digest_runs?limit=1`, {
+          headers: { apikey: keyVal, Authorization: `Bearer ${keyVal}` },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!res.ok && res.status !== 406) {
+          throw new Error(`HTTP ${res.status} — check credentials`);
+        }
+        // Success — save and unlock
+        SUPABASE_URL = urlVal;
+        SUPABASE_ANON_KEY = keyVal;
+        localStorage.setItem('supabase_url', SUPABASE_URL);
+        localStorage.setItem('supabase_anon_key', SUPABASE_ANON_KEY);
+        document.getElementById('authGate').style.display = 'none';
+        loadDashboard();
+      } catch(e) {
+        errEl.textContent = e.message.includes('fetch') ? 'Could not reach Supabase. Check the URL and your internet connection.' : (e.message || 'Connection failed.');
+        errEl.style.display = 'block';
+        btn.textContent = 'Connect to Supabase';
+        btn.disabled = false;
+        btn.style.opacity = '1';
+      }
+    }
+
+    function showAuthGate() {
+      document.getElementById('authGate').style.display = 'flex';
+      // Pre-fill if we have partial values
+      if (SUPABASE_URL) document.getElementById('gateUrl').value = SUPABASE_URL;
+      if (SUPABASE_ANON_KEY) document.getElementById('gateKey').value = SUPABASE_ANON_KEY;
+    }
     let charts = {};
     let stockPriceDataCache = [];
     let allArticlesCache = [];
@@ -1034,9 +1144,7 @@
       const msg = document.getElementById('loadingMsg');
 
       if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-        loading.style.display = 'block';
-        msg.innerHTML = '⚠ Supabase not configured. Click ⚙ to add your credentials.';
-        content.style.display = 'none';
+        showAuthGate();
         return;
       }
 
