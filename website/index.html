@@ -440,7 +440,7 @@
 
     .roadmap-grid {
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 0;
     }
     .roadmap-grid > * + * {
@@ -548,16 +548,11 @@
     }
 
     /* ─── Responsive ── */
-    @media (max-width: 1100px) {
-      .roadmap-grid { grid-template-columns: repeat(3, 1fr); }
-      .roadmap-grid > *:nth-child(4) { border-left: none; border-top: 1px solid var(--border); }
-      .roadmap-grid > *:nth-child(5) { border-top: 1px solid var(--border); }
-    }
     @media (max-width: 900px) {
       .roadmap-grid { grid-template-columns: repeat(2, 1fr); }
       .roadmap-grid > *:nth-child(2) { border-left: none; }
-      .roadmap-grid > *:nth-child(odd):not(:first-child) { border-left: none; border-top: 1px solid var(--border); }
-      .roadmap-grid > *:nth-child(even):not(:nth-child(2)) { border-top: 1px solid var(--border); }
+      .roadmap-grid > *:nth-child(1),
+      .roadmap-grid > *:nth-child(2) { border-bottom: 1px solid var(--border); }
     }
     @media (max-width: 560px) {
       .roadmap-grid { grid-template-columns: 1fr; }
@@ -1041,20 +1036,6 @@
             </ul>
           </div>
 
-          <!-- Phase VII -->
-          <div class="phase-card status-next delay-3" style="border-left:1px solid var(--border)">
-            <div class="phase-top">
-              <span class="phase-num">Phase VII</span>
-              <span class="badge badge-next">Next</span>
-            </div>
-            <div class="phase-title-text">Monetization.</div>
-            <ul class="feature-list">
-              <li>Public REST API over daily_derived_metrics — rate-limited tiers</li>
-              <li>Stripe subscription gate · free vs. paid tiers</li>
-              <li>Price threshold alerts — user-defined ticker targets</li>
-              <li>Bull/bear thesis per ticker — AI narrative updated weekly</li>
-            </ul>
-          </div>
         </div>
       </div>
     </div>

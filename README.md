@@ -493,11 +493,10 @@ Tom's Hardware, AnandTech, Ars Technica, TechCrunch, The Verge, Seeking Alpha, S
 - **v6.2** — Static Source Credibility + Corroboration — cold-start fix: deterministic source-name → multiplier map (High 1.2x for TechCrunch/Reuters/WSJ/etc., Low 0.8x for vendor PR blogs, default 1.0x); `buildCorroborationMap()` clusters same-story articles via Jaccard similarity and adds +5% per extra corroborating source
 - **v6.3** — Devil's Advocate bear cases — second AI pass for articles scoring ≥ 7/10 generates a skeptical 1–2 sentence counter-argument; stored in `bear_case TEXT` column; rendered as `⚠️` italic line in each digest article
 
-### Phase VII · Monetization 🔭 Next
-- **v7** — Public API layer — authenticated REST endpoints over `daily_derived_metrics`; rate-limited tiers; Stripe subscription gate
-- **v7.1** — Price threshold alerts — user-defined ticker price targets trigger instant Telegram notifications
-- **v7.2** — Bull/bear thesis generation — per-ticker AI narrative updated weekly from accumulated mention + price + validation data
-- **v7.3** — Source reputation leaderboard — public dashboard view ranking sources by approval rate, hallucination flags, and sector coverage
+### Phase VII · Next Steps 🔭 Exploring
+- Price threshold alerts — user-defined ticker price targets trigger instant Telegram notifications
+- Bull/bear thesis generation — per-ticker AI narrative updated weekly from accumulated mention + price + validation data
+- Source reputation leaderboard — public dashboard view ranking sources by approval rate and hallucination flags
 
 ---
 
