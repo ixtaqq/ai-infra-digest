@@ -204,6 +204,16 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
       await sendHighImpactAlerts(digest.articles);
     }
 
+    // ─── Step 2a0: Relevance Filter (v7.0) ───────────────────────────────────
+    const beforeFilter = digest.articles.length;
+    digest.articles = digest.articles.filter(
+      (a) => (a.relevanceScore ?? 10) >= 4
+    );
+    const dropped = beforeFilter - digest.articles.length;
+    if (dropped > 0) {
+      logger.info(`Relevance filter: dropped ${dropped} low-relevance articles (< 4/10)`);
+    }
+
     // ─── Step 2a: Devil's Advocate — Bear Cases ──────────────────────────────
     const bearCaseStage = await tryStage(
       () => generateBearCases(digest.articles),
@@ -292,15 +302,12 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
       const cm = trustScores.sector.get(article.category) ?? 1.0;
       const rawCount = corroborationMap.get(article.url) ?? 1;
       const cb = 1 + (rawCount - 1) * 0.05;                       // +5% per extra source
-      (article as typeof article & { effectiveScore: number }).effectiveScore =
-        article.impactScore * sm * sc * cm * cb;
+      article.effectiveScore = article.impactScore * sm * sc * cm * cb;
     }
 
     // Re-sort by effectiveScore so trust-boosted articles surface first
     digest.articles.sort(
-      (a, b) =>
-        (((b as unknown) as { effectiveScore?: number }).effectiveScore ?? b.impactScore) -
-        (((a as unknown) as { effectiveScore?: number }).effectiveScore ?? a.impactScore)
+      (a, b) => (b.effectiveScore ?? b.impactScore) - (a.effectiveScore ?? a.impactScore)
     );
 
     // ─── Step 3c: Build "What Changed" WoW summary ───────────────────────────
