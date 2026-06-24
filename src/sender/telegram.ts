@@ -1,6 +1,7 @@
 import TelegramBot from "node-telegram-bot-api";
 import { config } from "../config";
 import { logger } from "../utils/logger";
+import { startOnboarding, handleOnboardingCallback, handleOnboardingText } from "../onboarding";
 
 let bot: TelegramBot | null = null;
 let commandHandlersRegistered = false;
@@ -69,30 +70,22 @@ function initCommands() {
 
   const pollingBot = getBot();
 
-  // Handle /start
+  // Handle /start — launches interactive onboarding flow
   pollingBot.onText(/^\/start(@\w+)?$/, async (msg) => {
-    const chatId = msg.chat.id;
-    const text =
-      `👋 <b>Welcome to AI Infra Digest Bot!</b>\n\n` +
-      `I deliver daily AI infrastructure news at 8 AM MYT.\n\n` +
-      `<b>Commands:</b>\n` +
-      `• /digest — Run and receive the latest digest now\n` +
-      `• /sources — List all tracked RSS feeds\n` +
-      `• /last — Show the most recent digest summary\n` +
-      `• /trending — See what's trending in AI infra\n` +
-      `• /feedback N — Rate today's digest (1-5)\n` +
-      `• /settings — View your preferences\n` +
-      `• /watchlist — Manage your ticker watchlist\n` +
-      `• /help — Show this message again\n\n` +
-      `<i>Tip: I'll also auto-deliver the daily digest at 8 AM MYT!</i>`;
+    await startOnboarding(pollingBot, msg);
+  });
 
-    await pollingBot.sendMessage(chatId, text, {
-      parse_mode: "HTML",
-      disable_web_page_preview: true,
-    });
+  // Route callback queries — onboarding steps first, then other handlers
+  pollingBot.on("callback_query", async (query) => {
+    const handled = await handleOnboardingCallback(pollingBot, query);
+    if (handled) return;
+    // other callback handlers can be added here
+  });
 
-    // Register/update user in Supabase
-    await upsertUser(msg);
+  // Route free-text messages during onboarding (watchlist input)
+  pollingBot.on("message", async (msg) => {
+    if (!msg.text || msg.text.startsWith("/")) return;
+    await handleOnboardingText(pollingBot, msg);
   });
 
   // Handle /help

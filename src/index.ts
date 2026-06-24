@@ -24,6 +24,7 @@ import { collectSECFilings, getTopFilings } from "./collector/sec";
 import { analyzeSECFilings } from "./processor/sec";
 import { collectEarningsTranscripts } from "./collector/earnings";
 import { analyzeEarningsTranscripts } from "./processor/earnings";
+import { withRetry, tryStage } from "./utils/retry";
 import type { Article, FeedResult } from "./collector/rss";
 import type { SECFinancialExtract } from "./processor/sec";
 import type { EarningsAnalysis } from "./processor/earnings";
@@ -126,32 +127,25 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
     // ─── Step 1b: SEC Filing Collection ──────────────
     logger.info("Step 1b: Collecting recent SEC filings...");
     let secExtracts: SECFinancialExtract[] = [];
-    try {
+    const secStage = await tryStage(async () => {
       const secResult = await collectSECFilings();
-      if (secResult.newFilings.length > 0) {
-        logger.info(`SEC: ${secResult.newFilings.length} new filings found, analyzing top ones...`);
-        const topFilings = getTopFilings(secResult.newFilings, 5);
-        const secAnalysis = await analyzeSECFilings(topFilings, 5);
-        secExtracts = secAnalysis.extracts;
-        logger.info(`SEC analysis: ${secExtracts.length} filings analyzed (${secExtracts.filter(e => e.impactScore >= 7).length} high-impact)`);
-
-        // Trigger alert system for high-impact SEC filings
-        const highImpact = secExtracts.filter((e) => e.impactScore >= 8);
-        if (highImpact.length > 0) {
-          logger.info(`SEC alerts: ${highImpact.length} high-impact filings detected, sending alerts...`);
-          for (const h of highImpact) {
-            emitError("sec_filing", "warn",
-              `${h.companyName} (${h.ticker}) filed ${h.formType}: ${h.impactRationale}`,
-              undefined, `Review the SEC filing at the SEC EDGAR website for details.`);
-          }
-        }
-      } else {
-        logger.info("SEC: No new filings found");
+      if (secResult.newFilings.length === 0) return [];
+      logger.info(`SEC: ${secResult.newFilings.length} new filings found, analyzing top ones...`);
+      const topFilings = getTopFilings(secResult.newFilings, 5);
+      const secAnalysis = await analyzeSECFilings(topFilings, 5);
+      return secAnalysis.extracts;
+    }, "SEC collection");
+    if (secStage.ok) {
+      secExtracts = secStage.value;
+      logger.info(`SEC analysis: ${secExtracts.length} filings (${secExtracts.filter(e => e.impactScore >= 7).length} high-impact)`);
+      for (const h of secExtracts.filter((e) => e.impactScore >= 8)) {
+        emitError("sec_filing", "warn",
+          `${h.companyName} (${h.ticker}) filed ${h.formType}: ${h.impactRationale}`,
+          undefined, "Review the filing on SEC EDGAR for details.");
       }
-    } catch (secError) {
-      logger.warn(`SEC collection failed: ${(secError as Error).message}`);
-      emitError("sec", "error", `SEC filing collection failed: ${(secError as Error).message}`,
-        undefined, "SEC API may be rate-limiting or temporarily unavailable.");
+    } else {
+      emitError("sec", "error", `SEC stage failed: ${secStage.error}`, undefined,
+        "SEC API may be rate-limiting or temporarily unavailable.");
     }
 
     // ─── Step 1c: Deduplicate ───────────────────
@@ -174,15 +168,20 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
 
     // ─── Step 2: AI Processing ───────────────────
     logger.info(`Step 2/4: Processing articles with AI (${articlesToProcess.length} articles)...`);
-    let digest;
-    try {
-      digest = await processArticles(articlesToProcess);
-    } catch (error) {
+    const digest = await withRetry(
+      () => processArticles(articlesToProcess),
+      {
+        maxAttempts: 2,
+        baseDelayMs: 5_000,
+        label: "AI processing",
+        shouldRetry: (err) => !err.message.includes("401") && !err.message.includes("invalid_api_key"),
+      }
+    ).catch((error) => {
       const errMsg = (error as Error).message;
       emitError("ai", "error", errMsg, undefined,
         "Check AI API key, rate limits, or model availability. If using Groq, verify your quota at console.groq.com");
       throw error;
-    }
+    });
 
     // ─── Alert System: send instant alerts for high-impact articles ──
     if (supabase.isConfigured()) {
@@ -191,22 +190,20 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
 
     // ─── Step 2b: Earnings Transcript Mining ─────
     let earningsAnalyses: EarningsAnalysis[] = [];
-    const apiKey = config.app.roicAiApiKey;
-    if (apiKey) {
-      try {
-        logger.info("Step 2b: Mining earnings call transcripts...");
+    if (config.app.roicAiApiKey) {
+      logger.info("Step 2b: Mining earnings call transcripts...");
+      const earningsStage = await tryStage(async () => {
         const earningsResult = await collectEarningsTranscripts();
-        if (earningsResult.transcripts.length > 0) {
-          const analysisResult = await analyzeEarningsTranscripts(earningsResult.transcripts);
-          earningsAnalyses = analysisResult.analyses;
-          logger.info(`Earnings analysis: ${earningsAnalyses.length} transcripts analyzed (${analysisResult.totalTokens} tokens)`);
-        } else {
-          logger.info("Earnings: No transcripts available for current quarter");
-        }
-      } catch (earningsError) {
-        logger.warn(`Earnings transcript mining failed: ${(earningsError as Error).message}`);
-        emitError("earnings", "error", `Earnings transcript mining failed: ${(earningsError as Error).message}`,
-          undefined, "Earnings transcript API (Roic.ai) may be rate-limiting or temporarily unavailable.");
+        if (earningsResult.transcripts.length === 0) return [];
+        const analysisResult = await analyzeEarningsTranscripts(earningsResult.transcripts);
+        return analysisResult.analyses;
+      }, "earnings transcripts");
+      if (earningsStage.ok) {
+        earningsAnalyses = earningsStage.value;
+        logger.info(`Earnings analysis: ${earningsAnalyses.length} transcripts analyzed`);
+      } else {
+        emitError("earnings", "error", `Earnings stage failed: ${earningsStage.error}`, undefined,
+          "Roic.ai API may be rate-limiting or temporarily unavailable.");
       }
     } else {
       logger.info("Step 2b: Skipping earnings transcript mining (ROIC_AI_API_KEY not configured)");
@@ -219,17 +216,20 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
         ...digest.topStocks.map((s) => s.ticker),
       ]),
     ];
+    const startStock = Date.now();
+    const stockStage = await tryStage(
+      () => fetchStockPrices(allTickers),
+      "stock prices"
+    );
     let stockPrices: Map<string, import("./utils/stocks").StockPrice>;
-    try {
-      const startStock = Date.now();
-      stockPrices = await fetchStockPrices(allTickers);
+    if (stockStage.ok) {
+      stockPrices = stockStage.value;
       emitStockFetch(allTickers.length, stockPrices.size, Date.now() - startStock);
-    } catch (error) {
-      const errMsg = (error as Error).message;
-      emitStockFetch(allTickers.length, 0, 0, [errMsg]);
-      emitError("yahoo_finance", "error", errMsg, undefined,
-        "Yahoo Finance may be rate-limiting. Try again in a few minutes, or check if tickers are valid.");
+    } else {
       stockPrices = new Map();
+      emitStockFetch(allTickers.length, 0, 0, [stockStage.error]);
+      emitError("yahoo_finance", "error", stockStage.error, undefined,
+        "Yahoo Finance may be rate-limiting. Try again in a few minutes.");
     }
 
     // ─── Tag articles with SEC filing badge ──────
@@ -612,7 +612,56 @@ export async function persistDigestMetrics(
     await computeAndStoreTrending(runDate, digest);
   }
 
+  // ── Budget cap alerts ───────────────────────────────────────────────────
+  await checkBudget(runDate, estimatedCost);
+
   logger.info("✅ Metrics written to Supabase");
+}
+
+async function checkBudget(runDate: string, todayCost: number): Promise<void> {
+  const { budgetDailyUsd, budgetMonthlyUsd } = config.app;
+  const alerts: string[] = [];
+
+  if (todayCost >= budgetDailyUsd) {
+    alerts.push(
+      `⚠️ <b>AI Cost Alert — Daily budget hit</b>\n` +
+        `Today's run cost: <b>$${todayCost.toFixed(4)}</b>\n` +
+        `Daily cap: $${budgetDailyUsd.toFixed(2)}\n\n` +
+        `<i>Adjust <code>AI_BUDGET_DAILY_USD</code> or review token usage.</i>`
+    );
+  }
+
+  // Check rolling 30-day spend from daily_metrics
+  if (supabase.isConfigured()) {
+    try {
+      const cfg = getSupabaseConfig()!;
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+        .toISOString().split("T")[0];
+      const resp = await fetch(
+        `${cfg.url}/rest/v1/daily_metrics?date=gte.${thirtyDaysAgo}&select=estimated_cost`,
+        { headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` } }
+      );
+      if (resp.ok) {
+        const rows = (await resp.json()) as { estimated_cost: number }[];
+        const monthlyTotal = rows.reduce((s, r) => s + (r.estimated_cost || 0), 0) + todayCost;
+        if (monthlyTotal >= budgetMonthlyUsd) {
+          alerts.push(
+            `⚠️ <b>AI Cost Alert — Monthly budget hit</b>\n` +
+              `30-day spend: <b>$${monthlyTotal.toFixed(4)}</b>\n` +
+              `Monthly cap: $${budgetMonthlyUsd.toFixed(2)}\n\n` +
+              `<i>Adjust <code>AI_BUDGET_MONTHLY_USD</code> or review token usage.</i>`
+          );
+        }
+      }
+    } catch {
+      // Budget check is best-effort; don't block the pipeline
+    }
+  }
+
+  for (const alert of alerts) {
+    logger.warn(`Budget alert: ${alert.replace(/<[^>]+>/g, "")}`);
+    await sendDigestMessage(alert).catch(() => {});
+  }
 }
 
 /**
