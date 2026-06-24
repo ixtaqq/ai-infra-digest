@@ -28,6 +28,7 @@ import { analyzeEarningsTranscripts } from "./processor/earnings";
 import { withRetry, tryStage } from "./utils/retry";
 import { getCached, setCached } from "./utils/ai-cache";
 import { writeDerivedMetrics, queryRecentDerivedMetrics, queryDerivedMetrics } from "./utils/derived-metrics";
+import { getTrustScores } from "./utils/trust-scores";
 import type { Article, FeedResult } from "./collector/rss";
 import type { SECFinancialExtract } from "./processor/sec";
 import type { EarningsAnalysis } from "./processor/earnings";
@@ -260,6 +261,28 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
         "derived metrics"
       );
     }
+
+    // ─── Step 3b.1: Apply trust-weighted effective scores ────────────────────
+    const trustScores = supabase.isConfigured()
+      ? await getTrustScores().catch(() => ({
+          source: new Map<string, number>(),
+          sector: new Map<string, number>(),
+        }))
+      : { source: new Map<string, number>(), sector: new Map<string, number>() };
+
+    for (const article of digest.articles) {
+      const sm = trustScores.source.get(article.source) ?? 1.0;
+      const cm = trustScores.sector.get(article.category) ?? 1.0;
+      (article as typeof article & { effectiveScore: number }).effectiveScore =
+        article.impactScore * sm * cm;
+    }
+
+    // Re-sort by effectiveScore so trust-boosted articles surface first
+    digest.articles.sort(
+      (a, b) =>
+        (((b as unknown) as { effectiveScore?: number }).effectiveScore ?? b.impactScore) -
+        (((a as unknown) as { effectiveScore?: number }).effectiveScore ?? a.impactScore)
+    );
 
     // ─── Step 3c: Build "What Changed" WoW summary ───────────────────────────
     const whatChanged = supabase.isConfigured()
@@ -1257,6 +1280,28 @@ export function registerDigestCommands(): void {
       return { text: lines.join("\n") };
     } catch {
       return "Could not fetch trends data.";
+    }
+  });
+
+  // ─── /sources quality command — trust multiplier table ──
+  registerCommand("sources quality", async () => {
+    if (!supabase.isConfigured()) {
+      return "Supabase not configured. Connect it to track source quality.";
+    }
+    try {
+      const scores = await getTrustScores();
+      if (scores.source.size === 0) {
+        return "Not enough data — need at least 3 votes per source. Click 👍/👎 in validation prompts to start building quality scores.";
+      }
+      const lines = ["<b>📊 Source Quality Scores</b>", "<i>Based on 👍/👎 votes from the last 30 days</i>", ""];
+      for (const [src, mult] of [...scores.source.entries()].sort((a, b) => b[1] - a[1])) {
+        const bar = mult >= 1.1 ? "🟢" : mult <= 0.9 ? "🔴" : "🟡";
+        lines.push(`${bar} ${src}: ×${mult.toFixed(2)}`);
+      }
+      lines.push("", "<i>🟢 ≥1.1 boosted · 🟡 neutral · 🔴 ≤0.9 penalised</i>");
+      return { text: lines.join("\n") };
+    } catch {
+      return "Could not fetch source quality scores.";
     }
   });
 

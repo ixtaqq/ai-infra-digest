@@ -148,6 +148,29 @@ function initCommands() {
     }
   });
 
+  // Handle /sources quality — route to registered handler
+  pollingBot.onText(/^\/sources quality(@\w+)?$/, async (msg) => {
+    const chatId = msg.chat.id;
+    const handler = handlers.get("sources quality");
+    if (handler) {
+      try {
+        const result = await handler({
+          chatId,
+          username: msg.from?.username,
+          firstName: msg.from?.first_name,
+          text: msg.text || "",
+        });
+        const reply = typeof result === "string" ? { text: result } : result;
+        await pollingBot.sendMessage(chatId, reply.text, {
+          parse_mode: (reply.parseMode || "HTML") as "HTML",
+          disable_web_page_preview: true,
+        });
+      } catch (error) {
+        await pollingBot.sendMessage(chatId, `❌ Failed: ${(error as Error).message}`, { parse_mode: "HTML" });
+      }
+    }
+  });
+
   // Handle /sources — route to registered handler
   pollingBot.onText(/^\/sources(@\w+)?$/, async (msg) => {
     const chatId = msg.chat.id;
@@ -458,6 +481,20 @@ async function upsertUser(msg: TelegramBot.Message): Promise<void> {
   }
 }
 
+// ─── Admin Alert ───────────────────────────────────────
+
+/**
+ * Send a plain-text alert to the configured admin chat. Fire-and-forget;
+ * caller is responsible for catching rejections if needed.
+ */
+export async function sendAdminAlert(text: string): Promise<void> {
+  const b = getBot();
+  await b.sendMessage(config.telegram.chatId, text, {
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+  });
+}
+
 // ─── Article Validation Follow-Up ──────────────────────
 
 function escHtml(s: string): string {
@@ -471,12 +508,12 @@ function escHtml(s: string): string {
  */
 export async function sendValidationFollowUp(
   chatId: number,
-  articles: { title: string; url: string; impactScore: number }[],
+  articles: { title: string; url: string; impactScore: number; effectiveScore?: number }[],
   articleIds: Map<string, number>
 ): Promise<void> {
   const candidates = articles
     .filter((a) => a.url && articleIds.has(a.url))
-    .sort((a, b) => b.impactScore - a.impactScore)
+    .sort((a, b) => (b.effectiveScore ?? b.impactScore) - (a.effectiveScore ?? a.impactScore))
     .slice(0, 3);
 
   if (!candidates.length) return;
