@@ -14,6 +14,8 @@ export interface Config {
     model: string;              // Strong model for synthesis (default: llama-3.3-70b-versatile)
     fastModel: string;          // Fast/cheap model for classification (default: llama-3.1-8b-instant)
     baseUrl?: string;
+    embeddingApiKey: string;
+    embeddingModel: string;
   };
   app: {
     timezone: string;
@@ -68,6 +70,8 @@ function loadConfig(): Config {
       model: process.env.AI_MODEL || "llama-3.3-70b-versatile",
       fastModel: process.env.AI_FAST_MODEL || "llama-3.1-8b-instant",
       baseUrl: baseUrls[provider] || process.env.AI_BASE_URL,
+      embeddingApiKey: process.env.OPENAI_EMBEDDING_API_KEY || process.env.OPENAI_API_KEY || "",
+      embeddingModel: "text-embedding-3-small",
     },
     app: {
       timezone: process.env.TZ || "Asia/Kuala_Lumpur",

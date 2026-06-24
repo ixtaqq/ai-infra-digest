@@ -28,6 +28,7 @@ export interface ArticleData {
   reason?: string;
   is_sec_filing?: boolean;
   bear_case?: string;
+  embedding?: number[];
 }
 
 export interface SectorActivityData {
@@ -214,6 +215,7 @@ export const supabase = {
       summary: a.summary || null,
       reason: a.reason || null,
       bear_case: a.bear_case || null,
+      embedding: a.embedding ?? null,
     }));
 
     const inserted: { id: number; url: string }[] = [];

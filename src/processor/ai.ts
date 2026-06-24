@@ -67,6 +67,8 @@ export interface ProcessedArticle {
   isRehash?: boolean;
   /** Computed ranking score: impactScore × trust/credibility/corroboration multipliers. */
   effectiveScore?: number;
+  /** 1536-dim OpenAI text-embedding-3-small vector (v8.0). */
+  embedding?: number[];
 }
 
 export interface AIUsage {

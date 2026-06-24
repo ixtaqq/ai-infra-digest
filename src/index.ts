@@ -33,6 +33,7 @@ import { getSourceCredibility, isPRWireSource } from "./utils/source-credibility
 import { buildCorroborationMap } from "./utils/dedup";
 import { generateBearCases } from "./processor/bear-cases";
 import { flagRehashes } from "./utils/novelty";
+import { generateEmbeddings } from "./processor/embeddings";
 import type { Article, FeedResult } from "./collector/rss";
 import type { SECFinancialExtract } from "./processor/sec";
 import type { EarningsAnalysis } from "./processor/earnings";
@@ -228,6 +229,17 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
 
     // ─── Step 2a1: Novelty Check (v7.2) ──────────────────────────────────────
     await tryStage(() => flagRehashes(digest.articles), "novelty check");
+
+    // ─── Step 2d: Embeddings (v8.0) ──────────────────────────────────────────
+    const embeddingsStage = await tryStage(
+      () => generateEmbeddings(digest.articles),
+      "embeddings"
+    );
+    if (embeddingsStage.ok) {
+      for (const article of digest.articles) {
+        article.embedding = embeddingsStage.value.get(article.url);
+      }
+    }
 
     // ─── Step 2b: Earnings Transcript Mining ─────
     let earningsAnalyses: EarningsAnalysis[] = [];
@@ -666,6 +678,7 @@ export async function persistDigestMetrics(
         reason: a.reason,
         is_sec_filing: a.isSECFiling || undefined,
         bear_case: a.bearCase,
+        embedding: a.embedding,
       }))
     );
     articleIds = new Map(inserted.filter(r => r.url).map(r => [r.url, r.id]));
