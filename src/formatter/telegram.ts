@@ -145,6 +145,9 @@ export function formatDigestTelegram(
       if (article.url) {
         lines.push(`   <a href="${article.url}">Read</a>`);
       }
+      if (article.bearCase) {
+        lines.push(`   ⚠️ <i>${escapeHtml(article.bearCase)}</i>`);
+      }
     });
 
     lines.push("");

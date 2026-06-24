@@ -27,6 +27,7 @@ export interface ArticleData {
   summary?: string;
   reason?: string;
   is_sec_filing?: boolean;
+  bear_case?: string;
 }
 
 export interface SectorActivityData {
@@ -212,6 +213,7 @@ export const supabase = {
       affected_stocks: a.affected_stocks || [],
       summary: a.summary || null,
       reason: a.reason || null,
+      bear_case: a.bear_case || null,
     }));
 
     const inserted: { id: number; url: string }[] = [];

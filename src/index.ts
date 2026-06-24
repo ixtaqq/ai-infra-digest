@@ -31,6 +31,7 @@ import { writeDerivedMetrics, queryRecentDerivedMetrics, queryDerivedMetrics } f
 import { getTrustScores } from "./utils/trust-scores";
 import { getSourceCredibility } from "./utils/source-credibility";
 import { buildCorroborationMap } from "./utils/dedup";
+import { generateBearCases } from "./processor/bear-cases";
 import type { Article, FeedResult } from "./collector/rss";
 import type { SECFinancialExtract } from "./processor/sec";
 import type { EarningsAnalysis } from "./processor/earnings";
@@ -201,6 +202,17 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
     // ─── Alert System: send instant alerts for high-impact articles ──
     if (supabase.isConfigured()) {
       await sendHighImpactAlerts(digest.articles);
+    }
+
+    // ─── Step 2a: Devil's Advocate — Bear Cases ──────────────────────────────
+    const bearCaseStage = await tryStage(
+      () => generateBearCases(digest.articles),
+      "bear cases"
+    );
+    const bearCaseMap = bearCaseStage.ok ? bearCaseStage.value : new Map<string, string>();
+    for (const article of digest.articles) {
+      const bc = bearCaseMap.get(article.url);
+      if (bc) article.bearCase = bc;
     }
 
     // ─── Step 2b: Earnings Transcript Mining ─────
@@ -638,6 +650,7 @@ export async function persistDigestMetrics(
         summary: a.summary,
         reason: a.reason,
         is_sec_filing: a.isSECFiling || undefined,
+        bear_case: a.bearCase,
       }))
     );
     articleIds = new Map(inserted.filter(r => r.url).map(r => [r.url, r.id]));
