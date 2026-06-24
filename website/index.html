@@ -440,7 +440,7 @@
 
     .roadmap-grid {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(5, 1fr);
       gap: 0;
     }
     .roadmap-grid > * + * {
@@ -548,11 +548,16 @@
     }
 
     /* ─── Responsive ── */
+    @media (max-width: 1100px) {
+      .roadmap-grid { grid-template-columns: repeat(3, 1fr); }
+      .roadmap-grid > *:nth-child(4) { border-left: none; border-top: 1px solid var(--border); }
+      .roadmap-grid > *:nth-child(5) { border-top: 1px solid var(--border); }
+    }
     @media (max-width: 900px) {
       .roadmap-grid { grid-template-columns: repeat(2, 1fr); }
       .roadmap-grid > *:nth-child(2) { border-left: none; }
-      .roadmap-grid > *:nth-child(1),
-      .roadmap-grid > *:nth-child(2) { border-bottom: 1px solid var(--border); }
+      .roadmap-grid > *:nth-child(odd):not(:first-child) { border-left: none; border-top: 1px solid var(--border); }
+      .roadmap-grid > *:nth-child(even):not(:nth-child(2)) { border-top: 1px solid var(--border); }
     }
     @media (max-width: 560px) {
       .roadmap-grid { grid-template-columns: 1fr; }
@@ -798,8 +803,10 @@
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:10</span> Stock prices updated — 30 tickers via Yahoo Finance</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:12</span> 🎙️ Earnings Watch generated — guidance delta computed</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:13</span> 📊 Derived metrics: 45 rows written to daily_derived_metrics</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:14</span> 📊 Market Pulse: NVDA mentions +32% WoW · Datacenters +18% WoW</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:15</span> Digest delivered to Telegram + 14 tables updated in Supabase</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:14</span> ⚖️ Trust scores: effectiveScore computed — TechCrunch 1.2× · NVIDIA Blog 0.8×</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:14</span> ⚠️ Bear cases: 5 devil's advocate counter-arguments generated (score ≥7)</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:15</span> 📊 Market Pulse: NVDA mentions +32% WoW · Datacenters +18% WoW</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:16</span> Digest delivered to Telegram + 15 tables updated in Supabase</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:00</span> NVIDIA files 8-K — $26B capex</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:02</span> Article analysis complete — 142 articles processed</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:04</span> Earnings transcripts fetched — 5 calls analyzed</span>
@@ -807,8 +814,10 @@
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:10</span> Stock prices updated — 30 tickers via Yahoo Finance</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:12</span> 🎙️ Earnings Watch generated — guidance delta computed</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:13</span> 📊 Derived metrics: 45 rows written to daily_derived_metrics</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:14</span> 📊 Market Pulse: NVDA mentions +32% WoW · Datacenters +18% WoW</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:15</span> Digest delivered to Telegram + 14 tables updated in Supabase</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:14</span> ⚖️ Trust scores: effectiveScore computed — TechCrunch 1.2× · NVIDIA Blog 0.8×</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:14</span> ⚠️ Bear cases: 5 devil's advocate counter-arguments generated (score ≥7)</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:15</span> 📊 Market Pulse: NVDA mentions +32% WoW · Datacenters +18% WoW</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:16</span> Digest delivered to Telegram + 15 tables updated in Supabase</span>
     </div>
   </div>
 
@@ -883,14 +892,19 @@
           <p>Materializes a <code>daily_derived_metrics</code> table every run. "What Changed" Market Pulse block in each digest shows WoW mention movers ≥20%. <code>/trends NVDA 30d</code> renders a Unicode sparkline + delta.</p>
         </div>
         <div class="feature-card delay-3">
+          <span class="icon">⚖️</span>
+          <h3>Trust-Weighted Ranking</h3>
+          <p>Vote-learned source multipliers from 👍/👎 feedback. Static editorial tiers (1.2× for Reuters/WSJ, 0.8× for vendor PR). Corroboration boost (+5% per extra source). Devil's Advocate ⚠️ bear cases for high-impact articles.</p>
+        </div>
+        <div class="feature-card delay-3">
           <span class="icon">🤖</span>
           <h3>Telegram Bot + Digest</h3>
-          <p>Delivered at your preferred time with /digest, /trends, /trending, /feedback, /alert, /sec commands. 🏛️ SEC badges + 🎙️ Earnings Watch + 📊 Market Pulse included.</p>
+          <p>Delivered at your preferred time with /digest, /trends, /sec, /sources quality commands. 🏛️ SEC badges + 🎙️ Earnings Watch + 📊 Market Pulse + ⚠️ bear cases included.</p>
         </div>
         <div class="feature-card delay-3">
           <span class="icon">🖥️</span>
           <h3>Premium Live Dashboard</h3>
-          <p>Graphite + copper terminal UI. Auth gate, 6 charts, SEC filings table, full‑text search, expandable article rows with inline summaries, and auto-refresh every 60 s.</p>
+          <p>Graphite + copper terminal UI. Auth gate, 6 charts, SEC filings table, full‑text search, expandable article rows with bear cases and thumbs scores, auto-refresh every 60 s.</p>
         </div>
       </div>
     </div>
@@ -1012,9 +1026,25 @@
           </div>
 
           <!-- Phase VI -->
-          <div class="phase-card status-next delay-3">
+          <div class="phase-card status-live delay-3">
             <div class="phase-top">
               <span class="phase-num">Phase VI</span>
+              <span class="badge badge-live">Shipped</span>
+            </div>
+            <div class="phase-title-text">Validation + Trust.</div>
+            <ul class="feature-list">
+              <li>👍/👎 inline validation buttons — top-3 articles per digest, idempotent per-user votes</li>
+              <li>Trust-weighted ranking — vote-learned multipliers drive article order and effectiveScore</li>
+              <li>Static credibility tiers — editorial sources 1.2×, vendor PR 0.8× from day one</li>
+              <li>Corroboration boost — +5% per extra source reporting same story</li>
+              <li>⚠️ Devil's Advocate bear cases — skeptical AI counter-argument for high-impact articles (≥7/10)</li>
+            </ul>
+          </div>
+
+          <!-- Phase VII -->
+          <div class="phase-card status-next delay-3" style="border-left:1px solid var(--border)">
+            <div class="phase-top">
+              <span class="phase-num">Phase VII</span>
               <span class="badge badge-next">Next</span>
             </div>
             <div class="phase-title-text">Monetization.</div>

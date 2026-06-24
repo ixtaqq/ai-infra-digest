@@ -65,6 +65,7 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 | `/digest watchlist` | Filter stored articles by your saved watchlist tickers |
 | `/digest sector=Chips_&_GPUs` | Filter stored articles by sector |
 | `/sources` | List all 57 tracked RSS feeds with health status |
+| `/sources quality` | Show source trust scores ranked by approval rate (vote-learned multipliers) |
 | `/last` | Show the most recent digest summary from Supabase |
 | `/trending` | See what's trending in AI infra (last 7 days, snapshot) |
 | `/trends NVDA 30d` | Sparkline + WoW delta for any ticker (default: NVDA, 30 days) |
@@ -131,7 +132,7 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 - **15 tables**: `digest_runs`, `articles`, `sector_activity`, `stock_mentions`, `pipeline_health`, `capex_tracking`, `ai_usage`, `daily_metrics`, `stock_prices`, `user_preferences`, `user_delivery_log`, `sec_filings`, `earnings_transcripts`, `daily_derived_metrics`, `article_validations`
 - Managed with **Supabase CLI** — migrations in `supabase/migrations/`
 - `digest_runs` tracks both models (`ai_model` + `ai_fast_model`)
-- `articles` has `is_sec_filing` boolean, `thumbs_up` / `thumbs_down` aggregate validation counters
+- `articles` has `is_sec_filing` boolean, `thumbs_up` / `thumbs_down` aggregate validation counters, `bear_case TEXT` (skeptical counter-argument for high-impact articles)
 - `user_preferences` has `digest_length` column (`brief` | `standard` | `detailed`)
 - `daily_derived_metrics` has `entity_type`, `entity`, mention counts, sentiment, impact scores, price data
 - `article_validations` — per-user vote log; `UNIQUE(article_id, chat_id)` prevents double-voting
@@ -317,6 +318,7 @@ npm run db:pull      # Sync remote schema to local
 | `20260624150000_v5_digest_length.sql` | `digest_length` column on `user_preferences` |
 | `20260625000000_v6_daily_derived_metrics.sql` | `daily_derived_metrics` table + 2 time-series indexes + RLS |
 | `20260626000000_v7_article_validations.sql` | `article_validations` table + `thumbs_up`/`thumbs_down` on `articles` + RLS |
+| `20260627000000_v63_articles_bear_case.sql` | `bear_case TEXT` column on `articles` |
 
 ---
 
@@ -395,7 +397,8 @@ ai-infra-digest/
 │   ├── formatter/
 │   │   └── telegram.ts                       # HTML Telegram formatter (personalization note support)
 │   ├── processor/
-│   │   ├── ai.ts                             # Two-tier AI batch processing
+│   │   ├── ai.ts                             # Two-tier AI batch processing + ProcessedArticle type (incl. bearCase)
+│   │   ├── bear-cases.ts                     # Devil's Advocate — batched AI bear case generation for high-impact articles
 │   │   ├── sec.ts                            # SEC two-pass extraction
 │   │   └── earnings.ts                       # Earnings two-pass analysis + guidance delta
 │   ├── sender/
@@ -406,7 +409,9 @@ ai-infra-digest/
 │   └── utils/
 │       ├── ai-cache.ts                       # File-based AI response cache (SHA-256 key, 23h TTL)
 │       ├── derived-metrics.ts                # daily_derived_metrics writer + query helpers
-│       ├── dedup.ts                          # URL + Jaccard similarity dedup
+│       ├── dedup.ts                          # URL + Jaccard dedup + buildCorroborationMap()
+│       ├── source-credibility.ts             # Static source-name → credibility multiplier (High/Neutral/Low editorial tiers)
+│       ├── trust-scores.ts                   # Vote-learned source/sector multipliers from article_validations (1h TTL cache)
 │       ├── logger.ts                         # Structured timestamped logger
 │       ├── metrics.ts                        # NDJSON event logging
 │       ├── retry.ts                          # withRetry<T> + tryStage<T> utilities
@@ -482,16 +487,17 @@ Tom's Hardware, AnandTech, Ars Technica, TechCrunch, The Verge, Seeking Alpha, S
 - **v5.2** — `/trends` command — Unicode sparkline + WoW delta + price for any ticker or sector (`/trends NVDA 30d`, `/trends sector Datacenters`)
 - **v5.3** — Backfill script — seeds up to 90 days of historical data from existing `sector_activity` + `stock_mentions`; idempotent (safe to re-run)
 
-### Phase VI · Validation Layer ✅ Shipped
-- **v6.0** — Inline 👍/👎 article validation — top-3 articles per digest get a "Quick Validation" follow-up with per-article buttons
-- **v6.1** — `article_validations` table — idempotent per-user votes; "Already rated!" dedup toast; `thumbs_up`/`thumbs_down` aggregate counters on `articles`
-- **v6.2** — `insertArticles()` returns Supabase IDs — `return=representation` threads `{id,url}[]` back through `persistDigestMetrics()` to `sendValidationFollowUp()` without breaking fan-out
+### Phase VI · Validation + Trust Layer ✅ Shipped
+- **v6.0** — Inline 👍/👎 article validation — top-3 articles per digest get a "Quick Validation" follow-up with per-article buttons; `article_validations` table with idempotent per-user votes and "Already rated!" dedup toast; `thumbs_up`/`thumbs_down` aggregate counters on `articles`; `insertArticles()` returns `{id,url}[]` for fan-out safe threading
+- **v6.1** — Trust-weighted ranking — vote-learned source multipliers from `article_validations` (approval rate → [0.7, 1.3] multiplier, 1-hour TTL cache); `effectiveScore = impactScore × voteMultiplier × credibilityMultiplier × sectorMultiplier × corroborationBoost` drives validation follow-up order; `/sources quality` command; hallucination detection alert (source with ≥3 votes and approvalRate < 0.25)
+- **v6.2** — Static Source Credibility + Corroboration — cold-start fix: deterministic source-name → multiplier map (High 1.2x for TechCrunch/Reuters/WSJ/etc., Low 0.8x for vendor PR blogs, default 1.0x); `buildCorroborationMap()` clusters same-story articles via Jaccard similarity and adds +5% per extra corroborating source
+- **v6.3** — Devil's Advocate bear cases — second AI pass for articles scoring ≥ 7/10 generates a skeptical 1–2 sentence counter-argument; stored in `bear_case TEXT` column; rendered as `⚠️` italic line in each digest article
 
 ### Phase VII · Monetization 🔭 Next
 - **v7** — Public API layer — authenticated REST endpoints over `daily_derived_metrics`; rate-limited tiers; Stripe subscription gate
-- **v7.1** — Validation-weighted scoring — article `thumbs_up`/`thumbs_down` ratios feed back into impact score weights per source
-- **v7.2** — Price threshold alerts — user-defined ticker price targets trigger instant Telegram notifications
-- **v7.3** — Bull/bear thesis generation — per-ticker AI narrative updated weekly from accumulated mention + price + validation data
+- **v7.1** — Price threshold alerts — user-defined ticker price targets trigger instant Telegram notifications
+- **v7.2** — Bull/bear thesis generation — per-ticker AI narrative updated weekly from accumulated mention + price + validation data
+- **v7.3** — Source reputation leaderboard — public dashboard view ranking sources by approval rate, hallucination flags, and sector coverage
 
 ---
 

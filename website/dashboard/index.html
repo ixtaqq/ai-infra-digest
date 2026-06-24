@@ -1660,6 +1660,10 @@
         ).join('') || '—';
         const summary = (a.summary || '').replace(/\n/g, '<br>');
         const reason = a.reason || '';
+        const bearCase = a.bear_case || '';
+        const thumbs = (a.thumbs_up || a.thumbs_down)
+          ? `<span style="font-size:10px;color:var(--text-muted);margin-left:8px">👍 ${a.thumbs_up||0} · 👎 ${a.thumbs_down||0}</span>`
+          : '';
 
         const mainRow = `<tr id="article-row-${i}" style="cursor:pointer;transition:background 0.15s" onclick="toggleArticleExpand(${i})">` +
           `<td><span style="display:flex;align-items:center;gap:6px">` +
@@ -1675,8 +1679,12 @@
           `<td colspan="6" style="padding:0">` +
           `<div style="padding:12px 14px 14px 28px;background:rgba(212,162,76,0.03);border-top:1px solid var(--border-light);border-bottom:1px solid var(--border-light)">` +
           (summary ? `<div style="font-size:12px;color:var(--text-dim);margin-bottom:8px;line-height:1.6">${summary}</div>` : '') +
-          (reason ? `<div style="font-size:11px;color:var(--text-muted);font-style:italic;margin-bottom:10px">&#128161; ${reason}</div>` : '') +
+          (reason ? `<div style="font-size:11px;color:var(--text-muted);font-style:italic;margin-bottom:8px">&#128161; ${reason}</div>` : '') +
+          (bearCase ? `<div style="font-size:11px;color:#e0b257;font-style:italic;margin-bottom:10px;padding:6px 10px;background:rgba(224,178,87,0.06);border-left:2px solid rgba(224,178,87,0.4);border-radius:2px">⚠️ ${escapeHtml(bearCase)}</div>` : '') +
+          `<div style="display:flex;align-items:center;gap:8px">` +
           `<a href="${a.url || '#'}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-size:11px;color:var(--gold);text-decoration:none">Read full article &#8594;</a>` +
+          thumbs +
+          `</div>` +
           `</div></td></tr>`;
 
         return mainRow + detailRow;
@@ -1842,7 +1850,7 @@
       articlePage++;
       const offset = articlePage * ARTICLES_PAGE_SIZE;
       try {
-        const url = `${SUPABASE_URL}/rest/v1/articles?select=title,url,source,impact,impact_score,category,affected_stocks,summary,created_at&order=impact_score.desc&limit=${ARTICLES_PAGE_SIZE}&offset=${offset}`;
+        const url = `${SUPABASE_URL}/rest/v1/articles?select=title,url,source,impact,impact_score,category,affected_stocks,summary,bear_case,thumbs_up,thumbs_down,created_at&order=impact_score.desc&limit=${ARTICLES_PAGE_SIZE}&offset=${offset}`;
         const res = await fetch(url, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const newArticles = await res.json();
@@ -1869,7 +1877,7 @@
       if (!query || query.length < 2) { status.textContent = 'Type at least 2 characters'; status.style.color = 'var(--warn)'; return; }
       status.textContent = '🔍 Searching...'; status.style.color = 'var(--text-dim)';
       try {
-        const searchUrl = `${SUPABASE_URL}/rest/v1/articles?select=title,url,source,impact,impact_score,category,affected_stocks,summary,created_at&order=impact_score.desc&limit=25`;
+        const searchUrl = `${SUPABASE_URL}/rest/v1/articles?select=title,url,source,impact,impact_score,category,affected_stocks,summary,bear_case,thumbs_up,thumbs_down,created_at&order=impact_score.desc&limit=25`;
         const res = await fetch(searchUrl, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         let articles = await res.json();
