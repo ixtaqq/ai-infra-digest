@@ -440,11 +440,23 @@
 
     .roadmap-grid {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(3, 1fr);
       gap: 0;
     }
     .roadmap-grid > * + * {
       border-left: 1px solid var(--border);
+    }
+    .roadmap-grid > *:nth-child(4) {
+      border-left: none;
+      border-top: 1px solid var(--border);
+    }
+    .roadmap-grid > *:nth-child(5) {
+      border-left: 1px solid var(--border);
+      border-top: 1px solid var(--border);
+    }
+    .roadmap-grid > *:nth-child(6) {
+      border-left: 1px solid var(--border);
+      border-top: 1px solid var(--border);
     }
 
     .phase-card {
@@ -1036,6 +1048,35 @@
             </ul>
           </div>
 
+          <div class="phase-card status-live delay-4">
+            <div class="phase-top">
+              <span class="phase-num">Phase VII</span>
+              <span class="badge badge-live">Shipped</span>
+            </div>
+            <div class="phase-title-text">Sharper Signal.</div>
+            <ul class="feature-list">
+              <li>Relevance scoring — AI rates each article's AI-infra relevance (1–10); off-topic filler dropped before ranking</li>
+              <li>Anchored impact rubric — calibrated 1–10 scale with tier anchors; scores ≥8 require a justification sentence</li>
+              <li>PR wire dampening — BusinessWire/PRNewswire/GlobeNewswire capped at effectiveScore 6, never competing with independent reporting</li>
+              <li>48h novelty detection — rehashed stories get 0.6× multiplier; breaking news always surfaces first</li>
+              <li>75 unit tests — source credibility, novelty detection, trust layer fully covered</li>
+            </ul>
+          </div>
+
+          <div class="phase-card status-next delay-5">
+            <div class="phase-top">
+              <span class="phase-num">Phase VIII</span>
+              <span class="badge badge-next">Next</span>
+            </div>
+            <div class="phase-title-text">Semantic Core.</div>
+            <ul class="feature-list">
+              <li>Embeddings + pgvector — OpenAI text-embedding-3-small stored in Supabase; ~$0.30/year cost</li>
+              <li>Semantic dedup — cosine similarity (0.85 threshold) replaces title-only Jaccard; same story, different headline now clusters correctly</li>
+              <li>Semantic relevance gate — embedding-based gate replaces keyword OR-match; catches differently-phrased big stories</li>
+              <li>Related prior coverage — surface top-3 similar articles from the past 7 days in the dashboard</li>
+            </ul>
+          </div>
+
         </div>
       </div>
     </div>
@@ -1063,9 +1104,9 @@
         <div><span class="comment"># Or test with sample data</span></div>
         <div><span class="prompt">$</span> <span class="cmd">npm run test-digest</span></div>
         <div>&nbsp;</div>
-        <div><span class="comment"># 34 unit tests, no credentials needed</span></div>
+        <div><span class="comment"># 43 unit tests, no credentials needed</span></div>
         <div><span class="prompt">$</span> <span class="cmd">npm run test:unit</span></div>
-        <div><span class="output">  ✓ 34 tests passing</span></div>
+        <div><span class="output">  ✓ 43 tests passing</span></div>
       </div>
     </div>
   </section>
