@@ -6,6 +6,7 @@ import { formatDigestTelegram } from "./formatter/telegram";
 import {
   sendDigestMessage,
   sendDigestMessageToUser,
+  sendValidationFollowUp,
   startInteractiveBot,
   registerCommand,
 } from "./sender/telegram";
@@ -561,8 +562,8 @@ export async function persistDigestMetrics(
   generated: GeneratedDigest,
   status: "success" | "failed",
   errorMessage?: string
-): Promise<void> {
-  if (!supabase.isConfigured()) return;
+): Promise<Map<string, number>> {
+  if (!supabase.isConfigured()) return new Map();
 
   const { runDate, startTime, digest, articlesCollected, feedStatuses, secExtracts, stockPrices } = generated;
   const durationSeconds = Math.round(((Date.now() - startTime) / 1000) * 10) / 10;
@@ -590,8 +591,11 @@ export async function persistDigestMetrics(
     error_message: status === "success" ? undefined : errorMessage,
   });
 
+  // Build url→id map from article insert; used by validation follow-up buttons
+  let articleIds: Map<string, number> = new Map();
+
   if (digestRunId) {
-    await supabase.insertArticles(
+    const inserted = await supabase.insertArticles(
       digestRunId,
       digest.articles.map((a) => ({
         title: a.title,
@@ -606,6 +610,7 @@ export async function persistDigestMetrics(
         is_sec_filing: a.isSECFiling || undefined,
       }))
     );
+    articleIds = new Map(inserted.filter(r => r.url).map(r => [r.url, r.id]));
 
     await supabase.insertPipelineHealth(
       digestRunId,
@@ -716,6 +721,7 @@ export async function persistDigestMetrics(
   await checkBudget(runDate, estimatedCost);
 
   logger.info("✅ Metrics written to Supabase");
+  return articleIds;
 }
 
 async function checkBudget(runDate: string, todayCost: number): Promise<void> {
@@ -776,11 +782,22 @@ export async function runPipeline(targetChatId?: number): Promise<boolean> {
   if (!generated) return false;
 
   const sendResult = await deliverDigest(generated, targetChatId);
-  await persistDigestMetrics(
+  const articleIds = await persistDigestMetrics(
     generated,
     sendResult.success ? "success" : "failed",
     sendResult.error
   );
+
+  if (sendResult.success && articleIds.size > 0) {
+    const chatId = targetChatId ?? (config.telegram.chatId ? Number(config.telegram.chatId) : undefined);
+    if (chatId) {
+      try {
+        await sendValidationFollowUp(chatId, generated.digest.articles, articleIds);
+      } catch {
+        // Non-critical — digest already delivered
+      }
+    }
+  }
 
   logger.info("✅ Digest pipeline completed");
   return sendResult.success;

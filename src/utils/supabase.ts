@@ -193,10 +193,13 @@ export const supabase = {
     }
   },
 
-  async insertArticles(digestRunId: number, articles: ArticleData[]): Promise<boolean> {
-    if (!articles.length) return true;
+  async insertArticles(
+    digestRunId: number,
+    articles: ArticleData[]
+  ): Promise<{ id: number; url: string }[]> {
+    if (!articles.length) return [];
     const cfg = getConfig();
-    if (!cfg) return false;
+    if (!cfg) return [];
 
     const records = articles.map((a) => ({
       digest_run_id: digestRunId,
@@ -211,15 +214,38 @@ export const supabase = {
       reason: a.reason || null,
     }));
 
-    // Insert in chunks of 20 (Supabase REST limit)
-    let success = true;
+    const inserted: { id: number; url: string }[] = [];
+
+    // Insert in chunks of 20, requesting id+url back for validation buttons
     for (let i = 0; i < records.length; i += 20) {
       const chunk = records.slice(i, i + 20);
-      const ok = await supabaseFetch("POST", "articles", chunk);
-      if (!ok) success = false;
+      try {
+        const res = await fetch(
+          `${cfg.url}/rest/v1/articles?select=id,url`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "apikey": cfg.key,
+              "Authorization": `Bearer ${cfg.key}`,
+              "Prefer": "return=representation",
+            },
+            body: JSON.stringify(chunk),
+          }
+        );
+        if (res.ok || res.status === 201) {
+          const rows = (await res.json()) as { id: number; url: string }[];
+          inserted.push(...rows);
+        } else {
+          logger.warn(`Supabase insertArticles chunk: HTTP ${res.status}`);
+        }
+      } catch (err) {
+        logger.warn(`Supabase insertArticles: ${(err as Error).message}`);
+      }
     }
-    logger.info(`Supabase: inserted ${records.length} articles for run #${digestRunId}`);
-    return success;
+
+    logger.info(`Supabase: inserted ${inserted.length}/${records.length} articles for run #${digestRunId}`);
+    return inserted;
   },
 
   async updateSectorActivity(

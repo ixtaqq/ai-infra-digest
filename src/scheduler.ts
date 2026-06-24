@@ -17,7 +17,7 @@
 import { logger } from "./utils/logger";
 import { supabase } from "./utils/supabase";
 import { generateDigest, deliverDigest, persistDigestMetrics } from "./index";
-import { startInteractiveBot } from "./sender/telegram";
+import { startInteractiveBot, sendValidationFollowUp } from "./sender/telegram";
 
 // ─── Time Helpers ───────────────────────────────────────
 
@@ -122,12 +122,17 @@ async function schedulerMain(): Promise<void> {
 
   let successCount = 0;
   let failCount = 0;
+  const successfulChatIds: number[] = [];
 
   for (const user of pendingUsers) {
     try {
       const result = await deliverDigest(generated, user.chat_id, user);
-      if (result.success) successCount++;
-      else failCount++;
+      if (result.success) {
+        successCount++;
+        successfulChatIds.push(user.chat_id);
+      } else {
+        failCount++;
+      }
     } catch (error) {
       failCount++;
       logger.error(`Delivery failed for user ${user.chat_id}: ${(error as Error).message}`);
@@ -135,11 +140,22 @@ async function schedulerMain(): Promise<void> {
   }
 
   // Record run metrics once for this single generation — not once per user.
-  await persistDigestMetrics(
+  const articleIds = await persistDigestMetrics(
     generated,
     successCount > 0 ? "success" : "failed",
     failCount > 0 ? `${failCount} of ${pendingUsers.length} user deliveries failed` : undefined
   );
+
+  // Send validation follow-up to all users who received the digest successfully
+  if (articleIds.size > 0 && successfulChatIds.length > 0) {
+    for (const chatId of successfulChatIds) {
+      try {
+        await sendValidationFollowUp(chatId, generated.digest.articles, articleIds);
+      } catch {
+        // Non-critical
+      }
+    }
+  }
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   logger.info(

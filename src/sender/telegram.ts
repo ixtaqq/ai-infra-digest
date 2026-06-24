@@ -297,7 +297,27 @@ function initCommands() {
     const data = query.data || "";
     if (!chatId) return;
 
-    // Acknowledge the callback query (removes loading state on the button)
+    // Handle article validation callbacks (👍/👎 buttons) — answer with toast
+    if (data.startsWith("va_")) {
+      // callback_data format: "va_{article_id}_{up|dn}"
+      const parts = data.split("_");
+      const articleId = parseInt(parts[1], 10);
+      const dir = parts[2];
+      if (!isNaN(articleId) && (dir === "up" || dir === "dn")) {
+        const isNew = await handleArticleValidation(chatId, articleId, dir === "up" ? "up" : "down");
+        try {
+          await pollingBot.answerCallbackQuery(query.id, {
+            text: isNew ? (dir === "up" ? "Thanks! 👍" : "Thanks! 👎") : "Already rated!",
+            show_alert: false,
+          });
+        } catch {/* non-critical */}
+      } else {
+        try { await pollingBot.answerCallbackQuery(query.id); } catch {/* */}
+      }
+      return;
+    }
+
+    // Acknowledge all other callback queries (removes loading state on the button)
     try {
       await pollingBot.answerCallbackQuery(query.id);
     } catch {
@@ -436,6 +456,111 @@ async function upsertUser(msg: TelegramBot.Message): Promise<void> {
   } catch {
     // Non-critical — fail silently
   }
+}
+
+// ─── Article Validation Follow-Up ──────────────────────
+
+function escHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/**
+ * Send a compact 👍/👎 validation message for the top-3 articles immediately
+ * after digest delivery. Requires article IDs from Supabase (url → id map).
+ * Non-critical — caller must handle errors.
+ */
+export async function sendValidationFollowUp(
+  chatId: number,
+  articles: { title: string; url: string; impactScore: number }[],
+  articleIds: Map<string, number>
+): Promise<void> {
+  const candidates = articles
+    .filter((a) => a.url && articleIds.has(a.url))
+    .sort((a, b) => b.impactScore - a.impactScore)
+    .slice(0, 3);
+
+  if (!candidates.length) return;
+
+  const lines = ["<b>&#128202; Quick Validation</b>", "<i>Was the AI analysis accurate?</i>", ""];
+  const keyboard: TelegramBot.InlineKeyboardButton[][] = [];
+
+  candidates.forEach((a, i) => {
+    const id = articleIds.get(a.url)!;
+    const shortTitle = escHtml(a.title.length > 60 ? a.title.slice(0, 60) + "…" : a.title);
+    lines.push(`${i + 1}. ${shortTitle}`);
+    keyboard.push([
+      { text: `${i + 1} 👍`, callback_data: `va_${id}_up` },
+      { text: `${i + 1} 👎`, callback_data: `va_${id}_dn` },
+    ]);
+  });
+
+  const bot = getBot();
+  await bot.sendMessage(chatId, lines.join("\n"), {
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+    reply_markup: { inline_keyboard: keyboard },
+  });
+}
+
+/**
+ * Record a 👍/👎 vote for an article. Idempotent — duplicate votes (same
+ * chat_id + article_id) are silently ignored. Returns true if the vote was
+ * new, false if the user already voted.
+ */
+async function handleArticleValidation(
+  chatId: number,
+  articleId: number,
+  rating: "up" | "down"
+): Promise<boolean> {
+  const url = config.app.supabaseUrl;
+  const key = config.app.supabaseServiceKey;
+  if (!url || !key) return false;
+
+  const headers = {
+    "apikey": key,
+    "Authorization": `Bearer ${key}`,
+    "Content-Type": "application/json",
+    "Prefer": "return=minimal,resolution=ignore-duplicates",
+  };
+
+  // Insert vote (duplicate silently ignored by ignore-duplicates)
+  const insertRes = await fetch(
+    `${url}/rest/v1/article_validations?on_conflict=article_id,chat_id`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ article_id: articleId, chat_id: chatId, rating }),
+    }
+  );
+
+  // 201 = new row; 200 with empty body = duplicate ignored
+  const isNew = insertRes.status === 201;
+  if (!insertRes.ok && insertRes.status !== 200 && insertRes.status !== 201) {
+    logger.warn(`article_validations insert: HTTP ${insertRes.status}`);
+    return false;
+  }
+
+  if (isNew) {
+    // Increment the aggregate counter on the articles row (GET current → PATCH +1)
+    const col = rating === "up" ? "thumbs_up" : "thumbs_down";
+    try {
+      const getRes = await fetch(
+        `${url}/rest/v1/articles?id=eq.${articleId}&select=${col}`,
+        { headers: { "apikey": key, "Authorization": `Bearer ${key}` } }
+      );
+      if (getRes.ok) {
+        const rows = (await getRes.json()) as Record<string, number>[];
+        const current = rows[0]?.[col] ?? 0;
+        await fetch(`${url}/rest/v1/articles?id=eq.${articleId}`, {
+          method: "PATCH",
+          headers: { "apikey": key, "Authorization": `Bearer ${key}`, "Content-Type": "application/json", "Prefer": "return=minimal" },
+          body: JSON.stringify({ [col]: current + 1 }),
+        });
+      }
+    } catch {/* non-critical */}
+  }
+
+  return isNew;
 }
 
 // ─── Send Functions (unchanged from before) ────────────
