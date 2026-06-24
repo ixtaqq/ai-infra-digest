@@ -25,6 +25,7 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 - **Batch processing** with exponential backoff (full-jitter, up to 3 attempts)
 - **Synthesis pass** — market outlook, top stocks, daily summary
 - **Token tracking** — `prompt_tokens`, `completion_tokens`, `total_tokens` per run, both model names stored in Supabase
+- **AI response caching** — SHA-256 hash of article URLs as cache key; 23-hour TTL prevents redundant AI spend on same article set during dev re-runs
 
 ### 🏛️ SEC Filing Intelligence
 - **EDGAR watcher** — monitors 8-K, 10-K, 10-Q filings for 35 tracked companies
@@ -58,7 +59,7 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 
 | Command | Description |
 |---------|-------------|
-| `/start` | Welcome & register your preferences |
+| `/start` | 4-step onboarding: delivery time → watchlist → impact filter → digest length |
 | `/help` | Show all available commands |
 | `/digest` | Show recent stored articles (filtered by your watchlist/sector if set) |
 | `/digest watchlist` | Filter stored articles by your saved watchlist tickers |
@@ -80,10 +81,12 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
   - `min_impact_score` — drops articles below their threshold
   - `categories_enabled` — keeps only their selected sectors
   - `watchlist` — floats watchlist-ticker articles and stocks to the top; adds a `🎯 Filtered for you` note in the header
-- **Custom delivery times** — each user sets `preferred_time` via `/settings`
+  - `digest_length` — `brief` trims summaries to one line; `standard` (default) sends full bullets; `detailed` includes analyst rationale
+- **Custom delivery times** — each user sets `preferred_time` via `/start` onboarding or `/settings`
 - **Timezone-aware** — delivery triggers at the user's local time
 - **Idempotent** — `user_delivery_log` prevents duplicate deliveries on overlapping cron runs
 - **GitHub Actions cron** — runs every 30 minutes, checks all active users, delivers only to those at their preferred time
+- **Budget caps** — daily and 30-day rolling AI cost limits; Telegram alert fires when either threshold is breached
 
 ### 🌐 Production Webhook Bot
 - **`src/webhook.ts`** — zero-dependency Node `http` server; registers all command handlers in non-polling mode
@@ -95,22 +98,27 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 
 ### 📊 Dashboard
 - **Graphite + copper terminal design** — `#0a0b0e` dark background, `#cb8a4c` copper accent, Space Grotesk display font, JetBrains Mono for data
+- **Auth gate** — credential entry screen on first visit; verifies Supabase URL + anon key with a live ping before unlocking; credentials saved to localStorage
 - **Fixed rail navigation** — Overview, Pipeline, Stocks, SEC Filings, Articles sections; collapses to horizontal on mobile
 - **Market pulse ribbon** — live stock ticker strip populated from Supabase
 - **KPI cards** — articles processed, stocks tracked, sectors active, feed health
 - **6 interactive Chart.js charts**: sector trends, stock prices, capex/AI spending, digest performance, token usage, feed health
 - **Article filtering** — sector pills, impact filter, full-text search (title, summary, source, stocks)
+- **Expandable article rows** — click any row to inline-expand: full summary, analyst reason, and source link; chevron rotates on open
 - **Pagination** — "Load More" fetches additional 20 articles via cursor
 - **SEC filings table** — capex, AI revenue, margins, guidance, impact scores
 - **Auto-refresh** every 60 seconds
-- Reads directly from Supabase REST API — configure credentials via ⚙️ gear icon (saved to localStorage)
+- Reads directly from Supabase REST API
 
 ### 🗄️ Database (Supabase)
 - **13 tables**: `digest_runs`, `articles`, `sector_activity`, `stock_mentions`, `pipeline_health`, `capex_tracking`, `ai_usage`, `daily_metrics`, `stock_prices`, `user_preferences`, `user_delivery_log`, `sec_filings`, `earnings_transcripts`
 - Managed with **Supabase CLI** — migrations in `supabase/migrations/`
 - `digest_runs` tracks both models (`ai_model` + `ai_fast_model`)
 - `articles` has `is_sec_filing` boolean for SEC badge articles
+- `user_preferences` has `digest_length` column (`brief` | `standard` | `detailed`)
 - RLS enabled on all tables; service role key used for writes, public read for dashboard
+- **Performance indexes** — 13 indexes including GIN full-text search, partial indexes for SEC filings and active users
+- **Automated retention** — `cleanup_old_data()` function prunes articles (90d), pipeline_health (30d), ai_usage (90d), delivery_log (90d)
 
 ### 📈 Structured Logging & Metrics
 - **Per-day NDJSON logs** — `logs/YYYY-MM-DD.ndjson`, written to disk and streamed to stdout
@@ -121,10 +129,12 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 ### 🔔 Error Handling & Alerts
 - **Source health alerts** — if >20% of RSS feeds fail, admin gets a Telegram alert listing failing feeds
 - **High-impact alert system** — articles scoring 8+/10 trigger instant alerts to opted-in users
+- **Budget cap alerts** — daily and 30-day AI cost thresholds; alert sent when breached
+- **`withRetry<T>()`** — exponential backoff + full-jitter for AI calls; non-retryable errors (401) bypass retry
+- **`tryStage<T>()`** — never-throws wrapper for optional stages (SEC, earnings, stocks); one stage failing never crashes the pipeline
 - **Structured error events** — AI 429, Yahoo Finance failures, Supabase errors all emit `ErrorEvent` with recovery suggestions
-- **Supabase error recording** — failed pipeline runs logged with error message and stack
 
-### 🧪 Testing
+### 🧪 Testing & CI
 - **58 tests** with **Vitest**:
   - Deduplication: 5 unit tests
   - Keyword matching: 13 unit tests
@@ -134,7 +144,8 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
   - Telegram integration: 9 tests (requires live credentials)
   - Stocks integration: 8 tests (requires live credentials)
   - Fan-out regression: 1 test — proves `collectArticles` called once for N deliveries
-- **26 unit tests** run offline; **32 integration tests** require live Telegram/Supabase/Yahoo credentials
+- **26 unit tests** run offline; **32 integration tests** require live Telegram/Supabase/Yahoo credentials — `npm test` attempts all suites (integration tests will fail without credentials; use `npm run test:unit` for offline)
+- **CI workflow** — `.github/workflows/ci.yml` runs `npm run test:unit` (unit tests only) on every push/PR to main
 - **TypeScript strict mode** — entire project compiles cleanly with `tsc --noEmit`
 
 ---
@@ -154,6 +165,7 @@ Step 1c: Dedup (URL match + Jaccard similarity)
       │
       ▼
 Step 2: AI Processor (two-tier routing)
+      ├── Cache check: SHA-256(article URLs) → .ai-cache/ (23h TTL)
       ├── Classification: Fast Model (llama-3.1-8b-instant)
       ├── Synthesis: Strong Model (llama-3.3-70b-versatile)
       └── SEC Two-Pass: keyword filter → fast flag → strong extract
@@ -173,6 +185,7 @@ Step 3: generateDigest() → GeneratedDigest bundle (format once)
       ▼
 Step 4: Fan-out delivery loop
       ├── For each user: applyUserFilter(bundle, userPrefs) → re-format → send
+      │     applies: min_impact_score, categories_enabled, watchlist boost, digest_length trim
       └── Default chat: send shared pre-formatted message (zero overhead)
       │
       ▼
@@ -216,6 +229,8 @@ cp .env.example .env
 | `WEBHOOK_URL` | ❌ | — | Public URL for webhook bot auto-registration |
 | `WEBHOOK_SECRET` | ❌ | — | Secret token for webhook request validation |
 | `PORT` | ❌ | `3000` | Webhook server port |
+| `AI_BUDGET_DAILY_USD` | ❌ | `0.50` | Daily AI spend cap; Telegram alert when breached |
+| `AI_BUDGET_MONTHLY_USD` | ❌ | `5.00` | 30-day rolling AI spend cap |
 
 ### Get Your Telegram Chat ID
 
@@ -229,7 +244,8 @@ cp .env.example .env
 npm run dev          # Run pipeline once (polling mode)
 npm run scheduler    # Run per-user delivery check
 npm run webhook      # Start webhook server (tsx, local dev)
-npm test             # Run all 58 tests
+npm run test:unit    # Run 26 unit tests (offline, no credentials needed)
+npm test             # Run all 58 tests (integration tests need live credentials)
 ```
 
 ---
@@ -261,6 +277,8 @@ npm run db:pull      # Sync remote schema to local
 | `20240101000000_initial_schema.sql` | 13 tables + RLS policies |
 | `20240601000000_v2_user_alerts.sql` | `alerts_enabled`, `alerts_min_score` columns |
 | `20260624000000_v3_missing_columns.sql` | `ai_fast_model`, `is_sec_filing`, missing tables, RLS for new tables |
+| `20260624120000_v4_indexes_retention.sql` | 13 performance indexes + `cleanup_old_data()` retention function |
+| `20260624150000_v5_digest_length.sql` | `digest_length` column on `user_preferences` |
 
 ---
 
@@ -273,6 +291,10 @@ npm run db:pull      # Sync remote schema to local
 ### Scheduled Per-User Delivery
 
 `.github/workflows/scheduled-delivery.yml` — runs **every 30 minutes**. Queries active users, finds those whose `preferred_time` matches now, generates once, fans out.
+
+### CI
+
+`.github/workflows/ci.yml` — runs on every push and PR to `main`. Executes lint + unit tests (26 tests, no credentials needed, fast).
 
 ### Required Secrets
 
@@ -306,47 +328,51 @@ See **`WEBHOOK_SETUP.md`** for Render/Railway/Fly.io deployment steps.
 ai-infra-digest/
 ├── .env.example
 ├── .github/workflows/
-│   ├── daily-digest.yml                  # 8 AM MYT cron
-│   └── scheduled-delivery.yml            # Every 30 min, per-user fan-out
-├── Dockerfile                            # Webhook bot container
-├── WEBHOOK_SETUP.md                      # Webhook deployment guide
-├── dashboard/
-│   ├── index.html                        # Graphite+copper terminal dashboard
-│   └── server.js                         # Static file server
+│   ├── ci.yml                                # Push/PR: lint + unit tests
+│   ├── daily-digest.yml                      # 8 AM MYT cron
+│   └── scheduled-delivery.yml               # Every 30 min, per-user fan-out
+├── Dockerfile                                # Webhook bot container
+├── WEBHOOK_SETUP.md                          # Webhook deployment guide
+├── website/
+│   ├── index.html                            # Public landing page
+│   └── dashboard/
+│       └── index.html                        # Graphite+copper terminal dashboard (auth gate + expand/collapse)
 ├── scripts/
-│   ├── test-digest.ts                    # Manual pipeline test
-│   ├── migration-v2.sql                  # Alert system columns
-│   └── migration-v3.sql                  # Missing columns + tables (v3)
+│   ├── test-digest.ts                        # Manual pipeline test
+│   └── migration-v3.sql                      # Reference: applied via Supabase CLI
 ├── supabase/
-│   ├── config.toml                       # Supabase CLI project config
-│   └── migrations/                       # Numbered migration files
+│   ├── config.toml                           # Supabase CLI project config
+│   └── migrations/                           # v1–v5 numbered migration files
 ├── src/
-│   ├── index.ts                          # generateDigest, deliverDigest, applyUserFilter, persistDigestMetrics
-│   ├── scheduler.ts                      # Per-user cron runner (fan-out)
-│   ├── webhook.ts                        # Zero-dep webhook HTTP server
-│   ├── config.ts                         # Env config loader
+│   ├── index.ts                              # generateDigest, deliverDigest, applyUserFilter, persistDigestMetrics
+│   ├── scheduler.ts                          # Per-user cron runner (fan-out)
+│   ├── onboarding.ts                         # 4-step interactive onboarding state machine
+│   ├── webhook.ts                            # Zero-dep webhook HTTP server
+│   ├── config.ts                             # Env config loader (incl. budget caps)
 │   ├── collector/
-│   │   ├── rss.ts                        # 57 RSS feeds, conditional GET, retry backoff
-│   │   ├── sec.ts                        # SEC EDGAR watcher — 35 companies
-│   │   └── earnings.ts                   # Roic.ai earnings transcript fetcher
+│   │   ├── rss.ts                            # 57 RSS feeds, conditional GET, retry backoff
+│   │   ├── sec.ts                            # SEC EDGAR watcher — 35 companies
+│   │   └── earnings.ts                       # Roic.ai earnings transcript fetcher
 │   ├── formatter/
-│   │   └── telegram.ts                   # HTML Telegram formatter (personalization note support)
+│   │   └── telegram.ts                       # HTML Telegram formatter (personalization note support)
 │   ├── processor/
-│   │   ├── ai.ts                         # Two-tier AI batch processing
-│   │   ├── sec.ts                        # SEC two-pass extraction
-│   │   └── earnings.ts                   # Earnings two-pass analysis + guidance delta
+│   │   ├── ai.ts                             # Two-tier AI batch processing
+│   │   ├── sec.ts                            # SEC two-pass extraction
+│   │   └── earnings.ts                       # Earnings two-pass analysis + guidance delta
 │   ├── sender/
-│   │   └── telegram.ts                   # Bot API, polling/webhook mode switch, command handlers
+│   │   └── telegram.ts                       # Bot API, polling/webhook mode switch, command handlers
 │   ├── tests/
-│   │   ├── index.faninout.test.ts        # Fan-out regression (generate once, deliver N times)
-│   │   └── webhook.test.ts               # Webhook router unit tests (7 cases)
+│   │   ├── index.faninout.test.ts            # Fan-out regression (generate once, deliver N times)
+│   │   └── webhook.test.ts                   # Webhook router unit tests
 │   └── utils/
-│       ├── dedup.ts                      # URL + Jaccard similarity dedup
-│       ├── logger.ts                     # Structured timestamped logger
-│       ├── metrics.ts                    # NDJSON event logging
-│       ├── stocks.ts                     # Yahoo Finance price fetcher
-│       └── supabase.ts                   # Supabase REST CRUD (13 tables)
-├── supabase-schema.sql                   # Full schema reference (13 tables + RLS)
+│       ├── ai-cache.ts                       # File-based AI response cache (SHA-256 key, 23h TTL)
+│       ├── dedup.ts                          # URL + Jaccard similarity dedup
+│       ├── logger.ts                         # Structured timestamped logger
+│       ├── metrics.ts                        # NDJSON event logging
+│       ├── retry.ts                          # withRetry<T> + tryStage<T> utilities
+│       ├── stocks.ts                         # Yahoo Finance price fetcher
+│       └── supabase.ts                       # Supabase REST CRUD (13 tables)
+├── supabase-schema.sql                       # Full schema reference (13 tables + RLS)
 ├── vitest.config.ts
 ├── package.json
 └── tsconfig.json
@@ -400,12 +426,15 @@ Tom's Hardware, AnandTech, Ars Technica, TechCrunch, The Verge, Seeking Alpha, S
 ### Phase III · Reliability ✅ Shipped
 - **v3.2** — Fan-out delivery refactor — `generateDigest()` once, `deliverDigest()` per user; Supabase persistence fixed (upsert headers, migration-v3); Supabase CLI with numbered migrations
 - **v3.3** — Real personalization — `applyUserFilter()` at delivery time using `watchlist`, `categories_enabled`, `min_impact_score` from each user's stored preferences; personalization note in digest header
+- **v3.4** — CI workflow — `npm run test:unit` (26 unit tests) on every push/PR via GitHub Actions; lint gate
+- **v3.5** — `withRetry<T>()` + `tryStage<T>()` utilities — pipeline stages now fail independently without crashing the run; budget cap alerts for daily and 30-day AI spend
 
-### Phase IV · Platform 🔨 Next
-- **v3.4** — CI workflow — `npm test` (unit tests only) on every push via GitHub Actions; lint gate
-- **v3.5** — `/digest` returns today's AI-generated digest on demand (cached from last pipeline run)
-- **v4.0** — Dashboard 2.0 — Supabase Auth, public digest pages, SEC-derived charts (capex barometer, AI revenue index), CMD+K search for SEC filings
-- **v4.1** — Earnings archive + historical trend charts on dashboard
+### Phase IV · Platform ✅ Shipped
+- **v4.0** — 4-step interactive onboarding (`/start`) — delivery time, watchlist, impact filter, digest length; `digest_length` preference stored in Supabase and applied at delivery (brief/standard/detailed)
+- **v4.1** — Database performance — 13 indexes (GIN full-text search, partial indexes); `cleanup_old_data()` automated retention function; migration v4 + v5
+- **v4.2** — Dashboard auth gate — credential entry screen with live Supabase verification before unlocking dashboard
+- **v4.3** — AI response caching — SHA-256 hash of article set as cache key; 23h TTL eliminates redundant AI spend on same-day re-runs
+- **v4.4** — Expandable article rows in dashboard — click to inline-expand summary, analyst reason, and source link
 
 ### Phase V · Research 🔭 Future
 - **v5** — Article archival, historical trend analysis, price threshold alerts, bull/bear thesis per ticker, competitive landscape analysis
