@@ -1,7 +1,7 @@
 /**
  * Interactive user onboarding flow.
  *
- * State machine: Welcome → DeliveryTime → Watchlist → MinScore → Done
+ * State machine: Welcome → DeliveryTime → Watchlist → MinScore → DigestLength → Done
  * State is held in-memory (ephemeral). If the server restarts mid-flow the
  * user just gets a clean /start again — no data loss, no broken state.
  */
@@ -10,7 +10,7 @@ import TelegramBot from "node-telegram-bot-api";
 import { supabase } from "./utils/supabase";
 import { logger } from "./utils/logger";
 
-type OnboardingStep = "delivery_time" | "watchlist" | "min_score" | "done";
+type OnboardingStep = "delivery_time" | "watchlist" | "min_score" | "digest_length" | "done";
 
 interface OnboardingState {
   step: OnboardingStep;
@@ -18,6 +18,7 @@ interface OnboardingState {
   deliveryTime?: string;
   watchlist?: string[];
   minScore?: number;
+  digestLength?: "brief" | "standard" | "detailed";
   promptMessageId?: number;
 }
 
@@ -57,12 +58,27 @@ function scoreKeyboard(): TelegramBot.InlineKeyboardMarkup {
   };
 }
 
+function lengthKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "Brief (headline + 1 line)", callback_data: "ob_len_brief" },
+        { text: "Standard ⭐", callback_data: "ob_len_standard" },
+      ],
+      [
+        { text: "Detailed (full summaries)", callback_data: "ob_len_detailed" },
+        { text: "Skip →", callback_data: "ob_len_standard" },
+      ],
+    ],
+  };
+}
+
 // ── Step renderers ───────────────────────────────────────────────────────────
 
 async function sendTimeStep(bot: TelegramBot, chatId: number, firstName: string) {
   const msg = await bot.sendMessage(
     chatId,
-    `⏰ <b>Step 1/3 — Delivery time</b>\n\n` +
+    `⏰ <b>Step 1/4 — Delivery time</b>\n\n` +
       `Hi ${firstName}! When do you want your daily AI infra digest?\n\n` +
       `<i>All times are in Malaysia Time (MYT, UTC+8).</i>`,
     { parse_mode: "HTML", reply_markup: timeKeyboard() }
@@ -74,7 +90,7 @@ async function sendTimeStep(bot: TelegramBot, chatId: number, firstName: string)
 async function sendWatchlistStep(bot: TelegramBot, chatId: number) {
   const msg = await bot.sendMessage(
     chatId,
-    `📈 <b>Step 2/3 — Ticker watchlist</b>\n\n` +
+    `📈 <b>Step 2/4 — Ticker watchlist</b>\n\n` +
       `Which stocks do you track? I'll highlight articles mentioning these tickers and float them to the top of your digest.\n\n` +
       `Reply with comma-separated tickers, e.g.:\n<code>NVDA, AMD, AVGO, MSFT</code>\n\n` +
       `Or tap <b>Skip</b> to receive the full digest without filtering.`,
@@ -93,7 +109,7 @@ async function sendWatchlistStep(bot: TelegramBot, chatId: number) {
 async function sendScoreStep(bot: TelegramBot, chatId: number) {
   const msg = await bot.sendMessage(
     chatId,
-    `🎯 <b>Step 3/3 — Impact filter</b>\n\n` +
+    `🎯 <b>Step 3/4 — Impact filter</b>\n\n` +
       `Articles are scored 1–10 by AI based on market impact.\n\n` +
       `• <b>All news</b> — receive everything (recommended to start)\n` +
       `• <b>Medium+ (5+)</b> — skip low-signal noise\n` +
@@ -105,6 +121,21 @@ async function sendScoreStep(bot: TelegramBot, chatId: number) {
   state.promptMessageId = msg.message_id;
 }
 
+async function sendLengthStep(bot: TelegramBot, chatId: number) {
+  const msg = await bot.sendMessage(
+    chatId,
+    `📝 <b>Step 4/4 — Digest length</b>\n\n` +
+      `How much detail do you want in each article summary?\n\n` +
+      `• <b>Brief</b> — headline + one line (great for a quick scan)\n` +
+      `• <b>Standard</b> — full summary, key stocks, and reason (default)\n` +
+      `• <b>Detailed</b> — everything, including analysis rationale`,
+    { parse_mode: "HTML", reply_markup: lengthKeyboard() }
+  );
+  const state = sessions.get(chatId)!;
+  state.step = "digest_length";
+  state.promptMessageId = msg.message_id;
+}
+
 async function sendConfirmation(bot: TelegramBot, chatId: number, state: OnboardingState) {
   const watchlistStr =
     state.watchlist && state.watchlist.length > 0
@@ -112,6 +143,7 @@ async function sendConfirmation(bot: TelegramBot, chatId: number, state: Onboard
       : "None (full digest)";
   const scoreStr =
     state.minScore && state.minScore > 0 ? `${state.minScore}+/10` : "All (no filter)";
+  const lengthStr = state.digestLength || "standard";
 
   await bot.sendMessage(
     chatId,
@@ -119,7 +151,8 @@ async function sendConfirmation(bot: TelegramBot, chatId: number, state: Onboard
       `<b>Your preferences:</b>\n` +
       `• Delivery time: <code>${state.deliveryTime || "08:00"} MYT</code>\n` +
       `• Watchlist: <code>${watchlistStr}</code>\n` +
-      `• Min impact score: <code>${scoreStr}</code>\n\n` +
+      `• Min impact score: <code>${scoreStr}</code>\n` +
+      `• Digest length: <code>${lengthStr}</code>\n\n` +
       `Your personalised digest will arrive daily at the time above.\n\n` +
       `<i>Change anytime with /settings, /watchlist, or /alert threshold.</i>`,
     { parse_mode: "HTML" }
@@ -150,7 +183,7 @@ export async function startOnboarding(
     chatId,
     `👋 <b>Welcome to Goldirham Stack!</b>\n\n` +
       `I deliver daily AI infrastructure intelligence — chips, cloud, datacenters, power, and more — every morning.\n\n` +
-      `Let's personalise your digest in <b>3 quick steps</b>. You can skip any step and change everything later with /settings.`,
+      `Let's personalise your digest in <b>4 quick steps</b>. You can skip any step and change everything later with /settings.`,
     { parse_mode: "HTML" }
   );
 
@@ -183,7 +216,7 @@ export async function handleOnboardingCallback(
     // Edit the prompt message to show confirmation
     if (query.message?.message_id) {
       await bot.editMessageText(
-        `⏰ <b>Step 1/3 — Delivery time</b>\n\n` +
+        `⏰ <b>Step 1/4 — Delivery time</b>\n\n` +
           `✓ Set to <b>${state.deliveryTime} MYT</b>`,
         { chat_id: chatId, message_id: query.message.message_id, parse_mode: "HTML" }
       ).catch(() => {/* ignore edit failures */});
@@ -200,7 +233,7 @@ export async function handleOnboardingCallback(
 
     if (query.message?.message_id) {
       await bot.editMessageText(
-        `📈 <b>Step 2/3 — Ticker watchlist</b>\n\n✓ Skipped — full digest`,
+        `📈 <b>Step 2/4 — Ticker watchlist</b>\n\n✓ Skipped — full digest`,
         { chat_id: chatId, message_id: query.message.message_id, parse_mode: "HTML" }
       ).catch(() => {});
     }
@@ -213,12 +246,29 @@ export async function handleOnboardingCallback(
   if (data.startsWith("ob_score_")) {
     const score = parseInt(data.replace("ob_score_", ""), 10);
     state.minScore = score;
-    state.step = "done";
 
     if (query.message?.message_id) {
       const label = score === 0 ? "All news" : score === 5 ? "Medium+ (5+)" : "High only (8+)";
       await bot.editMessageText(
-        `🎯 <b>Step 3/3 — Impact filter</b>\n\n✓ <b>${label}</b>`,
+        `🎯 <b>Step 3/4 — Impact filter</b>\n\n✓ <b>${label}</b>`,
+        { chat_id: chatId, message_id: query.message.message_id, parse_mode: "HTML" }
+      ).catch(() => {});
+    }
+
+    await sendLengthStep(bot, chatId);
+    return true;
+  }
+
+  // ── Digest length ─────────────────────────────────────────────────────────
+  if (data.startsWith("ob_len_")) {
+    const length = data.replace("ob_len_", "") as "brief" | "standard" | "detailed";
+    state.digestLength = length;
+    state.step = "done";
+
+    if (query.message?.message_id) {
+      const label = length === "brief" ? "Brief" : length === "detailed" ? "Detailed" : "Standard";
+      await bot.editMessageText(
+        `📝 <b>Step 4/4 — Digest length</b>\n\n✓ <b>${label}</b>`,
         { chat_id: chatId, message_id: query.message.message_id, parse_mode: "HTML" }
       ).catch(() => {});
     }
@@ -277,9 +327,10 @@ async function saveOnboardingPrefs(chatId: number, state: OnboardingState): Prom
       timezone: "Asia/Kuala_Lumpur",
       watchlist: state.watchlist || [],
       min_impact_score: state.minScore || 0,
+      digest_length: state.digestLength || "standard",
       is_active: true,
     });
-    logger.info(`Onboarding complete for ${chatId}: time=${state.deliveryTime}, tickers=${state.watchlist?.length || 0}, minScore=${state.minScore}`);
+    logger.info(`Onboarding complete for ${chatId}: time=${state.deliveryTime}, tickers=${state.watchlist?.length || 0}, minScore=${state.minScore}, length=${state.digestLength}`);
   } catch (err) {
     logger.warn(`Onboarding save failed for ${chatId}: ${(err as Error).message}`);
   }

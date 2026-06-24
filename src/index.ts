@@ -327,6 +327,7 @@ function buildPersonalizationNote(prefs: UserPreferencesData): string {
   if (watchlist.length > 0) parts.push(`watchlist: ${watchlist.join(", ")}`);
   if (cats.length > 0) parts.push(`sectors: ${cats.join(", ")}`);
   if (minScore > 0) parts.push(`min score: ${minScore}/10`);
+  if ((prefs.digest_length ?? "standard") !== "standard") parts.push(`${prefs.digest_length} digest`);
   return parts.length > 0 ? `Filtered for you — ${parts.join(" · ")}` : "";
 }
 
@@ -376,7 +377,25 @@ export function applyUserFilter(
     if (categories[cat]) categories[cat].push(article);
   }
 
+  // Trim summaries to match digest_length preference
+  const length = prefs.digest_length ?? "standard";
+  if (length !== "standard") {
+    articles = articles.map((a) => ({
+      ...a,
+      summary: trimSummary(a.summary, length),
+      reason: length === "brief" ? "" : a.reason,
+    }));
+  }
+
   return { ...digest, articles, topStocks, categories };
+}
+
+const SUMMARY_LIMITS: Record<string, number> = { brief: 80, standard: 999, detailed: 999 };
+
+function trimSummary(text: string, length: string): string {
+  const limit = SUMMARY_LIMITS[length] ?? 999;
+  if (!text || text.length <= limit) return text;
+  return text.slice(0, limit).replace(/\s+\S*$/, "") + "…";
 }
 
 /**
@@ -397,7 +416,8 @@ export async function deliverDigest(
     userPrefs &&
     ((userPrefs.min_impact_score ?? 0) > 0 ||
       (userPrefs.categories_enabled?.length ?? 0) > 0 ||
-      (userPrefs.watchlist?.length ?? 0) > 0);
+      (userPrefs.watchlist?.length ?? 0) > 0 ||
+      (userPrefs.digest_length ?? "standard") !== "standard");
 
   const messageToSend = isPersonalized
     ? formatDigestTelegram(applyUserFilter(digest, userPrefs!), {

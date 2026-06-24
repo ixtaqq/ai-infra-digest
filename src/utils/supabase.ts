@@ -77,6 +77,8 @@ export interface UserPreferencesData {
   alerts_enabled?: boolean;
   alerts_min_score?: number;
   is_active?: boolean;
+  /** Controls article summary verbosity in the personalised digest */
+  digest_length?: "brief" | "standard" | "detailed";
 }
 
 export interface AIUsageData {
