@@ -812,6 +812,8 @@
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:13</span> 📊 Derived metrics: 45 rows written to daily_derived_metrics</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:14</span> ⚖️ Trust scores: effectiveScore computed — TechCrunch 1.2× · NVIDIA Blog 0.8×</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:14</span> ⚠️ Bear cases: 5 devil's advocate counter-arguments generated (score ≥7)</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:14</span> 🔢 Embeddings: 28/28 vectors generated · semantic corroboration map rebuilt</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:15</span> 🎯 Semantic gate: 3 off-topic articles dropped (cosine &lt; 0.55 vs 20 AI-infra seeds)</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:15</span> 📊 Market Pulse: NVDA mentions +32% WoW · Datacenters +18% WoW</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:16</span> Digest delivered to Telegram + 15 tables updated in Supabase</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:00</span> NVIDIA files 8-K — $26B capex</span>
@@ -823,6 +825,8 @@
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:13</span> 📊 Derived metrics: 45 rows written to daily_derived_metrics</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:14</span> ⚖️ Trust scores: effectiveScore computed — TechCrunch 1.2× · NVIDIA Blog 0.8×</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:14</span> ⚠️ Bear cases: 5 devil's advocate counter-arguments generated (score ≥7)</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:14</span> 🔢 Embeddings: 28/28 vectors generated · semantic corroboration map rebuilt</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:15</span> 🎯 Semantic gate: 3 off-topic articles dropped (cosine &lt; 0.55 vs 20 AI-infra seeds)</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:15</span> 📊 Market Pulse: NVDA mentions +32% WoW · Datacenters +18% WoW</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:16</span> Digest delivered to Telegram + 15 tables updated in Supabase</span>
     </div>
@@ -901,7 +905,7 @@
         <div class="feature-card delay-3">
           <span class="icon">⚖️</span>
           <h3>Trust-Weighted Ranking</h3>
-          <p>Vote-learned source multipliers from 👍/👎 feedback. Static editorial tiers (1.2× for Reuters/WSJ, 0.8× for vendor PR). Corroboration boost (+5% per extra source). Devil's Advocate ⚠️ bear cases for high-impact articles.</p>
+          <p>Vote-learned source multipliers from 👍/👎 feedback. Static editorial tiers (1.2× for Reuters/WSJ, 0.8× for vendor PR). Corroboration boost (+5% per extra source) now uses <strong>cosine similarity</strong> for smarter story clustering. ⚠️ Bear cases for high-impact articles.</p>
         </div>
         <div class="feature-card delay-3">
           <span class="icon">🤖</span>
@@ -971,6 +975,7 @@
         <span class="tech-chip"><span class="chip-icon">🏛️</span> SEC EDGAR</span>
         <span class="tech-chip"><span class="chip-icon">💰</span> Yahoo Finance</span>
         <span class="tech-chip"><span class="chip-icon">⚙️</span> GitHub Actions</span>
+        <span class="tech-chip"><span class="chip-icon">🔢</span> pgvector + Embeddings</span>
       </div>
     </div>
   </section>
@@ -1063,17 +1068,17 @@
             </ul>
           </div>
 
-          <div class="phase-card status-next delay-5">
+          <div class="phase-card status-live delay-5">
             <div class="phase-top">
               <span class="phase-num">Phase VIII</span>
-              <span class="badge badge-next">Next</span>
+              <span class="badge badge-live">Shipped</span>
             </div>
             <div class="phase-title-text">Semantic Core.</div>
             <ul class="feature-list">
-              <li>Embeddings + pgvector — OpenAI text-embedding-3-small stored in Supabase; ~$0.30/year cost</li>
-              <li>Semantic dedup — cosine similarity (0.85 threshold) replaces title-only Jaccard; same story, different headline now clusters correctly</li>
-              <li>Semantic relevance gate — embedding-based gate replaces keyword OR-match; catches differently-phrased big stories</li>
-              <li>Related prior coverage — surface top-3 similar articles from the past 7 days in the dashboard</li>
+              <li>Embeddings + pgvector — OpenAI text-embedding-3-small vectors stored in Supabase; IVFFlat index for fast cosine search</li>
+              <li>Semantic corroboration — cosine similarity (0.85) replaces Jaccard; same story, different headline now clusters correctly</li>
+              <li>Semantic relevance gate — 20 canonical AI-infra seed sentences; off-topic articles dropped at cosine &lt; 0.55</li>
+              <li>Security hardening — compromised token redacted, WEBHOOK_SECRET required in production, RLS tightened on 4 tables</li>
             </ul>
           </div>
 
@@ -1106,7 +1111,7 @@
         <div>&nbsp;</div>
         <div><span class="comment"># 43 unit tests, no credentials needed</span></div>
         <div><span class="prompt">$</span> <span class="cmd">npm run test:unit</span></div>
-        <div><span class="output">  ✓ 43 tests passing</span></div>
+        <div><span class="output">  ✓ 47 tests passing</span></div>
       </div>
     </div>
   </section>
@@ -1165,9 +1170,9 @@
       { id: 'termLine4', text: '→ AI: Synthesis pass — market outlook generated', delay: 3600 },
       { id: 'termLine5', text: '→ Earnings: 5 transcripts analyzed — guidance delta computed', delay: 4200 },
       { id: 'termLine6', text: '→ SEC: 5 new filings analyzed — 2 high-impact', delay: 5200 },
-      { id: 'termLine7', text: '→ Stocks: 30 tickers updated via Yahoo Finance', delay: 6200 },
-      { id: 'termLine8', text: '→ Metrics: 45 rows → daily_derived_metrics · Market Pulse: NVDA +32% WoW', delay: 7200 },
-      { id: 'termLine9', text: '→ Telegram: Digest sent — 142 articles + Earnings Watch + Market Pulse', delay: 8400 },
+      { id: 'termLine7', text: '→ Embeddings: 28/28 vectors generated · cosine corroboration rebuilt', delay: 6200 },
+      { id: 'termLine8', text: '→ Semantic gate: 3 off-topic articles dropped (cosine < 0.55)', delay: 7200 },
+      { id: 'termLine9', text: '→ Telegram: Digest sent — 25 articles + Earnings Watch + Market Pulse', delay: 8400 },
     ];
 
     function typeLine(element, text, callback) {

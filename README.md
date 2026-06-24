@@ -10,9 +10,9 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 
 ### 📡 News Pipeline
 - **57 RSS feeds** across 2 tiers (company news + industry analysis)
-- **Smart deduplication** — URL matching + **Jaccard similarity** (catches near-identical headlines from different sources)
+- **Smart deduplication** — URL matching + **Jaccard similarity** (catches near-identical headlines); upgraded to **cosine similarity on embeddings** (0.85 threshold) when Phase VIII embeddings are active
 - **10-sector classification**: Chips & GPUs, Cloud & Hyperscalers, Datacenters, Networking, Semiconductor Manufacturing, Power & Utilities, Cooling Infrastructure, AI Models & Labs, M&A, Earnings
-- **Relevance scoring filter** — AI scores each article's relevance to AI infrastructure (1–10); articles < 4 dropped before ranking
+- **Two-layer relevance filtering** — AI scores each article's relevance (1–10, < 4 dropped); followed by **semantic relevance gate** (cosine similarity vs 20 canonical AI-infra seed sentences, threshold 0.55) when embeddings are active
 - **Conditional GET caching** — ETag/Last-Modified headers per feed, 304 for unchanged content
 - **Consecutive failure tracking** — feeds failing 2+ runs in a row are automatically skipped
 - **RSS retry with exponential backoff** — up to 2 retries with full-jitter backoff
@@ -133,7 +133,7 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 - **15 tables**: `digest_runs`, `articles`, `sector_activity`, `stock_mentions`, `pipeline_health`, `capex_tracking`, `ai_usage`, `daily_metrics`, `stock_prices`, `user_preferences`, `user_delivery_log`, `sec_filings`, `earnings_transcripts`, `daily_derived_metrics`, `article_validations`
 - Managed with **Supabase CLI** — migrations in `supabase/migrations/`
 - `digest_runs` tracks both models (`ai_model` + `ai_fast_model`)
-- `articles` has `is_sec_filing` boolean, `thumbs_up` / `thumbs_down` aggregate validation counters, `bear_case TEXT` (skeptical counter-argument for high-impact articles)
+- `articles` has `is_sec_filing` boolean, `thumbs_up` / `thumbs_down` aggregate validation counters, `bear_case TEXT` (skeptical counter-argument for high-impact articles), `embedding vector(1536)` (Phase VIII — OpenAI text-embedding-3-small)
 - `user_preferences` has `digest_length` column (`brief` | `standard` | `detailed`)
 - `daily_derived_metrics` has `entity_type`, `entity`, mention counts, sentiment, impact scores, price data
 - `article_validations` — per-user vote log; `UNIQUE(article_id, chat_id)` prevents double-voting
@@ -156,7 +156,7 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 - **Structured error events** — AI 429, Yahoo Finance failures, Supabase errors all emit `ErrorEvent` with recovery suggestions
 
 ### 🧪 Testing & CI
-- **75 tests** with **Vitest**:
+- **79 tests** with **Vitest**:
   - Deduplication: 5 unit tests
   - Keyword matching: 13 unit tests
   - Stock price fetching: 3 unit tests
@@ -165,10 +165,11 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
   - Fan-out regression: 1 test — proves `collectArticles` called once for N deliveries
   - Source credibility: 6 unit tests (`getSourceCredibility`, `isPRWireSource`)
   - Novelty detection: 4 unit tests (`flagRehashes` — fetch success, empty, non-ok, network error)
+  - Semantic relevance: 4 unit tests (`passesSemanticGate`, `embedSeeds` — success, HTTP error)
   - Supabase integration: 15 tests (requires live credentials)
   - Telegram integration: 9 tests (requires live credentials)
   - Stocks integration: 8 tests (requires live credentials)
-- **43 unit tests** run offline; integration tests require live credentials — use `npm run test:unit` for offline CI
+- **47 unit tests** run offline; integration tests require live credentials — use `npm run test:unit` for offline CI
 - **CI workflow** — `.github/workflows/ci.yml` runs `npm run test:unit` (unit tests only) on every push/PR to main
 - **TypeScript strict mode** — entire project compiles cleanly with `tsc --noEmit`
 
@@ -185,7 +186,7 @@ Step 1: News Collector (rss-parser + keyword filter + retry backoff)
       ├── Step 1b: SEC EDGAR Watcher (35 companies, 8-K/10-K/10-Q)
       │
       ▼
-Step 1c: Dedup (URL match + Jaccard similarity)
+Step 1c: Dedup (URL match + Jaccard; cosine similarity on embeddings when available)
       │
       ▼
 Step 2: AI Processor (two-tier routing)
@@ -195,13 +196,25 @@ Step 2: AI Processor (two-tier routing)
       └── SEC Two-Pass: keyword filter → fast flag → strong extract
       │
       ▼
-Step 2b: Article Enrichment (🏛️ SEC badge via regex)
+Step 2a0: Relevance Filter — drop articles with AI relevanceScore < 4
       │
       ▼
-Step 2c: Earnings Transcript Mining (Roic.ai + two-pass AI)
+Step 2a: Article Enrichment (🏛️ SEC badge, bear cases)
       │
       ▼
-Step 2d: Yahoo Finance (stock prices for mentioned tickers)
+Step 2a1: Novelty Check — flag rehashes (48h Jaccard, 0.6× multiplier)
+      │
+      ▼
+Step 2d: Embeddings (v8.0) — text-embedding-3-small via OpenAI; rebuild corroboration map with cosine (v8.1)
+      │
+      ▼
+Step 2e: Semantic Relevance Gate (v8.2) — cosine vs 20 seed sentences, threshold 0.55
+      │
+      ▼
+Step 2b: Earnings Transcript Mining (Roic.ai + two-pass AI)
+      │
+      ▼
+Step 2c: Yahoo Finance (stock prices for mentioned tickers)
       │
       ▼
 Step 3b: writeDerivedMetrics() — upsert sector + ticker rows to daily_derived_metrics
@@ -261,9 +274,10 @@ cp .env.example .env
 | `AI_FAST_MODEL` | ❌ | `llama-3.1-8b-instant` | Fast model for classification & SEC flagging |
 | `SUPABASE_URL` | ❌ | — | Supabase project URL |
 | `SUPABASE_SERVICE_KEY` | ❌ | — | Supabase service role key |
+| `OPENAI_EMBEDDING_API_KEY` | ❌ | — | OpenAI key for `text-embedding-3-small` vectors (Phase VIII); can share `OPENAI_API_KEY` if using OpenAI provider |
 | `ROIC_AI_API_KEY` | ❌ | — | Roic.ai API key for earnings transcripts |
 | `WEBHOOK_URL` | ❌ | — | Public URL for webhook bot auto-registration |
-| `WEBHOOK_SECRET` | ❌ | — | Secret token for webhook request validation |
+| `WEBHOOK_SECRET` | ❌ | — | Secret token for webhook request validation (required in production) |
 | `PORT` | ❌ | `3000` | Webhook server port |
 | `AI_BUDGET_DAILY_USD` | ❌ | `0.50` | Daily AI spend cap; Telegram alert when breached |
 | `AI_BUDGET_MONTHLY_USD` | ❌ | `5.00` | 30-day rolling AI spend cap |
@@ -322,6 +336,8 @@ npm run db:pull      # Sync remote schema to local
 | `20260625000000_v6_daily_derived_metrics.sql` | `daily_derived_metrics` table + 2 time-series indexes + RLS |
 | `20260626000000_v7_article_validations.sql` | `article_validations` table + `thumbs_up`/`thumbs_down` on `articles` + RLS |
 | `20260627000000_v63_articles_bear_case.sql` | `bear_case TEXT` column on `articles` |
+| `20260625100000_security_rls.sql` | Tighten RLS: service-role-only for `user_preferences`, `user_delivery_log`, `earnings_transcripts`; public read + service write for `sec_filings` |
+| `20260625200000_v80_articles_embedding.sql` | Enable `pgvector`; `embedding vector(1536)` column + IVFFlat index on `articles` |
 
 ---
 
@@ -400,8 +416,10 @@ ai-infra-digest/
 │   ├── formatter/
 │   │   └── telegram.ts                       # HTML Telegram formatter (personalization note support)
 │   ├── processor/
-│   │   ├── ai.ts                             # Two-tier AI batch processing + ProcessedArticle type (incl. bearCase)
+│   │   ├── ai.ts                             # Two-tier AI batch processing + ProcessedArticle type (incl. bearCase, embedding)
 │   │   ├── bear-cases.ts                     # Devil's Advocate — batched AI bear case generation for high-impact articles
+│   │   ├── embeddings.ts                     # v8.0 — generateEmbeddings() via OpenAI text-embedding-3-small (20-article batches)
+│   │   ├── relevance.ts                      # v8.2 — 20 seed sentences + embedSeeds() + passesSemanticGate()
 │   │   ├── sec.ts                            # SEC two-pass extraction
 │   │   └── earnings.ts                       # Earnings two-pass analysis + guidance delta
 │   ├── sender/
@@ -412,7 +430,7 @@ ai-infra-digest/
 │   └── utils/
 │       ├── ai-cache.ts                       # File-based AI response cache (SHA-256 key, 23h TTL)
 │       ├── derived-metrics.ts                # daily_derived_metrics writer + query helpers
-│       ├── dedup.ts                          # URL + Jaccard dedup + buildCorroborationMap()
+│       ├── dedup.ts                          # URL + Jaccard/cosine dedup + cosineSimilarity() + buildCorroborationMap()
 │       ├── source-credibility.ts             # Static source-name → credibility multiplier + isPRWireSource() PR wire detection
 │       ├── novelty.ts                        # 48h rehash detection — flags isRehash via Jaccard similarity against recent DB articles
 │       ├── trust-scores.ts                   # Vote-learned source/sector multipliers from article_validations (1h TTL cache)
@@ -503,8 +521,13 @@ Tom's Hardware, AnandTech, Ars Technica, TechCrunch, The Verge, Seeking Alpha, S
 - **v7.2** — Novelty flag — `flagRehashes()` queries articles from the past 48 hours, computes Jaccard similarity (threshold 0.5) against incoming titles, tags matches as `isRehash`; rehashed articles get a 0.6× multiplier in the effectiveScore chain so breaking news always surfaces above repeated coverage
 - **v7.3** — Test coverage — 10 new unit tests for `source-credibility.ts` and `novelty.ts`; total test count raised to 75
 
-### Phase VIII · Next Steps 🔭 Exploring
-- **Semantic Core** — embeddings + pgvector for semantic dedup, relevance gate, and related coverage
+### Phase VIII · Semantic Core ✅ Shipped
+- **v8.0** — Embeddings infrastructure — `text-embedding-3-small` vectors generated per article; stored in Supabase `pgvector` (`embedding vector(1536)` column, IVFFlat index). Graceful skip if `OPENAI_EMBEDDING_API_KEY` not set
+- **v8.1** — Semantic corroboration clustering — `cosineSimilarity()` added to `dedup.ts`; `buildCorroborationMap()` uses cosine (0.85 threshold) when embeddings available, falls back to Jaccard (0.65); corroboration map rebuilt after embeddings generated each run
+- **v8.2** — Semantic relevance gate — 20 canonical AI-infra seed sentences embedded once per run; articles failing cosine ≥ 0.55 against all seeds dropped after the AI relevance pre-filter; `src/processor/relevance.ts` + 4 new unit tests
+
+### Phase IX · Next Steps 🔭 Exploring
+- **v8.3** — Related prior coverage — surface top-3 semantically similar articles from past 7 days in dashboard
 - Price threshold alerts — user-defined ticker price targets trigger instant Telegram notifications
 - Bull/bear thesis generation — per-ticker AI narrative updated weekly from accumulated mention + price + validation data
 - Source reputation leaderboard — public dashboard view ranking sources by approval rate and hallucination flags
@@ -517,4 +540,4 @@ Tom's Hardware, AnandTech, Ars Technica, TechCrunch, The Verge, Seeking Alpha, S
 
 ---
 
-Built with ❤️ — Powered by Llama 3.3 70B (strong) + Llama 3.1 8B (fast) via Groq.
+Built with ❤️ — Powered by Llama 3.3 70B (strong) + Llama 3.1 8B (fast) via Groq · Embeddings via OpenAI `text-embedding-3-small`.
