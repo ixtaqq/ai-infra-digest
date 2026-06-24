@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { ProcessedArticle } from "../processor/ai";
 
 vi.mock("../config", () => ({
   config: {
@@ -15,7 +16,7 @@ vi.mock("./logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-function makeArticle(title: string) {
+function makeArticle(title: string): ProcessedArticle {
   return {
     title,
     url: `https://example.com/${encodeURIComponent(title)}`,

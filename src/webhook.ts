@@ -127,6 +127,15 @@ function createServer(): http.Server {
 }
 
 async function main(): Promise<void> {
+  if (process.env.NODE_ENV === "production" && !process.env.WEBHOOK_SECRET) {
+    throw new Error(
+      "WEBHOOK_SECRET is required in production. Set it in your environment and configure it in @BotFather (Telegram → Bot → Edit Bot → Webhook Secret)."
+    );
+  }
+  if (!process.env.WEBHOOK_SECRET) {
+    console.warn("[SECURITY] WEBHOOK_SECRET is not set — webhook accepts unauthenticated requests. Set it for production.");
+  }
+
   // Configure the bot for webhook (non-polling) mode BEFORE any handler registers.
   enableWebhookMode();
   registerDigestCommands();
