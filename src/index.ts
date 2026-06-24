@@ -34,6 +34,7 @@ import { buildCorroborationMap } from "./utils/dedup";
 import { generateBearCases } from "./processor/bear-cases";
 import { flagRehashes } from "./utils/novelty";
 import { generateEmbeddings } from "./processor/embeddings";
+import { embedSeeds, passesSemanticGate } from "./processor/relevance";
 import type { Article, FeedResult } from "./collector/rss";
 import type { SECFinancialExtract } from "./processor/sec";
 import type { EarningsAnalysis } from "./processor/earnings";
@@ -242,6 +243,21 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
       // v8.1: rebuild corroboration map with semantic similarity now that embeddings exist
       corroborationMap = buildCorroborationMap(articlesToProcess, embeddingsStage.value);
       logger.info("Corroboration map rebuilt with semantic (cosine) similarity");
+    }
+
+    // ─── Step 2e: Semantic Relevance Gate (v8.2) ─────────────────────────────
+    const seedsStage = await tryStage(() => embedSeeds(), "seed embeddings");
+    if (seedsStage.ok && seedsStage.value.length > 0) {
+      const seedEmbeddings = seedsStage.value;
+      const beforeGate = digest.articles.length;
+      digest.articles = digest.articles.filter((a) => {
+        if (!a.embedding) return true; // no embedding → keep (fall back to AI score)
+        return passesSemanticGate(a.embedding, seedEmbeddings);
+      });
+      const gateDropped = beforeGate - digest.articles.length;
+      if (gateDropped > 0) {
+        logger.info(`Semantic gate: dropped ${gateDropped} off-topic articles (cosine < 0.55)`);
+      }
     }
 
     // ─── Step 2b: Earnings Transcript Mining ─────
