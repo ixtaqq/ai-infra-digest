@@ -66,7 +66,9 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 | `/digest sector=Chips_&_GPUs` | Filter stored articles by sector |
 | `/sources` | List all 57 tracked RSS feeds with health status |
 | `/last` | Show the most recent digest summary from Supabase |
-| `/trending` | See what's trending in AI infra (last 7 days) |
+| `/trending` | See what's trending in AI infra (last 7 days, snapshot) |
+| `/trends NVDA 30d` | Sparkline + WoW delta for any ticker (default: NVDA, 30 days) |
+| `/trends sector Datacenters 30d` | Sparkline + WoW delta for a sector |
 | `/sec NVDA` | Latest SEC filing highlights for a ticker |
 | `/feedback 5` | Rate today's digest (1–5) with optional comment |
 | `/settings` | View your user preferences |
@@ -110,14 +112,23 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 - **Auto-refresh** every 60 seconds
 - Reads directly from Supabase REST API
 
+### 📊 Intelligence Layer (v5)
+- **`daily_derived_metrics` table** — polymorphic time-series store: `entity_type IN ('ticker', 'sector')`, one row per entity per day
+- Written automatically at the end of every pipeline run via `writeDerivedMetrics()`
+- **"What Changed" header** — `buildWhatChanged()` queries the last 8 days, computes WoW mention deltas, surfaces top movers (≥20% change) in the digest header as a Market Pulse block
+- **`/trends NVDA 30d`** — Unicode sparkline (▁▂▄▆█) of daily mention counts + WoW delta + current price; works for any ticker or sector
+- **Backfill script** — `scripts/backfill-derived-metrics.ts` seeds historical data from existing `sector_activity` + `stock_mentions` rows; idempotent (safe to re-run); `--days=90` for full history
+- **Idempotent upsert** — `UNIQUE(date, entity_type, entity)` + `resolution=merge-duplicates`; re-running the pipeline on the same day is always safe
+
 ### 🗄️ Database (Supabase)
-- **13 tables**: `digest_runs`, `articles`, `sector_activity`, `stock_mentions`, `pipeline_health`, `capex_tracking`, `ai_usage`, `daily_metrics`, `stock_prices`, `user_preferences`, `user_delivery_log`, `sec_filings`, `earnings_transcripts`
+- **14 tables**: `digest_runs`, `articles`, `sector_activity`, `stock_mentions`, `pipeline_health`, `capex_tracking`, `ai_usage`, `daily_metrics`, `stock_prices`, `user_preferences`, `user_delivery_log`, `sec_filings`, `earnings_transcripts`, `daily_derived_metrics`
 - Managed with **Supabase CLI** — migrations in `supabase/migrations/`
 - `digest_runs` tracks both models (`ai_model` + `ai_fast_model`)
 - `articles` has `is_sec_filing` boolean for SEC badge articles
 - `user_preferences` has `digest_length` column (`brief` | `standard` | `detailed`)
+- `daily_derived_metrics` has `entity_type`, `entity`, mention counts, sentiment, impact scores, price data
 - RLS enabled on all tables; service role key used for writes, public read for dashboard
-- **Performance indexes** — 13 indexes including GIN full-text search, partial indexes for SEC filings and active users
+- **Performance indexes** — 15 indexes including GIN full-text search, partial indexes for SEC filings and active users, time-series indexes on `daily_derived_metrics`
 - **Automated retention** — `cleanup_old_data()` function prunes articles (90d), pipeline_health (30d), ai_usage (90d), delivery_log (90d)
 
 ### 📈 Structured Logging & Metrics
@@ -135,16 +146,17 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 - **Structured error events** — AI 429, Yahoo Finance failures, Supabase errors all emit `ErrorEvent` with recovery suggestions
 
 ### 🧪 Testing & CI
-- **58 tests** with **Vitest**:
+- **66 tests** with **Vitest**:
   - Deduplication: 5 unit tests
   - Keyword matching: 13 unit tests
   - Stock price fetching: 3 unit tests
   - Telegram formatter: 5 unit tests
+  - Webhook router: 8 unit tests
+  - Fan-out regression: 1 test — proves `collectArticles` called once for N deliveries
   - Supabase integration: 15 tests (requires live credentials)
   - Telegram integration: 9 tests (requires live credentials)
   - Stocks integration: 8 tests (requires live credentials)
-  - Fan-out regression: 1 test — proves `collectArticles` called once for N deliveries
-- **26 unit tests** run offline; **32 integration tests** require live Telegram/Supabase/Yahoo credentials — `npm test` attempts all suites (integration tests will fail without credentials; use `npm run test:unit` for offline)
+- **34 unit tests** run offline; integration tests require live credentials — use `npm run test:unit` for offline CI
 - **CI workflow** — `.github/workflows/ci.yml` runs `npm run test:unit` (unit tests only) on every push/PR to main
 - **TypeScript strict mode** — entire project compiles cleanly with `tsc --noEmit`
 
@@ -180,12 +192,19 @@ Step 2c: Earnings Transcript Mining (Roic.ai + two-pass AI)
 Step 2d: Yahoo Finance (stock prices for mentioned tickers)
       │
       ▼
-Step 3: generateDigest() → GeneratedDigest bundle (format once)
+Step 3b: writeDerivedMetrics() — upsert sector + ticker rows to daily_derived_metrics
+      │
+      ▼
+Step 3c: buildWhatChanged() — query last 8 days, compute WoW movers (≥20%)
+      │
+      ▼
+Step 3: generateDigest() → GeneratedDigest bundle (format once, includes whatChanged)
       │
       ▼
 Step 4: Fan-out delivery loop
       ├── For each user: applyUserFilter(bundle, userPrefs) → re-format → send
       │     applies: min_impact_score, categories_enabled, watchlist boost, digest_length trim
+      │     whatChanged Market Pulse block injected in header when ≥7 days history available
       └── Default chat: send shared pre-formatted message (zero overhead)
       │
       ▼
@@ -244,8 +263,12 @@ cp .env.example .env
 npm run dev          # Run pipeline once (polling mode)
 npm run scheduler    # Run per-user delivery check
 npm run webhook      # Start webhook server (tsx, local dev)
-npm run test:unit    # Run 26 unit tests (offline, no credentials needed)
-npm test             # Run all 58 tests (integration tests need live credentials)
+npm run test:unit    # Run 34 unit tests (offline, no credentials needed)
+npm test             # Run all tests (integration tests need live credentials)
+
+# Backfill historical derived metrics (run once after first pipeline runs)
+npx tsx scripts/backfill-derived-metrics.ts --days=5    # test with 5 days first
+npx tsx scripts/backfill-derived-metrics.ts --days=90   # full 90-day history
 ```
 
 ---
@@ -279,6 +302,7 @@ npm run db:pull      # Sync remote schema to local
 | `20260624000000_v3_missing_columns.sql` | `ai_fast_model`, `is_sec_filing`, missing tables, RLS for new tables |
 | `20260624120000_v4_indexes_retention.sql` | 13 performance indexes + `cleanup_old_data()` retention function |
 | `20260624150000_v5_digest_length.sql` | `digest_length` column on `user_preferences` |
+| `20260625000000_v6_daily_derived_metrics.sql` | `daily_derived_metrics` table + 2 time-series indexes + RLS |
 
 ---
 
@@ -339,10 +363,11 @@ ai-infra-digest/
 │       └── index.html                        # Graphite+copper terminal dashboard (auth gate + expand/collapse)
 ├── scripts/
 │   ├── test-digest.ts                        # Manual pipeline test
+│   ├── backfill-derived-metrics.ts           # Backfill daily_derived_metrics from historical data
 │   └── migration-v3.sql                      # Reference: applied via Supabase CLI
 ├── supabase/
 │   ├── config.toml                           # Supabase CLI project config
-│   └── migrations/                           # v1–v5 numbered migration files
+│   └── migrations/                           # v1–v6 numbered migration files
 ├── src/
 │   ├── index.ts                              # generateDigest, deliverDigest, applyUserFilter, persistDigestMetrics
 │   ├── scheduler.ts                          # Per-user cron runner (fan-out)
@@ -366,12 +391,13 @@ ai-infra-digest/
 │   │   └── webhook.test.ts                   # Webhook router unit tests
 │   └── utils/
 │       ├── ai-cache.ts                       # File-based AI response cache (SHA-256 key, 23h TTL)
+│       ├── derived-metrics.ts                # daily_derived_metrics writer + query helpers
 │       ├── dedup.ts                          # URL + Jaccard similarity dedup
 │       ├── logger.ts                         # Structured timestamped logger
 │       ├── metrics.ts                        # NDJSON event logging
 │       ├── retry.ts                          # withRetry<T> + tryStage<T> utilities
 │       ├── stocks.ts                         # Yahoo Finance price fetcher
-│       └── supabase.ts                       # Supabase REST CRUD (13 tables)
+│       └── supabase.ts                       # Supabase REST CRUD (14 tables)
 ├── supabase-schema.sql                       # Full schema reference (13 tables + RLS)
 ├── vitest.config.ts
 ├── package.json
@@ -436,8 +462,17 @@ Tom's Hardware, AnandTech, Ars Technica, TechCrunch, The Verge, Seeking Alpha, S
 - **v4.3** — AI response caching — SHA-256 hash of article set as cache key; 23h TTL eliminates redundant AI spend on same-day re-runs
 - **v4.4** — Expandable article rows in dashboard — click to inline-expand summary, analyst reason, and source link
 
-### Phase V · Research 🔭 Future
-- **v5** — Article archival, historical trend analysis, price threshold alerts, bull/bear thesis per ticker, competitive landscape analysis
+### Phase V · Intelligence Layer ✅ Shipped
+- **v5.0** — `daily_derived_metrics` table — materialized time-series for every ticker and sector, written automatically on every pipeline run
+- **v5.1** — "What Changed" digest header — `buildWhatChanged()` computes WoW mention deltas, Market Pulse block appears when ≥7 days of history is available
+- **v5.2** — `/trends` command — Unicode sparkline + WoW delta + price for any ticker or sector (`/trends NVDA 30d`, `/trends sector Datacenters`)
+- **v5.3** — Backfill script — seeds up to 90 days of historical data from existing `sector_activity` + `stock_mentions`; idempotent (safe to re-run)
+
+### Phase VI · Monetization 🔭 Next
+- **v6** — Public API layer — authenticated REST endpoints over `daily_derived_metrics`; rate-limited tiers; Stripe subscription gate
+- **v6.1** — Feedback loop — structured `feedback` table; sentiment ratings feed back into article scoring weights
+- **v6.2** — Price threshold alerts — user-defined ticker price targets trigger instant Telegram notifications
+- **v6.3** — Bull/bear thesis generation — per-ticker AI narrative updated weekly from accumulated mention + price data
 
 ---
 
