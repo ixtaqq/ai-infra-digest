@@ -63,6 +63,8 @@ export interface ProcessedArticle {
   bearCase?: string;
   /** How relevant this article is to AI infrastructure specifically (1–10). Added by v7.0. */
   relevanceScore?: number;
+  /** True if this story was already covered in the past 48 hours (v7.2 novelty check). */
+  isRehash?: boolean;
   /** Computed ranking score: impactScore × trust/credibility/corroboration multipliers. */
   effectiveScore?: number;
 }

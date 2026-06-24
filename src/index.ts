@@ -32,6 +32,7 @@ import { getTrustScores } from "./utils/trust-scores";
 import { getSourceCredibility, isPRWireSource } from "./utils/source-credibility";
 import { buildCorroborationMap } from "./utils/dedup";
 import { generateBearCases } from "./processor/bear-cases";
+import { flagRehashes } from "./utils/novelty";
 import type { Article, FeedResult } from "./collector/rss";
 import type { SECFinancialExtract } from "./processor/sec";
 import type { EarningsAnalysis } from "./processor/earnings";
@@ -225,6 +226,9 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
       if (bc) article.bearCase = bc;
     }
 
+    // ─── Step 2a1: Novelty Check (v7.2) ──────────────────────────────────────
+    await tryStage(() => flagRehashes(digest.articles), "novelty check");
+
     // ─── Step 2b: Earnings Transcript Mining ─────
     let earningsAnalyses: EarningsAnalysis[] = [];
     if (config.app.roicAiApiKey) {
@@ -302,7 +306,8 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
       const cm = trustScores.sector.get(article.category) ?? 1.0;
       const rawCount = corroborationMap.get(article.url) ?? 1;
       const cb = 1 + (rawCount - 1) * 0.05;                       // +5% per extra source
-      article.effectiveScore = article.impactScore * sm * sc * cm * cb;
+      const noveltyMultiplier = article.isRehash ? 0.6 : 1.0;
+      article.effectiveScore = article.impactScore * sm * sc * cm * cb * noveltyMultiplier;
       if (isPRWireSource(article.source)) {
         article.effectiveScore = Math.min(article.effectiveScore, 6);
       }
