@@ -156,8 +156,8 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 - **Structured error events** — AI 429, Yahoo Finance failures, Supabase errors all emit `ErrorEvent` with recovery suggestions
 
 ### 🧪 Testing & CI
-- **79 tests** with **Vitest**:
-  - Deduplication: 5 unit tests
+- **87 tests** with **Vitest**:
+  - Deduplication + cosine similarity: 9 unit tests (`cosineSimilarity` — identical, orthogonal, mismatched length, zero vectors; `deduplicateArticles` — 5 cases)
   - Keyword matching: 13 unit tests
   - Stock price fetching: 3 unit tests
   - Telegram formatter: 5 unit tests
@@ -166,12 +166,13 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
   - Source credibility: 6 unit tests (`getSourceCredibility`, `isPRWireSource`)
   - Novelty detection: 4 unit tests (`flagRehashes` — fetch success, empty, non-ok, network error)
   - Semantic relevance: 4 unit tests (`passesSemanticGate`, `embedSeeds` — success, HTTP error)
+  - Scheduler: 3 unit tests (`isTimeMatch` — exact match, ±1 min within window, outside window)
   - Supabase integration: 15 tests (requires live credentials)
   - Telegram integration: 9 tests (requires live credentials)
   - Stocks integration: 8 tests (requires live credentials)
-- **47 unit tests** run offline; integration tests require live credentials — use `npm run test:unit` for offline CI
-- **CI workflow** — `.github/workflows/ci.yml` runs `npm run test:unit` (unit tests only) on every push/PR to main
-- **TypeScript strict mode** — entire project compiles cleanly with `tsc --noEmit`
+- **55 unit tests** run offline; integration tests require live credentials — use `npm run test:unit` for offline CI
+- **CI workflow** — `.github/workflows/ci.yml` runs `npm run lint` (`tsc --noEmit`) then `npm run test:unit` on every push/PR to main
+- **TypeScript strict mode** — entire project compiles cleanly with zero errors (`tsc --noEmit`)
 
 ---
 
@@ -199,16 +200,18 @@ Step 2: AI Processor (two-tier routing)
 Step 2a0: Relevance Filter — drop articles with AI relevanceScore < 4
       │
       ▼
+Step 2d: Embeddings (v8.0) — text-embedding-3-small via OpenAI; rebuild corroboration map with cosine (v8.1)
+         Seed embeddings cached to .cache/seed-embeddings.json (keyed by content hash)
+      │
+      ▼
+Step 2e: Semantic Relevance Gate (v8.2) — cosine vs 20 seed sentences, threshold 0.55
+         Runs before bear cases to avoid wasted LLM spend on off-topic articles
+      │
+      ▼
 Step 2a: Article Enrichment (🏛️ SEC badge, bear cases)
       │
       ▼
 Step 2a1: Novelty Check — flag rehashes (48h Jaccard, 0.6× multiplier)
-      │
-      ▼
-Step 2d: Embeddings (v8.0) — text-embedding-3-small via OpenAI; rebuild corroboration map with cosine (v8.1)
-      │
-      ▼
-Step 2e: Semantic Relevance Gate (v8.2) — cosine vs 20 seed sentences, threshold 0.55
       │
       ▼
 Step 2b: Earnings Transcript Mining (Roic.ai + two-pass AI)
@@ -294,7 +297,7 @@ cp .env.example .env
 npm run dev          # Run pipeline once (polling mode)
 npm run scheduler    # Run per-user delivery check
 npm run webhook      # Start webhook server (tsx, local dev)
-npm run test:unit    # Run 43 unit tests (offline, no credentials needed)
+npm run test:unit    # Run 55 unit tests (offline, no credentials needed)
 npm test             # Run all tests (integration tests need live credentials)
 
 # Backfill historical derived metrics (run once after first pipeline runs)
@@ -353,7 +356,7 @@ npm run db:pull      # Sync remote schema to local
 
 ### CI
 
-`.github/workflows/ci.yml` — runs on every push and PR to `main`. Executes lint + unit tests (43 tests, no credentials needed, fast).
+`.github/workflows/ci.yml` — runs on every push and PR to `main`. Executes `tsc --noEmit` (type gate) then unit tests (55 tests, no credentials needed, fast).
 
 ### Required Secrets
 
@@ -405,7 +408,8 @@ ai-infra-digest/
 │   └── migrations/                           # v1–v6 numbered migration files
 ├── src/
 │   ├── index.ts                              # generateDigest, deliverDigest, applyUserFilter, persistDigestMetrics
-│   ├── scheduler.ts                          # Per-user cron runner (fan-out)
+│   ├── scheduler.ts                          # Per-user cron runner (fan-out); isTimeMatch with ±2 min tolerance
+│   ├── scheduler.test.ts                     # isTimeMatch unit tests (3)
 │   ├── onboarding.ts                         # 4-step interactive onboarding state machine
 │   ├── webhook.ts                            # Zero-dep webhook HTTP server
 │   ├── config.ts                             # Env config loader (incl. budget caps)
@@ -419,7 +423,7 @@ ai-infra-digest/
 │   │   ├── ai.ts                             # Two-tier AI batch processing + ProcessedArticle type (incl. bearCase, embedding)
 │   │   ├── bear-cases.ts                     # Devil's Advocate — batched AI bear case generation for high-impact articles
 │   │   ├── embeddings.ts                     # v8.0 — generateEmbeddings() via OpenAI text-embedding-3-small (20-article batches)
-│   │   ├── relevance.ts                      # v8.2 — 20 seed sentences + embedSeeds() + passesSemanticGate()
+│   │   ├── relevance.ts                      # v8.2 — 20 seed sentences + embedSeeds() (disk-cached) + passesSemanticGate()
 │   │   ├── sec.ts                            # SEC two-pass extraction
 │   │   └── earnings.ts                       # Earnings two-pass analysis + guidance delta
 │   ├── sender/
@@ -526,8 +530,17 @@ Tom's Hardware, AnandTech, Ars Technica, TechCrunch, The Verge, Seeking Alpha, S
 - **v8.1** — Semantic corroboration clustering — `cosineSimilarity()` added to `dedup.ts`; `buildCorroborationMap()` uses cosine (0.85 threshold) when embeddings available, falls back to Jaccard (0.65); corroboration map rebuilt after embeddings generated each run
 - **v8.2** — Semantic relevance gate — 20 canonical AI-infra seed sentences embedded once per run; articles failing cosine ≥ 0.55 against all seeds dropped after the AI relevance pre-filter; `src/processor/relevance.ts` + 4 new unit tests
 
-### Phase IX · Next Steps 🔭 Exploring
-- **v8.3** — Related prior coverage — surface top-3 semantically similar articles from past 7 days in dashboard
+### Phase IX · Stabilization ✅ Shipped
+- **v9.0** — Audit quick-wins:
+  - **TypeScript clean** — fixed all 19 pre-existing type errors (named TelegramBot sub-type imports, polling union type, `disable_web_page_preview` → `link_preview_options`); `tsc --noEmit` now exits 0 and is gated in CI
+  - **Pipeline reorder** — embeddings + semantic gate moved to run *before* bear cases; stops LLM spend on articles the gate drops
+  - **Crash guards** — `cosineSimilarity` returns 0 on mismatched vector lengths; embeddings batch loop bounds-checks the returned index
+  - **Scheduler tolerance** — `isTimeMatch` uses ±2 min window so a late cron tick never misses a user; warns on invalid timezone fallback
+  - **Seed embedding cache** — `embedSeeds()` persists to `.cache/seed-embeddings.json` keyed by SHA-256 of seed list + model; eliminates one OpenAI API call per pipeline run after the first
+  - **+8 new unit tests** (cosine similarity × 4, scheduler `isTimeMatch` × 3) — total unit suite now **55 tests**
+
+### Phase X · Next Steps 🔭 Exploring
+- **v9.1** — Related prior coverage — surface top-3 semantically similar articles from past 7 days in dashboard
 - Price threshold alerts — user-defined ticker price targets trigger instant Telegram notifications
 - Bull/bear thesis generation — per-ticker AI narrative updated weekly from accumulated mention + price + validation data
 - Source reputation leaderboard — public dashboard view ranking sources by approval rate and hallucination flags
