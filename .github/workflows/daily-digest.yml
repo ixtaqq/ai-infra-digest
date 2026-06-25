@@ -24,9 +24,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Patch node-telegram-bot-api exports (Node 22 compat)
-        run: node -e "const fs=require('fs'),p='node_modules/node-telegram-bot-api/package.json',pkg=JSON.parse(fs.readFileSync(p,'utf8'));if(pkg.exports){delete pkg.exports;fs.writeFileSync(p,JSON.stringify(pkg,null,2));console.log('patched: removed exports field')}else{console.log('no exports field present')}"
-
       - name: Build TypeScript
         run: npm run build
 
@@ -45,4 +42,6 @@ jobs:
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           DIGEST_EMAIL_TO: ${{ secrets.DIGEST_EMAIL_TO }}
           TZ: Asia/Kuala_Lumpur
-        run: node dist/index.js
+        run: |
+          node -e "const fs=require('fs'),p='node_modules/node-telegram-bot-api/package.json',pkg=JSON.parse(fs.readFileSync(p,'utf8'));if(pkg.exports){delete pkg.exports;fs.writeFileSync(p,JSON.stringify(pkg,null,2));console.log('patched: removed exports field')}else{console.log('no exports field present')}"
+          node dist/index.js
