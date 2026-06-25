@@ -1,7 +1,7 @@
 # Always-on Telegram webhook server (interactive commands in production).
 # Build context = this directory (ai-infra-digest/).
 # Deploy on Render / Railway / Fly.io / any container host.
-FROM node:22-slim
+FROM node:20-slim
 
 WORKDIR /app
 
