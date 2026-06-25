@@ -54,6 +54,21 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 - Fetched automatically for every stock mentioned in the AI analysis
 - Stored in `stock_prices` table for dashboard history charts
 
+### 📬 Multi-Channel Delivery
+
+Digest delivered in parallel to up to three channels after each pipeline run. Slack and email failures are non-fatal — Telegram always delivers.
+
+| Channel | Config | Notes |
+|---------|--------|-------|
+| **Telegram** | `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` | Always on; primary channel |
+| **Slack** | `SLACK_WEBHOOK_URL` | Incoming webhook; HTML→mrkdwn conversion; chunked at 2 900 chars |
+| **Gmail** | `SMTP_USER` + `SMTP_PASS` + `DIGEST_EMAIL_TO` | nodemailer SMTP via `smtp.gmail.com:587`; App Password required |
+
+Test Gmail credentials locally without a full pipeline run:
+```bash
+npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends a test mail
+```
+
 ### 📱 Interactive Telegram Bot
 
 > **Note:** Interactive commands require the webhook server to be deployed (see `WEBHOOK_SETUP.md`). Under the default GitHub Actions cron, the bot is not always-on — it polls only during the brief daily run window (~3–4 min). For 24/7 command response, deploy `src/webhook.ts` to Render/Railway/Fly.io.
@@ -282,6 +297,10 @@ cp .env.example .env
 | `WEBHOOK_URL` | ❌ | — | Public URL for webhook bot auto-registration |
 | `WEBHOOK_SECRET` | ❌ | — | Secret token for webhook request validation (required in production) |
 | `PORT` | ❌ | `3000` | Webhook server port |
+| `SLACK_WEBHOOK_URL` | ❌ | — | Slack Incoming Webhook URL for digest delivery |
+| `SMTP_USER` | ❌ | — | Gmail address that *owns* the App Password (e.g. `sender@gmail.com`) |
+| `SMTP_PASS` | ❌ | — | 16-char Gmail App Password (no spaces; 2FA required on the account) |
+| `DIGEST_EMAIL_TO` | ❌ | — | Recipient email address for digest delivery |
 | `AI_BUDGET_DAILY_USD` | ❌ | `0.50` | Daily AI spend cap; Telegram alert when breached |
 | `AI_BUDGET_MONTHLY_USD` | ❌ | `5.00` | 30-day rolling AI spend cap |
 
@@ -367,6 +386,11 @@ npm run db:pull      # Sync remote schema to local
 | `AI_API_KEY` | Groq/OpenAI API key |
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_SERVICE_KEY` | Supabase service role key |
+| `SLACK_WEBHOOK_URL` | Slack Incoming Webhook URL (optional) |
+| `SMTP_USER` | Gmail sender address (optional) |
+| `SMTP_PASS` | Gmail App Password — 16 chars, no spaces (optional) |
+| `DIGEST_EMAIL_TO` | Recipient email address (optional) |
+| `WEBHOOK_SECRET` | Webhook validation secret (required for Render/Railway) |
 
 ---
 
@@ -401,6 +425,7 @@ ai-infra-digest/
 │       └── index.html                        # Graphite+copper terminal dashboard (auth gate + expand/collapse)
 ├── scripts/
 │   ├── test-digest.ts                        # Manual pipeline test
+│   ├── test-email.ts                         # Standalone Gmail SMTP credential tester (verify auth before a full run)
 │   ├── backfill-derived-metrics.ts           # Backfill daily_derived_metrics from historical data
 │   └── migration-v3.sql                      # Reference: applied via Supabase CLI
 ├── supabase/
@@ -427,7 +452,9 @@ ai-infra-digest/
 │   │   ├── sec.ts                            # SEC two-pass extraction
 │   │   └── earnings.ts                       # Earnings two-pass analysis + guidance delta
 │   ├── sender/
-│   │   └── telegram.ts                       # Bot API, command handlers, sendValidationFollowUp, va_* callback
+│   │   ├── telegram.ts                       # Bot API, command handlers, sendValidationFollowUp, va_* callback
+│   │   ├── slack.ts                          # Slack Incoming Webhook — HTML→mrkdwn, chunked delivery
+│   │   └── email.ts                          # Gmail SMTP via nodemailer — HTML email template
 │   ├── tests/
 │   │   ├── index.faninout.test.ts            # Fan-out regression (generate once, deliver N times)
 │   │   └── webhook.test.ts                   # Webhook router unit tests
@@ -538,6 +565,9 @@ Tom's Hardware, AnandTech, Ars Technica, TechCrunch, The Verge, Seeking Alpha, S
   - **Scheduler tolerance** — `isTimeMatch` uses ±2 min window so a late cron tick never misses a user; warns on invalid timezone fallback
   - **Seed embedding cache** — `embedSeeds()` persists to `.cache/seed-embeddings.json` keyed by SHA-256 of seed list + model; eliminates one OpenAI API call per pipeline run after the first
   - **+8 new unit tests** (cosine similarity × 4, scheduler `isTimeMatch` × 3) — total unit suite now **55 tests**
+
+### Phase IX · Multi-Channel Delivery ✅ Shipped
+- **v9.1** — Slack + Gmail delivery — digest fans out to Telegram, Slack (Incoming Webhook, HTML→mrkdwn), and Gmail (nodemailer SMTP) in parallel; `Promise.allSettled` keeps Slack/email failures non-fatal; `scripts/test-email.ts` for fast credential verification without a full pipeline run
 
 ### Phase X · Next Steps 🔭 Exploring
 - **v9.1** — Related prior coverage — surface top-3 semantically similar articles from past 7 days in dashboard
