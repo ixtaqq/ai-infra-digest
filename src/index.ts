@@ -11,6 +11,8 @@ import {
   registerCommand,
 } from "./sender/telegram";
 import type { SendResult } from "./sender/telegram";
+import { sendSlackDigest } from "./sender/slack";
+import { sendEmailDigest } from "./sender/email";
 import { deduplicateArticles } from "./utils/dedup";
 import { fetchStockPrices } from "./utils/stocks";
 import { supabase } from "./utils/supabase";
@@ -616,6 +618,14 @@ export async function deliverDigest(
     }
   } else {
     sendResult = await sendDigestMessage(messageToSend);
+  }
+
+  // Fire Slack + email in parallel (optional channels, failures are non-fatal)
+  if (!targetChatId) {
+    await Promise.allSettled([
+      config.app.slackWebhookUrl ? sendSlackDigest(messageToSend) : Promise.resolve(false),
+      config.app.smtpUser && config.app.digestEmailTo ? sendEmailDigest(messageToSend) : Promise.resolve(false),
+    ]);
   }
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);

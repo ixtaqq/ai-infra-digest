@@ -24,6 +24,10 @@ export interface Config {
     supabaseUrl?: string;
     supabaseServiceKey?: string;
     roicAiApiKey?: string;
+    slackWebhookUrl?: string;
+    smtpUser?: string;
+    smtpPass?: string;
+    digestEmailTo?: string;
     /** Max AI spend per day in USD before an alert is sent (default: $0.50) */
     budgetDailyUsd: number;
     /** Max AI spend per month in USD before an alert is sent (default: $5.00) */
@@ -80,6 +84,10 @@ function loadConfig(): Config {
       supabaseUrl: process.env.SUPABASE_URL || undefined,
       supabaseServiceKey: process.env.SUPABASE_SERVICE_KEY || undefined,
       roicAiApiKey: process.env.ROIC_AI_API_KEY || undefined,
+      slackWebhookUrl: process.env.SLACK_WEBHOOK_URL || undefined,
+      smtpUser: process.env.SMTP_USER || undefined,
+      smtpPass: process.env.SMTP_PASS || undefined,
+      digestEmailTo: process.env.DIGEST_EMAIL_TO || undefined,
       budgetDailyUsd: parseFloat(process.env.AI_BUDGET_DAILY_USD || "0.50"),
       budgetMonthlyUsd: parseFloat(process.env.AI_BUDGET_MONTHLY_USD || "5.00"),
     },
