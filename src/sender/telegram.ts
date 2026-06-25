@@ -1,4 +1,4 @@
-import TelegramBot from "node-telegram-bot-api";
+import TelegramBot, { type Update, type Message, type InlineKeyboardButton } from "node-telegram-bot-api";
 import { config } from "../config";
 import { logger } from "../utils/logger";
 import { startOnboarding, handleOnboardingCallback, handleOnboardingText } from "../onboarding";
@@ -22,7 +22,7 @@ function getBot(): TelegramBot {
     // Polling for local/CI runs; disabled in webhook mode so a serverless or
     // always-on host can push updates via processUpdate(). A non-polling bot can
     // still send outgoing messages via sendMessage().
-    bot = new TelegramBot(config.telegram.botToken, { polling: !useWebhook });
+    bot = new TelegramBot(config.telegram.botToken, useWebhook ? { polling: false } : { polling: true });
   }
   return bot;
 }
@@ -31,7 +31,7 @@ function getBot(): TelegramBot {
  * Feed a raw Telegram update (a webhook POST body) to the bot's registered
  * command handlers. Call enableWebhookMode() + startInteractiveBot() first.
  */
-export function handleWebhookUpdate(update: TelegramBot.Update): void {
+export function handleWebhookUpdate(update: Update): void {
   getBot().processUpdate(update);
 }
 
@@ -114,7 +114,7 @@ function initCommands() {
 
     await pollingBot.sendMessage(chatId, text, {
       parse_mode: "HTML",
-      disable_web_page_preview: true,
+      link_preview_options: { is_disabled: true },
     });
   });
 
@@ -134,7 +134,7 @@ function initCommands() {
         const reply = typeof result === "string" ? { text: result } : result;
         await pollingBot.sendMessage(chatId, reply.text, {
           parse_mode: (reply.parseMode || "HTML") as "HTML",
-          disable_web_page_preview: true,
+          link_preview_options: { is_disabled: true },
         });
       } catch (error) {
         await pollingBot.sendMessage(
@@ -163,7 +163,7 @@ function initCommands() {
         const reply = typeof result === "string" ? { text: result } : result;
         await pollingBot.sendMessage(chatId, reply.text, {
           parse_mode: (reply.parseMode || "HTML") as "HTML",
-          disable_web_page_preview: true,
+          link_preview_options: { is_disabled: true },
         });
       } catch (error) {
         await pollingBot.sendMessage(chatId, `❌ Failed: ${(error as Error).message}`, { parse_mode: "HTML" });
@@ -186,7 +186,7 @@ function initCommands() {
         const reply = typeof result === "string" ? { text: result } : result;
         await pollingBot.sendMessage(chatId, reply.text, {
           parse_mode: (reply.parseMode || "HTML") as "HTML",
-          disable_web_page_preview: true,
+          link_preview_options: { is_disabled: true },
         });
       } catch (error) {
         await pollingBot.sendMessage(
@@ -213,7 +213,7 @@ function initCommands() {
         const reply = typeof result === "string" ? { text: result } : result;
         await pollingBot.sendMessage(chatId, reply.text, {
           parse_mode: (reply.parseMode || "HTML") as "HTML",
-          disable_web_page_preview: true,
+          link_preview_options: { is_disabled: true },
         });
       } catch (error) {
         await pollingBot.sendMessage(
@@ -240,7 +240,7 @@ function initCommands() {
         const reply = typeof result === "string" ? { text: result } : result;
         await pollingBot.sendMessage(chatId, reply.text, {
           parse_mode: (reply.parseMode || "HTML") as "HTML",
-          disable_web_page_preview: true,
+          link_preview_options: { is_disabled: true },
         });
       } catch (error) {
         await pollingBot.sendMessage(
@@ -301,7 +301,7 @@ function initCommands() {
           const reply = typeof result === "string" ? { text: result } : result;
           await pollingBot.sendMessage(chatId, reply.text, {
             parse_mode: (reply.parseMode || "HTML") as "HTML",
-            disable_web_page_preview: true,
+            link_preview_options: { is_disabled: true },
           });
         }
       } catch (error) {
@@ -372,7 +372,7 @@ function initCommands() {
           const reply = typeof result === "string" ? { text: result } : result;
           await pollingBot.sendMessage(chatId, reply.text, {
             parse_mode: (reply.parseMode || "HTML") as "HTML",
-            disable_web_page_preview: true,
+            link_preview_options: { is_disabled: true },
           });
         }
       }
@@ -467,7 +467,7 @@ function initCommands() {
   );
 }
 
-async function upsertUser(msg: TelegramBot.Message): Promise<void> {
+async function upsertUser(msg: Message): Promise<void> {
   try {
     const { supabase } = await import("../utils/supabase");
     await supabase.upsertUserPreferences({
@@ -491,7 +491,7 @@ export async function sendAdminAlert(text: string): Promise<void> {
   const b = getBot();
   await b.sendMessage(config.telegram.chatId, text, {
     parse_mode: "HTML",
-    disable_web_page_preview: true,
+    link_preview_options: { is_disabled: true },
   });
 }
 
@@ -519,7 +519,7 @@ export async function sendValidationFollowUp(
   if (!candidates.length) return;
 
   const lines = ["<b>&#128202; Quick Validation</b>", "<i>Was the AI analysis accurate?</i>", ""];
-  const keyboard: TelegramBot.InlineKeyboardButton[][] = [];
+  const keyboard: InlineKeyboardButton[][] = [];
 
   candidates.forEach((a, i) => {
     const id = articleIds.get(a.url)!;
@@ -534,7 +534,7 @@ export async function sendValidationFollowUp(
   const bot = getBot();
   await bot.sendMessage(chatId, lines.join("\n"), {
     parse_mode: "HTML",
-    disable_web_page_preview: true,
+    link_preview_options: { is_disabled: true },
     reply_markup: { inline_keyboard: keyboard },
   });
 }
@@ -611,7 +611,7 @@ export async function sendTelegramMessage(
   try {
     const result = await bot.sendMessage(config.telegram.chatId, text, {
       parse_mode: parseMode,
-      disable_web_page_preview: false,
+
     });
 
     logger.info(`Telegram message sent (ID: ${result.message_id})`);
@@ -648,7 +648,7 @@ export async function sendDigestMessageToUser(
     if (text.length <= 4096) {
       const result = await b.sendMessage(chatId, text, {
         parse_mode: parseMode,
-        disable_web_page_preview: false,
+  
       });
       logger.info(`Digest sent to user ${chatId} (ID: ${result.message_id})`);
       return { success: true, messageId: result.message_id };
@@ -662,7 +662,7 @@ export async function sendDigestMessageToUser(
       const header = i === 0 ? "" : `📄 Part ${i + 1}/${chunks.length}\n\n`;
       const result = await b.sendMessage(chatId, header + chunks[i], {
         parse_mode: parseMode,
-        disable_web_page_preview: false,
+  
       });
       lastResult = { success: true, messageId: result.message_id };
     }

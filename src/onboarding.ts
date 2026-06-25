@@ -6,7 +6,7 @@
  * user just gets a clean /start again — no data loss, no broken state.
  */
 
-import TelegramBot from "node-telegram-bot-api";
+import TelegramBot, { type InlineKeyboardMarkup, type Message, type CallbackQuery } from "node-telegram-bot-api";
 import { supabase } from "./utils/supabase";
 import { logger } from "./utils/logger";
 
@@ -26,7 +26,7 @@ const sessions = new Map<number, OnboardingState>();
 
 // ── Inline keyboard helpers ──────────────────────────────────────────────────
 
-function timeKeyboard(): TelegramBot.InlineKeyboardMarkup {
+function timeKeyboard(): InlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [
@@ -43,7 +43,7 @@ function timeKeyboard(): TelegramBot.InlineKeyboardMarkup {
   };
 }
 
-function scoreKeyboard(): TelegramBot.InlineKeyboardMarkup {
+function scoreKeyboard(): InlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [
@@ -58,7 +58,7 @@ function scoreKeyboard(): TelegramBot.InlineKeyboardMarkup {
   };
 }
 
-function lengthKeyboard(): TelegramBot.InlineKeyboardMarkup {
+function lengthKeyboard(): InlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [
@@ -164,7 +164,7 @@ async function sendConfirmation(bot: TelegramBot, chatId: number, state: Onboard
 /** Start the onboarding flow for a new /start. */
 export async function startOnboarding(
   bot: TelegramBot,
-  msg: TelegramBot.Message
+  msg: Message
 ): Promise<void> {
   const chatId = msg.chat.id;
   const firstName = msg.from?.first_name || "there";
@@ -193,7 +193,7 @@ export async function startOnboarding(
 /** Handle callback queries from onboarding inline keyboards. Returns true if handled. */
 export async function handleOnboardingCallback(
   bot: TelegramBot,
-  query: TelegramBot.CallbackQuery
+  query: CallbackQuery
 ): Promise<boolean> {
   const data = query.data || "";
   const chatId = query.message?.chat.id;
@@ -286,7 +286,7 @@ export async function handleOnboardingCallback(
 /** Handle free-text watchlist input during onboarding. Returns true if handled. */
 export async function handleOnboardingText(
   bot: TelegramBot,
-  msg: TelegramBot.Message
+  msg: Message
 ): Promise<boolean> {
   const chatId = msg.chat.id;
   const state = sessions.get(chatId);
@@ -296,8 +296,8 @@ export async function handleOnboardingText(
   const tickers = raw
     .toUpperCase()
     .split(/[,\s]+/)
-    .map((t) => t.trim())
-    .filter((t) => /^[A-Z]{1,5}$/.test(t));
+    .map((t: string) => t.trim())
+    .filter((t: string) => /^[A-Z]{1,5}$/.test(t));
 
   if (tickers.length === 0) {
     await bot.sendMessage(chatId,

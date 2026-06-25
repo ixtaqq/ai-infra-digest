@@ -20,6 +20,7 @@ interface CacheData {
  * Returns a value in [0, 1] where 1 = identical direction.
  */
 export function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length) return 0;
   let dot = 0, magA = 0, magB = 0;
   for (let i = 0; i < a.length; i++) {
     dot += a[i] * b[i];

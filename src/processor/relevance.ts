@@ -1,3 +1,6 @@
+import fs from "fs";
+import path from "path";
+import crypto from "crypto";
 import { config } from "../config";
 import { logger } from "../utils/logger";
 import { cosineSimilarity } from "../utils/dedup";
@@ -29,9 +32,47 @@ export const RELEVANCE_SEEDS = [
   "Edge AI on-device inference hardware and chips",
 ];
 
+function seedCacheKey(): string {
+  const hash = crypto
+    .createHash("sha256")
+    .update(RELEVANCE_SEEDS.join("|") + config.ai.embeddingModel)
+    .digest("hex")
+    .slice(0, 16);
+  return hash;
+}
+
+function seedCachePath(): string {
+  return path.join(config.app.cacheDir, "seed-embeddings.json");
+}
+
+function loadSeedCache(): { key: string; embeddings: number[][] } | null {
+  try {
+    const raw = fs.readFileSync(seedCachePath(), "utf8");
+    return JSON.parse(raw) as { key: string; embeddings: number[][] };
+  } catch {
+    return null;
+  }
+}
+
+function saveSeedCache(embeddings: number[][]): void {
+  try {
+    fs.mkdirSync(config.app.cacheDir, { recursive: true });
+    fs.writeFileSync(seedCachePath(), JSON.stringify({ key: seedCacheKey(), embeddings }));
+  } catch {
+    // Non-critical — ignore write failures
+  }
+}
+
 export async function embedSeeds(): Promise<number[][]> {
   const key = config.ai.embeddingApiKey;
   if (!key) return [];
+
+  // Return cached embeddings if seed list + model haven't changed
+  const cached = loadSeedCache();
+  if (cached && cached.key === seedCacheKey()) {
+    logger.info("Seed embeddings: cache hit — skipping OpenAI call");
+    return cached.embeddings;
+  }
 
   const resp = await fetch(EMBED_URL, {
     method: "POST",
@@ -52,6 +93,8 @@ export async function embedSeeds(): Promise<number[][]> {
   for (const item of data.data) {
     result[item.index] = item.embedding;
   }
+
+  saveSeedCache(result);
   return result;
 }
 

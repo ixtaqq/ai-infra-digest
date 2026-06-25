@@ -36,6 +36,7 @@ export async function generateEmbeddings(
 
     const data = (await resp.json()) as { data: { index: number; embedding: number[] }[] };
     for (const item of data.data) {
+      if (!batch[item.index]) continue;
       result.set(batch[item.index].url, item.embedding);
     }
   }

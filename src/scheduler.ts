@@ -35,23 +35,35 @@ function getCurrentTimeInTimezone(tz: string): string {
     });
     return formatter.format(new Date());
   } catch {
-    // Invalid timezone — fall back to UTC
+    logger.warn(`Invalid timezone "${tz}" — falling back to UTC`);
     return new Date().toISOString().slice(11, 16);
   }
 }
 
 /**
- * Check if a user's preferred_time matches the current time in their timezone.
- * Returns true if the times match within a configurable window (default: exact match).
+ * Check if a user's preferred_time falls within ±2 minutes of now in their timezone.
+ * A 2-minute window prevents missed deliveries when the cron tick lands slightly late.
  */
-function isTimeMatch(
+export function isTimeMatch(
   preferredTime: string | undefined,
-  userTimezone: string | undefined
+  userTimezone: string | undefined,
+  windowMinutes = 2
 ): boolean {
-  const pref = preferredTime || "08:00"; // Default fallback
-  const tz = userTimezone || "Asia/Kuala_Lumpur"; // Default timezone
+  const pref = preferredTime || "08:00";
+  const tz = userTimezone || "Asia/Kuala_Lumpur";
   const now = getCurrentTimeInTimezone(tz);
-  return pref === now;
+
+  const toMinutes = (t: string) => {
+    const [h, m] = t.split(":").map(Number);
+    return (h ?? 0) * 60 + (m ?? 0);
+  };
+
+  const prefMins = toMinutes(pref);
+  const nowMins = toMinutes(now);
+  // Handle midnight wrap-around (e.g. 23:59 vs 00:01)
+  const diff = Math.abs(prefMins - nowMins);
+  const wrappedDiff = Math.min(diff, 1440 - diff);
+  return wrappedDiff <= windowMinutes;
 }
 
 // ─── Main ────────────────────────────────────────────────

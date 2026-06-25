@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { cosineSimilarity } from "./dedup";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -6,17 +7,41 @@ import os from "os";
 // Mock config to use a temp cache directory for test isolation
 const testCacheDir = path.join(os.tmpdir(), "ai-infra-digest-test-cache");
 
-vi.mock("../config", () => ({
-  config: {
-    app: {
-      cacheDir: testCacheDir,
-      timezone: "Asia/Kuala_Lumpur",
-      maxArticlesPerSource: 5,
+vi.mock("../config", () => {
+  // vi.mock factory is hoisted — cannot reference testCacheDir declared below.
+  // Use os.tmpdir() inline instead.
+  const os = require("os") as typeof import("os");
+  const path = require("path") as typeof import("path");
+  return {
+    config: {
+      app: {
+        cacheDir: path.join(os.tmpdir(), "ai-infra-digest-test-cache"),
+        timezone: "Asia/Kuala_Lumpur",
+        maxArticlesPerSource: 5,
+      },
+      telegram: { botToken: "test", chatId: "test" },
+      ai: { provider: "groq", apiKey: "test", model: "test", baseUrl: "https://test.com" },
     },
-    telegram: { botToken: "test", chatId: "test" },
-    ai: { provider: "groq", apiKey: "test", model: "test", baseUrl: "https://test.com" },
-  },
-}));
+  };
+});
+
+describe("cosineSimilarity", () => {
+  it("returns 1 for identical vectors", () => {
+    expect(cosineSimilarity([1, 0, 0], [1, 0, 0])).toBeCloseTo(1);
+  });
+
+  it("returns 0 for orthogonal vectors", () => {
+    expect(cosineSimilarity([1, 0, 0], [0, 1, 0])).toBeCloseTo(0);
+  });
+
+  it("returns 0 for mismatched-length vectors (guard)", () => {
+    expect(cosineSimilarity([1, 2, 3], [1, 2])).toBe(0);
+  });
+
+  it("returns 0 for zero vectors", () => {
+    expect(cosineSimilarity([0, 0, 0], [0, 0, 0])).toBe(0);
+  });
+});
 
 describe("deduplicateArticles", () => {
   const testCachePath = path.join(testCacheDir, "articles-cache.json");

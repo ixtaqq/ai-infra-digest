@@ -217,20 +217,6 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
       logger.info(`Relevance filter: dropped ${dropped} low-relevance articles (< 4/10)`);
     }
 
-    // ─── Step 2a: Devil's Advocate — Bear Cases ──────────────────────────────
-    const bearCaseStage = await tryStage(
-      () => generateBearCases(digest.articles),
-      "bear cases"
-    );
-    const bearCaseMap = bearCaseStage.ok ? bearCaseStage.value : new Map<string, string>();
-    for (const article of digest.articles) {
-      const bc = bearCaseMap.get(article.url);
-      if (bc) article.bearCase = bc;
-    }
-
-    // ─── Step 2a1: Novelty Check (v7.2) ──────────────────────────────────────
-    await tryStage(() => flagRehashes(digest.articles), "novelty check");
-
     // ─── Step 2d: Embeddings (v8.0) ──────────────────────────────────────────
     const embeddingsStage = await tryStage(
       () => generateEmbeddings(digest.articles),
@@ -259,6 +245,20 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
         logger.info(`Semantic gate: dropped ${gateDropped} off-topic articles (cosine < 0.55)`);
       }
     }
+
+    // ─── Step 2a: Devil's Advocate — Bear Cases ──────────────────────────────
+    const bearCaseStage = await tryStage(
+      () => generateBearCases(digest.articles),
+      "bear cases"
+    );
+    const bearCaseMap = bearCaseStage.ok ? bearCaseStage.value : new Map<string, string>();
+    for (const article of digest.articles) {
+      const bc = bearCaseMap.get(article.url);
+      if (bc) article.bearCase = bc;
+    }
+
+    // ─── Step 2a1: Novelty Check (v7.2) ──────────────────────────────────────
+    await tryStage(() => flagRehashes(digest.articles), "novelty check");
 
     // ─── Step 2b: Earnings Transcript Mining ─────
     let earningsAnalyses: EarningsAnalysis[] = [];
@@ -943,7 +943,7 @@ async function sendHighImpactAlerts(articles: import("./processor/ai").Processed
       try {
         const minScore = user.alerts_min_score ?? 8;
         if (article.impactScore < minScore) continue;
-        await bot.sendMessage(user.chat_id, text, { parse_mode: "HTML", disable_web_page_preview: true });
+        await bot.sendMessage(user.chat_id, text, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
         logger.info(`Alert sent for article "${article.title.slice(0, 60)}..." to user ${user.chat_id}`);
       } catch {
         // Ignore per-user send errors
