@@ -36,5 +36,6 @@ jobs:
           AI_MODEL: ${{ vars.AI_MODEL || 'llama-3.3-70b-versatile' }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
           TZ: Asia/Kuala_Lumpur
         run: node dist/index.js
