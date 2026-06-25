@@ -622,6 +622,7 @@ export async function deliverDigest(
 
   // Fire Slack + email in parallel (optional channels, failures are non-fatal)
   if (!targetChatId) {
+    logger.info(`Env check — SMTP_USER=${process.env.SMTP_USER ? "set" : "MISSING"}, DIGEST_EMAIL_TO=${process.env.DIGEST_EMAIL_TO ? "set" : "MISSING"}, SMTP_PASS=${process.env.SMTP_PASS ? "set" : "MISSING"}`);
     logger.info(`Additional channels — Slack: ${config.app.slackWebhookUrl ? "configured" : "not set"}, Email: ${config.app.smtpUser ? `configured (→ ${config.app.digestEmailTo})` : "not set"}`);
     await Promise.allSettled([
       config.app.slackWebhookUrl ? sendSlackDigest(messageToSend) : Promise.resolve(false),
