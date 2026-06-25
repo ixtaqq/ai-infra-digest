@@ -34,6 +34,8 @@ import { getTrustScores } from "./utils/trust-scores";
 import { getSourceCredibility, isPRWireSource } from "./utils/source-credibility";
 import { buildCorroborationMap } from "./utils/dedup";
 import { generateBearCases } from "./processor/bear-cases";
+import type { DeepDiveResult } from "./processor/bear-cases";
+import { attachGroundingNotes } from "./utils/grounding";
 import { flagRehashes } from "./utils/novelty";
 import { generateEmbeddings } from "./processor/embeddings";
 import { embedSeeds, passesSemanticGate } from "./processor/relevance";
@@ -60,6 +62,8 @@ export interface GeneratedDigest {
   stockPrices: Map<string, import("./utils/stocks").StockPrice>;
   /** WoW delta summary injected into the digest header; undefined if <7 days history */
   whatChanged?: string;
+  /** Full bull/bear/context thesis for the top article (v9.2). */
+  deepDive?: DeepDiveResult;
 }
 
 /**
@@ -248,16 +252,19 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
       }
     }
 
-    // ─── Step 2a: Devil's Advocate — Bear Cases ──────────────────────────────
+    // ─── Step 2a: Devil's Advocate — Bear Cases + Deep-Dive (v9.2) ─────────────
     const bearCaseStage = await tryStage(
       () => generateBearCases(digest.articles),
       "bear cases"
     );
-    const bearCaseMap = bearCaseStage.ok ? bearCaseStage.value : new Map<string, string>();
+    const bearCaseResult = bearCaseStage.ok
+      ? bearCaseStage.value
+      : { bearCases: new Map<string, string>() };
     for (const article of digest.articles) {
-      const bc = bearCaseMap.get(article.url);
+      const bc = bearCaseResult.bearCases.get(article.url);
       if (bc) article.bearCase = bc;
     }
+    const deepDive = bearCaseResult.deepDive;
 
     // ─── Step 2a1: Novelty Check (v7.2) ──────────────────────────────────────
     await tryStage(() => flagRehashes(digest.articles), "novelty check");
@@ -351,6 +358,9 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
       (a, b) => (b.effectiveScore ?? b.impactScore) - (a.effectiveScore ?? a.impactScore)
     );
 
+    // ─── Step 3a.1: Cross-Source Grounding (v9.1) ────────────────────────────
+    attachGroundingNotes(digest.articles, secExtracts, earningsAnalyses, stockPrices);
+
     // ─── Step 3c: Build "What Changed" WoW summary ───────────────────────────
     const whatChanged = supabase.isConfigured()
       ? await buildWhatChanged()
@@ -363,6 +373,7 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
       secExtracts: secExtracts.length > 0 ? secExtracts : undefined,
       earningsAnalyses: earningsAnalyses.length > 0 ? earningsAnalyses : undefined,
       whatChanged,
+      deepDive,
     });
 
     logger.info(
@@ -381,6 +392,7 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
       earningsAnalyses,
       stockPrices,
       whatChanged,
+      deepDive,
     };
 
   } catch (error) {

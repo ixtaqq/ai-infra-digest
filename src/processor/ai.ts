@@ -69,6 +69,8 @@ export interface ProcessedArticle {
   effectiveScore?: number;
   /** 1536-dim OpenAI text-embedding-3-small vector (v8.0). */
   embedding?: number[];
+  /** One-line note grounding the article in related SEC filings, earnings data, or stock moves (v9.1). */
+  groundingNote?: string;
 }
 
 export interface AIUsage {

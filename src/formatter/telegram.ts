@@ -55,6 +55,7 @@ function escapeHtml(text: string): string {
 }
 
 import type { EarningsAnalysis } from "../processor/earnings";
+import type { DeepDiveResult } from "../processor/bear-cases";
 
 export interface FormatOptions {
   stockPrices?: Map<string, StockPrice>;
@@ -62,6 +63,7 @@ export interface FormatOptions {
   earningsAnalyses?: EarningsAnalysis[];
   personalizationNote?: string;
   whatChanged?: string;
+  deepDive?: DeepDiveResult;
 }
 
 export function formatDigestTelegram(
@@ -147,6 +149,9 @@ export function formatDigestTelegram(
       }
       if (article.bearCase) {
         lines.push(`   ⚠️ <i>${escapeHtml(article.bearCase)}</i>`);
+      }
+      if (article.groundingNote) {
+        lines.push(`   ${article.groundingNote}`);
       }
     });
 
@@ -252,6 +257,21 @@ export function formatDigestTelegram(
       }
       lines.push("");
     }
+  }
+
+  // ─── Daily Deep-Dive (v9.2) ────────────────────────
+  const deepDive = options?.deepDive;
+  if (deepDive) {
+    lines.push("🔬 <b>DAILY DEEP-DIVE</b>");
+    lines.push("");
+    lines.push(`<b>${escapeHtml(deepDive.title)}</b>`);
+    lines.push("");
+    lines.push(`🟢 <i>${escapeHtml(deepDive.bullCase)}</i>`);
+    lines.push(`🔴 <i>${escapeHtml(deepDive.bearCase)}</i>`);
+    if (deepDive.contextNote) {
+      lines.push(`📊 <i>${escapeHtml(deepDive.contextNote)}</i>`);
+    }
+    lines.push("");
   }
 
   // ─── Value Chain Coverage Indicator ───────────────

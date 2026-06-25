@@ -6,6 +6,9 @@
  * what's overblown, or why the market may already know. Results are attached
  * to ProcessedArticle.bearCase before formatting and persistence.
  *
+ * For the single highest-scoring article, also generates a full bull/bear/context
+ * thesis (v9.2 Daily Deep-Dive).
+ *
  * Runs as a tryStage in generateDigest() — failure never blocks delivery.
  */
 
@@ -19,16 +22,37 @@ const MAX_ARTICLES = 6; // bound token cost to ~800 tokens per run
 interface BearCaseRow {
   url: string;
   bearCase: string;
+  bullCase?: string;
+  contextNote?: string;
 }
 
-function buildPrompt(articles: ProcessedArticle[]): string {
+export interface DeepDiveResult {
+  url: string;
+  title: string;
+  bullCase: string;
+  bearCase: string;
+  contextNote: string;
+}
+
+export interface BearCaseResult {
+  bearCases: Map<string, string>;
+  deepDive?: DeepDiveResult;
+}
+
+function buildPrompt(articles: ProcessedArticle[], deepDiveUrl: string): string {
   const items = articles
     .map(
-      (a, i) =>
-        `${i + 1}. URL: ${a.url}\n` +
-        `   Title: ${a.title}\n` +
-        `   Summary: ${a.summary.slice(0, 200)}\n` +
-        `   Impact: ${a.impact} (${a.impactScore}/10)`
+      (a, i) => {
+        const base =
+          `${i + 1}. URL: ${a.url}\n` +
+          `   Title: ${a.title}\n` +
+          `   Summary: ${a.summary.slice(0, 200)}\n` +
+          `   Impact: ${a.impact} (${a.impactScore}/10)`;
+        if (a.url === deepDiveUrl) {
+          return base + `\n   [DEEP_DIVE: also provide bullCase (2 sentences, optimist institutional view) and contextNote (1 sentence connecting to financials/filings if relevant)]`;
+        }
+        return base;
+      }
     )
     .join("\n\n");
 
@@ -36,14 +60,17 @@ function buildPrompt(articles: ProcessedArticle[]): string {
     `You are a skeptical institutional investor. For each article, write the strongest 1-2 sentence bear case: ` +
     `what could go wrong, what is overblown, or why this news may already be priced in. ` +
     `Be specific and concise. Avoid generic disclaimers.\n\n` +
+    `For the article marked [DEEP_DIVE], additionally provide:\n` +
+    `- bullCase: 2-sentence optimistic institutional view\n` +
+    `- contextNote: 1 sentence connecting this news to related financials or filings if possible\n\n` +
     `Return valid JSON only:\n` +
-    `{ "results": [ { "url": "...", "bearCase": "..." } ] }\n\n` +
+    `{ "results": [ { "url": "...", "bearCase": "...", "bullCase": "...", "contextNote": "..." } ] }\n` +
+    `(bullCase and contextNote only required for the [DEEP_DIVE] article; omit or leave empty for others)\n\n` +
     `Articles:\n${items}`
   );
 }
 
 function parseResponse(text: string): BearCaseRow[] {
-  // Strip markdown code fences if present
   const clean = text.replace(/^```[a-z]*\n?/m, "").replace(/```$/m, "").trim();
   try {
     const parsed = JSON.parse(clean) as { results?: BearCaseRow[] };
@@ -55,18 +82,24 @@ function parseResponse(text: string): BearCaseRow[] {
 
 export async function generateBearCases(
   articles: ProcessedArticle[]
-): Promise<Map<string, string>> {
+): Promise<BearCaseResult> {
   const qualifying = articles
     .filter((a) => a.impactScore >= BEAR_CASE_THRESHOLD)
     .slice(0, MAX_ARTICLES);
 
-  if (!qualifying.length) return new Map();
+  if (!qualifying.length) return { bearCases: new Map() };
 
   const url = config.ai.baseUrl || "https://api.groq.com/openai/v1";
   const key = config.ai.apiKey;
-  if (!key) return new Map();
+  if (!key) return { bearCases: new Map() };
 
-  const prompt = buildPrompt(qualifying);
+  // The deep-dive goes to the article with the highest impactScore
+  const deepDiveArticle = qualifying.reduce((best, a) =>
+    a.impactScore > best.impactScore ? a : best
+  );
+  const deepDiveUrl = deepDiveArticle.url;
+
+  const prompt = buildPrompt(qualifying, deepDiveUrl);
 
   try {
     const res = await fetch(`${url}/chat/completions`, {
@@ -82,14 +115,14 @@ export async function generateBearCases(
           { role: "user", content: prompt },
         ],
         temperature: 0.4,
-        max_tokens: 1024,
+        max_tokens: 1500,
       }),
       signal: AbortSignal.timeout(60_000),
     });
 
     if (!res.ok) {
       logger.warn(`bear-cases: AI HTTP ${res.status}`);
-      return new Map();
+      return { bearCases: new Map() };
     }
 
     const data = (await res.json()) as {
@@ -98,19 +131,30 @@ export async function generateBearCases(
     const content = data.choices?.[0]?.message?.content ?? "";
     const rows = parseResponse(content);
 
-    const map = new Map<string, string>();
+    const bearCases = new Map<string, string>();
+    let deepDive: DeepDiveResult | undefined;
+
     for (const row of rows) {
-      if (row.url && row.bearCase) {
-        map.set(row.url, row.bearCase.slice(0, 300));
+      if (!row.url || !row.bearCase) continue;
+      bearCases.set(row.url, row.bearCase.slice(0, 300));
+
+      if (row.url === deepDiveUrl && row.bullCase && row.contextNote) {
+        deepDive = {
+          url: row.url,
+          title: deepDiveArticle.title,
+          bullCase: row.bullCase.slice(0, 400),
+          bearCase: row.bearCase.slice(0, 400),
+          contextNote: row.contextNote.slice(0, 200),
+        };
       }
     }
 
     logger.info(
-      `Bear cases: generated ${map.size} for ${qualifying.length} qualifying articles (score ≥${BEAR_CASE_THRESHOLD})`
+      `Bear cases: generated ${bearCases.size} for ${qualifying.length} qualifying articles (score ≥${BEAR_CASE_THRESHOLD})${deepDive ? " + deep-dive" : ""}`
     );
-    return map;
+    return { bearCases, deepDive };
   } catch (err) {
     logger.warn(`bear-cases: ${(err as Error).message}`);
-    return new Map();
+    return { bearCases: new Map() };
   }
 }
