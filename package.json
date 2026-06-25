@@ -4,6 +4,7 @@
   "description": "🚀 AI Infrastructure Daily Digest - Telegram bot delivering daily AI infra news at 8 AM Malaysia time",
   "main": "dist/index.js",
   "scripts": {
+    "postinstall": "node -e \"const fs=require('fs'),p='node_modules/node-telegram-bot-api/package.json',pkg=JSON.parse(fs.readFileSync(p,'utf8'));if(pkg.exports){delete pkg.exports;fs.writeFileSync(p,JSON.stringify(pkg,null,2));}\"",
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
