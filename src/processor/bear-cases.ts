@@ -31,7 +31,8 @@ function isRetryableStatus(status: number): boolean {
 }
 
 interface BearCaseRow {
-  url: string;
+  /** 1-based index matching the article's position in the prompt (see buildPrompt). */
+  index: number;
   bearCase: string;
   bullCase?: string;
   contextNote?: string;
@@ -74,8 +75,9 @@ function buildPrompt(articles: ProcessedArticle[], deepDiveUrl: string): string 
     `For the article marked [DEEP_DIVE], additionally provide:\n` +
     `- bullCase: 2-sentence optimistic institutional view\n` +
     `- contextNote: 1 sentence connecting this news to related financials or filings if possible\n\n` +
-    `Return valid JSON only:\n` +
-    `{ "results": [ { "url": "...", "bearCase": "...", "bullCase": "...", "contextNote": "..." } ] }\n` +
+    `Return valid JSON only, with one entry per article, using its numeric index (1-${articles.length}) — ` +
+    `do NOT repeat the URL, just the index:\n` +
+    `{ "results": [ { "index": 1, "bearCase": "...", "bullCase": "...", "contextNote": "..." } ] }\n` +
     `(bullCase and contextNote only required for the [DEEP_DIVE] article; omit or leave empty for others)\n\n` +
     `Articles:\n${items}`
   );
@@ -85,8 +87,13 @@ function parseResponse(text: string): BearCaseRow[] {
   const clean = text.replace(/^```[a-z]*\n?/m, "").replace(/```$/m, "").trim();
   try {
     const parsed = JSON.parse(clean) as { results?: BearCaseRow[] };
-    return Array.isArray(parsed.results) ? parsed.results : [];
-  } catch {
+    if (!Array.isArray(parsed.results)) {
+      logger.warn(`bear-cases: parsed JSON had no "results" array. Raw (first 500 chars): ${clean.slice(0, 500)}`);
+      return [];
+    }
+    return parsed.results;
+  } catch (err) {
+    logger.warn(`bear-cases: failed to parse AI response as JSON (${(err as Error).message}). Raw (first 500 chars): ${clean.slice(0, 500)}`);
     return [];
   }
 }
@@ -128,7 +135,7 @@ export async function generateBearCases(
               { role: "user", content: prompt },
             ],
             temperature: 0.4,
-            max_tokens: 1500,
+            max_tokens: 2000,
           }),
           signal: AbortSignal.timeout(60_000),
         });
@@ -150,16 +157,24 @@ export async function generateBearCases(
     const content = data.choices?.[0]?.message?.content ?? "";
     const rows = parseResponse(content);
 
+    if (content && rows.length === 0) {
+      logger.warn(`bear-cases: AI response yielded 0 usable rows. Raw (first 500 chars): ${content.slice(0, 500)}`);
+    }
+
     const bearCases = new Map<string, string>();
     let deepDive: DeepDiveResult | undefined;
 
     for (const row of rows) {
-      if (!row.url || !row.bearCase) continue;
-      bearCases.set(row.url, row.bearCase.slice(0, 300));
+      // Match by 1-based index into the prompt's article list — robust against
+      // the model mangling/truncating long URLs (e.g. Google News redirect links)
+      // when asked to echo them back verbatim.
+      const article = qualifying[row.index - 1];
+      if (!article || !row.bearCase) continue;
+      bearCases.set(article.url, row.bearCase.slice(0, 300));
 
-      if (row.url === deepDiveUrl && row.bullCase && row.contextNote) {
+      if (article.url === deepDiveUrl && row.bullCase && row.contextNote) {
         deepDive = {
-          url: row.url,
+          url: article.url,
           title: deepDiveArticle.title,
           bullCase: row.bullCase.slice(0, 400),
           bearCase: row.bearCase.slice(0, 400),
