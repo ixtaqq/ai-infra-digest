@@ -107,7 +107,7 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 - **Timezone-aware** — delivery triggers at the user's local time
 - **Idempotent** — `user_delivery_log` prevents duplicate deliveries on overlapping cron runs
 - **GitHub Actions cron** — runs every 30 minutes, checks all active users, delivers only to those at their preferred time
-- **Budget caps** — daily and 30-day rolling AI cost limits; Telegram alert fires when either threshold is breached
+- **Budget caps** — daily cap triggers a Telegram alert; the 30-day rolling cap is a real **pre-spend gate** — once hit, the run is skipped entirely (no AI calls made) until spend drops below the cap
 
 ### 🌐 Production Webhook Bot
 - **`src/webhook.ts`** — zero-dependency Node `http` server; registers all command handlers in non-polling mode
@@ -154,7 +154,7 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 - `user_preferences` has `digest_length` column (`brief` | `standard` | `detailed`)
 - `daily_derived_metrics` has `entity_type`, `entity`, mention counts, sentiment, impact scores, price data
 - `article_validations` — per-user vote log; `UNIQUE(article_id, chat_id)` prevents double-voting
-- RLS enabled on all tables; service role key used for writes, public read for dashboard
+- RLS enabled on all tables; writes scoped `TO service_role` (migration `20260629000000`), public read-only via the dashboard's anon key
 - **Performance indexes** — 16 indexes including GIN full-text search, partial indexes for SEC filings and active users, time-series indexes on `daily_derived_metrics`, article validation lookup
 - **Automated retention** — `cleanup_old_data()` function prunes articles (90d), pipeline_health (30d), ai_usage (90d), delivery_log (90d)
 
@@ -166,28 +166,31 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 
 ### 🔔 Error Handling & Alerts
 - **Source health alerts** — if >20% of RSS feeds fail, admin gets a Telegram alert listing failing feeds
+- **Dead feed detection** — feeds failing 3+ consecutive runs are flagged as likely dead/URL-changed (distinct from a transient blip) in logs and error events
 - **High-impact alert system** — articles scoring 8+/10 trigger instant alerts to opted-in users
-- **Budget cap alerts** — daily and 30-day AI cost thresholds; alert sent when breached
-- **`withRetry<T>()`** — exponential backoff + full-jitter for AI calls; non-retryable errors (401) bypass retry
+- **Budget cap** — daily threshold alerts; 30-day rolling cap actually blocks the run pre-spend (see Scheduled Delivery above)
+- **AI provider failover** — optional `AI_FALLBACK_*` secondary provider tried once if the primary exhausts all retries, so one provider outage doesn't abort the whole digest
+- **`withRetry<T>()`** — exponential backoff + full-jitter for AI calls (including embeddings and bear-case generation); non-retryable errors (401) bypass retry
 - **`tryStage<T>()`** — never-throws wrapper for optional stages (SEC, earnings, stocks); one stage failing never crashes the pipeline
 - **Structured error events** — AI 429, Yahoo Finance failures, Supabase errors all emit `ErrorEvent` with recovery suggestions
 
 ### 🧪 Testing & CI
-- **87 tests** with **Vitest**:
+- **91 tests** with **Vitest**:
   - Deduplication + cosine similarity: 9 unit tests (`cosineSimilarity` — identical, orthogonal, mismatched length, zero vectors; `deduplicateArticles` — 5 cases)
   - Keyword matching: 13 unit tests
   - Stock price fetching: 3 unit tests
   - Telegram formatter: 5 unit tests
-  - Webhook router: 8 unit tests
+  - Webhook router: 7 unit tests
   - Fan-out regression: 1 test — proves `collectArticles` called once for N deliveries
   - Source credibility: 6 unit tests (`getSourceCredibility`, `isPRWireSource`)
   - Novelty detection: 4 unit tests (`flagRehashes` — fetch success, empty, non-ok, network error)
+  - Cross-source grounding: 4 unit tests (`attachGroundingNotes` — SEC/earnings/stock matching)
   - Semantic relevance: 4 unit tests (`passesSemanticGate`, `embedSeeds` — success, HTTP error)
   - Scheduler: 3 unit tests (`isTimeMatch` — exact match, ±1 min within window, outside window)
   - Supabase integration: 15 tests (requires live credentials)
   - Telegram integration: 9 tests (requires live credentials)
   - Stocks integration: 8 tests (requires live credentials)
-- **55 unit tests** run offline; integration tests require live credentials — use `npm run test:unit` for offline CI
+- **59 unit tests** run offline; integration tests require live credentials — use `npm run test:unit` for offline CI
 - **CI workflow** — `.github/workflows/ci.yml` runs `npm run lint` (`tsc --noEmit`) then `npm run test:unit` on every push/PR to main
 - **TypeScript strict mode** — entire project compiles cleanly with zero errors (`tsc --noEmit`)
 
@@ -292,6 +295,10 @@ cp .env.example .env
 | `AI_PROVIDER` | ❌ | `groq` | `groq`, `openai`, `openrouter`, `custom` |
 | `AI_MODEL` | ❌ | `llama-3.3-70b-versatile` | Strong model for synthesis & SEC extraction |
 | `AI_FAST_MODEL` | ❌ | `llama-3.1-8b-instant` | Fast model for classification & SEC flagging |
+| `AI_FALLBACK_PROVIDER` | ❌ | — | Secondary provider tried only if the primary fails after all retries (`openai`, `groq`, `openrouter`, `custom`) |
+| `AI_FALLBACK_API_KEY` | ❌ | — | API key for the fallback provider — set this to enable failover |
+| `AI_FALLBACK_MODEL` | ❌ | `gpt-4o-mini` | Strong model on the fallback provider |
+| `AI_FALLBACK_FAST_MODEL` | ❌ | `gpt-4o-mini` | Fast model on the fallback provider |
 | `SUPABASE_URL` | ❌ | — | Supabase project URL |
 | `SUPABASE_SERVICE_KEY` | ❌ | — | Supabase service role key |
 | `OPENAI_EMBEDDING_API_KEY` | ❌ | — | OpenAI key for `text-embedding-3-small` vectors (Phase VIII); can share `OPENAI_API_KEY` if using OpenAI provider |
@@ -318,7 +325,7 @@ cp .env.example .env
 npm run dev          # Run pipeline once (polling mode)
 npm run scheduler    # Run per-user delivery check
 npm run webhook      # Start webhook server (tsx, local dev)
-npm run test:unit    # Run 55 unit tests (offline, no credentials needed)
+npm run test:unit    # Run 59 unit tests (offline, no credentials needed)
 npm test             # Run all tests (integration tests need live credentials)
 
 # Backfill historical derived metrics (run once after first pipeline runs)
@@ -362,6 +369,7 @@ npm run db:pull      # Sync remote schema to local
 | `20260627000000_v63_articles_bear_case.sql` | `bear_case TEXT` column on `articles` |
 | `20260625100000_security_rls.sql` | Tighten RLS: service-role-only for `user_preferences`, `user_delivery_log`, `earnings_transcripts`; public read + service write for `sec_filings` |
 | `20260625200000_v80_articles_embedding.sql` | Enable `pgvector`; `embedding vector(1536)` column + IVFFlat index on `articles` |
+| `20260629000000_v9_rls_writes_service_role.sql` | Security fix: scope the 9 `"Allow service full access"` policies (`digest_runs`, `articles`, `sector_activity`, `stock_mentions`, `pipeline_health`, `capex_tracking`, `ai_usage`, `daily_metrics`, `stock_prices`) to `TO service_role` — they previously had no `TO` clause and defaulted to `PUBLIC`, letting the client-exposed anon key write/delete |
 
 ---
 
@@ -375,9 +383,13 @@ npm run db:pull      # Sync remote schema to local
 
 `.github/workflows/scheduled-delivery.yml` — runs **every 30 minutes**. Queries active users, finds those whose `preferred_time` matches now, generates once, fans out.
 
+### Data Retention
+
+`.github/workflows/data-retention.yml` — runs **weekly (Sunday 3 AM UTC)**, calling the `cleanup_old_data()` Supabase RPC (see `scripts/run-retention-cleanup.ts`) to prune `articles` (90d), `pipeline_health` (30d), `ai_usage` (90d), `user_delivery_log` (90d), and `capex_tracking` (365d). Supports manual `workflow_dispatch`.
+
 ### CI
 
-`.github/workflows/ci.yml` — runs on every push and PR to `main`. Executes `tsc --noEmit` (type gate) then unit tests (55 tests, no credentials needed, fast).
+`.github/workflows/ci.yml` — runs on every push and PR to `main`. Executes `tsc --noEmit` (type gate) then unit tests (59 tests, no credentials needed, fast).
 
 ### Required Secrets
 
@@ -418,7 +430,8 @@ ai-infra-digest/
 ├── .github/workflows/
 │   ├── ci.yml                                # Push/PR: lint + unit tests
 │   ├── daily-digest.yml                      # 8 AM MYT cron
-│   └── scheduled-delivery.yml               # Every 30 min, per-user fan-out
+│   ├── scheduled-delivery.yml               # Every 30 min, per-user fan-out
+│   └── data-retention.yml                    # Weekly: calls cleanup_old_data() RPC
 ├── Dockerfile                                # Webhook bot container
 ├── WEBHOOK_SETUP.md                          # Webhook deployment guide
 ├── website/
@@ -429,10 +442,11 @@ ai-infra-digest/
 │   ├── test-digest.ts                        # Manual pipeline test
 │   ├── test-email.ts                         # Standalone Gmail SMTP credential tester (verify auth before a full run)
 │   ├── backfill-derived-metrics.ts           # Backfill daily_derived_metrics from historical data
+│   ├── run-retention-cleanup.ts              # Calls cleanup_old_data() RPC — used by data-retention.yml
 │   └── migration-v3.sql                      # Reference: applied via Supabase CLI
 ├── supabase/
 │   ├── config.toml                           # Supabase CLI project config
-│   └── migrations/                           # v1–v6 numbered migration files
+│   └── migrations/                           # Numbered migration files
 ├── src/
 │   ├── index.ts                              # generateDigest, deliverDigest, applyUserFilter, persistDigestMetrics
 │   ├── scheduler.ts                          # Per-user cron runner (fan-out); isTimeMatch with ±2 min tolerance
@@ -571,6 +585,18 @@ Tom's Hardware, AnandTech, Ars Technica, TechCrunch, The Verge, Seeking Alpha, S
 - **v9.1 (channels)** — Slack + Gmail delivery — digest fans out to Telegram, Slack (Incoming Webhook, HTML→mrkdwn), and Gmail (nodemailer SMTP) in parallel; `Promise.allSettled` keeps Slack/email failures non-fatal; `scripts/test-email.ts` for fast credential verification without a full pipeline run
 - **v9.1 (grounding)** — Cross-source grounding — `attachGroundingNotes()` matches each article's `affectedStocks[]` against same-run SEC extracts, earnings analyses, and stock prices; emits a compact one-liner per article (e.g. `📊 NVDA: 8-K Jun-20 (score 9/10) | capex $500M`); zero extra Supabase calls; +4 unit tests
 - **v9.2** — Daily Deep-Dive — the single highest-scoring article per run gets a full `🔬 DAILY DEEP-DIVE` thesis block: bull case (🟢), bear case (🔴), and a one-sentence context note (📊) connecting the story to related financials; generated by extending the existing bear-case AI pass with two extra JSON fields — no additional API round-trip; total unit suite now **59 tests**
+- **v9.3** — Security + reliability audit fixes:
+  - **RLS hardening** — scoped 9 previously-`PUBLIC` write policies to `TO service_role` (the client-exposed anon key could otherwise write/delete `articles`, `digest_runs`, and 7 other tables)
+  - **Dashboard XSS fix** — escaped all DB-sourced fields before `innerHTML` insertion (untrusted RSS content flows through the AI pipeline into the dashboard)
+  - **Retry coverage** — embeddings, seed-embedding, and bear-case AI calls now use `withRetry` instead of silently degrading to zero output on a single 429
+  - **AI provider failover** — optional `AI_FALLBACK_*` secondary provider tried once after the primary exhausts retries
+  - **Budget pre-spend gate** — the 30-day cap now skips the run entirely instead of only alerting after the spend already happened
+  - **Bear-case index matching** — switched from exact-URL round-trip matching to 1-based index matching; long Google News redirect URLs weren't reliably echoed back by the model, silently dropping every bear case
+  - **Dead-feed detection** — feeds failing 3+ consecutive runs are now flagged distinctly from transient blips
+  - **SEC EDGAR 403 fix** — descriptive `User-Agent` header per their fair-use policy
+  - **Scheduled retention** — `.github/workflows/data-retention.yml` (weekly) actually invokes the `cleanup_old_data()` RPC that previously had no scheduler wired up
+  - **Webhook secret** — now required whenever `WEBHOOK_URL` is set, regardless of `NODE_ENV`
+  - Removed the stale duplicate `dashboard/` directory (`website/dashboard/` is canonical)
 
 ### Phase X · Next Steps 🔭 Exploring
 - Price threshold alerts — user-defined ticker price targets trigger instant Telegram notifications
