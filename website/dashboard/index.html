@@ -1180,7 +1180,7 @@
           supabaseQuery('capex_tracking', { order: 'date', limit: 10 }).catch(() => []),
           supabaseQuery('daily_metrics', { order: 'date', limit: 30, range: rangeDate }).catch(() => []),
           supabaseQuery('stock_prices', { order: 'date', limit: 500, range: rangeDate }).catch(() => []),
-          supabaseQuery('user_delivery_log', { order: 'delivered_at', limit: 100, range: rangeDate, rangeColumn: 'run_date' }).catch(() => []),
+          supabaseQuery('user_delivery_log', { order: 'created_at', limit: 100, range: rangeDate, rangeColumn: 'run_date' }).catch(() => []),
           supabaseQuery('sec_filings', { order: 'filing_date', limit: 50, range: rangeDate, rangeColumn: 'filing_date' }).catch(() => []),
         ]);
 
