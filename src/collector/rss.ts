@@ -47,6 +47,17 @@ function writeFeedCache(cache: Map<string, FeedCacheEntry>): void {
 }
 
 /**
+ * SEC EDGAR rejects generic User-Agent strings with HTTP 403 — their fair-use
+ * policy requires a descriptive UA with contact info. Use it for that feed,
+ * and the plain UA elsewhere since most other publishers don't care either way.
+ */
+const SEC_EDGAR_USER_AGENT = "AI-Infra-Digest/2.0 (RSS collection; contact: ai-infra@example.com)";
+
+function userAgentFor(url: string): string {
+  return url.includes("sec.gov") ? SEC_EDGAR_USER_AGENT : "AI-Infra-Digest/1.0";
+}
+
+/**
  * Create a custom fetch wrapper that sends cached ETag/Last-Modified headers
  * and reads 304 responses to return empty results early.
  */
@@ -63,7 +74,7 @@ async function conditionalFetch(
   const entry = cache.get(url);
 
   const headers: Record<string, string> = {
-    "User-Agent": "AI-Infra-Digest/1.0",
+    "User-Agent": userAgentFor(url),
   };
   if (entry?.etag) headers["If-None-Match"] = entry.etag;
   if (entry?.lastModified) headers["If-Modified-Since"] = entry.lastModified;
@@ -101,6 +112,18 @@ const parser = new Parser({
     "User-Agent": "AI-Infra-Digest/1.0",
   },
 });
+
+// SEC EDGAR needs a descriptive User-Agent (see SEC_EDGAR_USER_AGENT above) — separate parser instance.
+const secEdgarParser = new Parser({
+  timeout: 15000,
+  headers: {
+    "User-Agent": SEC_EDGAR_USER_AGENT,
+  },
+});
+
+function parserFor(url: string): Parser {
+  return url.includes("sec.gov") ? secEdgarParser : parser;
+}
 
 /**
  * Exponential backoff with full jitter for RSS fetch retries.
@@ -271,7 +294,12 @@ export interface FeedResult {
   articles: Article[];
   error?: string;
   response_time_ms?: number;
+  /** Consecutive failed runs for this feed (cleared on success). Used to distinguish a likely-dead feed from a transient blip. */
+  consecutiveFailures?: number;
 }
+
+/** After this many consecutive failed runs, a feed is reported as likely dead rather than "temporarily unreachable". */
+export const DEAD_FEED_THRESHOLD = 3;
 
 // ─── Fetch with status tracking ────────────────────────
 async function fetchFeedWithStatus(
@@ -300,7 +328,7 @@ async function fetchFeedWithStatus(
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const result = await parser.parseURL(feed.url);
+      const result = await parserFor(feed.url).parseURL(feed.url);
     const articles: Article[] = [];
 
     for (const item of result.items) {
@@ -354,7 +382,11 @@ async function fetchFeedWithStatus(
   cache.set(feed.url, entry);
   writeFeedCache(cache);
 
-  logger.warn(`Failed to fetch ${feed.name} after ${maxRetries + 1} attempts: ${lastError?.message}`);
+  if (entry.consecutiveFailures >= DEAD_FEED_THRESHOLD) {
+    logger.warn(`Feed "${feed.name}" has failed ${entry.consecutiveFailures} consecutive runs — likely dead (URL changed or feed discontinued), not transient: ${lastError?.message}`);
+  } else {
+    logger.warn(`Failed to fetch ${feed.name} after ${maxRetries + 1} attempts: ${lastError?.message}`);
+  }
   return {
     name: feed.name,
     url: feed.url,
@@ -363,6 +395,7 @@ async function fetchFeedWithStatus(
     articles: [],
     error: lastError?.message || "Unknown error",
     response_time_ms: Date.now() - startTime,
+    consecutiveFailures: entry.consecutiveFailures,
   };
 }
 

@@ -1,9 +1,20 @@
 import { config } from "../config";
 import { logger } from "../utils/logger";
+import { withRetry } from "../utils/retry";
 import type { ProcessedArticle } from "./ai";
 
 const EMBED_BATCH_SIZE = 20;
 const EMBED_URL = "https://api.openai.com/v1/embeddings";
+
+class HttpError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status === 429 || status >= 500;
+}
 
 export async function generateEmbeddings(
   articles: ProcessedArticle[]
@@ -20,24 +31,39 @@ export async function generateEmbeddings(
     const batch = articles.slice(i, i + EMBED_BATCH_SIZE);
     const inputs = batch.map((a) => `${a.title} ${a.summary}`.trim());
 
-    const resp = await fetch(EMBED_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${key}`,
-      },
-      body: JSON.stringify({ model: config.ai.embeddingModel, input: inputs }),
-    });
+    const batchNum = Math.floor(i / EMBED_BATCH_SIZE) + 1;
 
-    if (!resp.ok) {
-      logger.warn(`Embeddings batch ${Math.floor(i / EMBED_BATCH_SIZE) + 1} failed: HTTP ${resp.status}`);
+    try {
+      const data = await withRetry(
+        async () => {
+          const resp = await fetch(EMBED_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${key}`,
+            },
+            body: JSON.stringify({ model: config.ai.embeddingModel, input: inputs }),
+          });
+
+          if (!resp.ok) {
+            throw new HttpError(resp.status, `HTTP ${resp.status}`);
+          }
+
+          return (await resp.json()) as { data: { index: number; embedding: number[] }[] };
+        },
+        {
+          label: `embeddings batch ${batchNum}`,
+          shouldRetry: (err) => err instanceof HttpError && isRetryableStatus(err.status),
+        }
+      );
+
+      for (const item of data.data) {
+        if (!batch[item.index]) continue;
+        result.set(batch[item.index].url, item.embedding);
+      }
+    } catch (err) {
+      logger.warn(`Embeddings batch ${batchNum} failed: ${(err as Error).message}`);
       continue;
-    }
-
-    const data = (await resp.json()) as { data: { index: number; embedding: number[] }[] };
-    for (const item of data.data) {
-      if (!batch[item.index]) continue;
-      result.set(batch[item.index].url, item.embedding);
     }
   }
 

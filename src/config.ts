@@ -16,6 +16,13 @@ export interface Config {
     baseUrl?: string;
     embeddingApiKey: string;
     embeddingModel: string;
+    /** Optional secondary provider used when the primary fails after all retries. */
+    fallback?: {
+      apiKey: string;
+      model: string;
+      fastModel: string;
+      baseUrl?: string;
+    };
   };
   app: {
     timezone: string;
@@ -76,6 +83,14 @@ function loadConfig(): Config {
       baseUrl: baseUrls[provider] || process.env.AI_BASE_URL,
       embeddingApiKey: process.env.OPENAI_EMBEDDING_API_KEY || process.env.OPENAI_API_KEY || "",
       embeddingModel: "text-embedding-3-small",
+      fallback: process.env.AI_FALLBACK_API_KEY
+        ? {
+            apiKey: process.env.AI_FALLBACK_API_KEY,
+            model: process.env.AI_FALLBACK_MODEL || "gpt-4o-mini",
+            fastModel: process.env.AI_FALLBACK_FAST_MODEL || process.env.AI_FALLBACK_MODEL || "gpt-4o-mini",
+            baseUrl: process.env.AI_FALLBACK_BASE_URL || baseUrls[process.env.AI_FALLBACK_PROVIDER || "openai"],
+          }
+        : undefined,
     },
     app: {
       timezone: process.env.TZ || "Asia/Kuala_Lumpur",

@@ -1067,7 +1067,8 @@
     function sentimentArrow(i) { return i==='Bullish'?'▲':i==='Bearish'?'▼':'▬'; }
     function fmtPct(n) { return (n>=0?'+':'')+(n||0).toFixed(1)+'%'; }
     function trClass(n) { return n>0?'trend-up':n<0?'trend-down':'trend-flat'; }
-    function escapeHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+    function escapeHtml(s) { return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+    function safeHref(url) { return /^https?:\/\//i.test(url || '') ? escapeHtml(url) : '#'; }
 
     function chartGridColor() { return 'rgba(212,162,76,0.06)'; }
     function chartTextColor() { return 'rgba(240,237,232,0.35)'; }
@@ -1656,11 +1657,12 @@
         const isSec = a.is_sec_filing;
         const secBadge = isSec ? '<span style="font-size:11px" title="SEC Filing">\uD83C\uDFDB</span>' : '';
         const stocks = (a.affected_stocks || []).map(s =>
-          `<span style="font-family:'JetBrains Mono',monospace;font-size:10px;background:var(--bg-hover);padding:1px 5px;border-radius:2px;margin:0 1px">${s}</span>`
+          `<span style="font-family:'JetBrains Mono',monospace;font-size:10px;background:var(--bg-hover);padding:1px 5px;border-radius:2px;margin:0 1px">${escapeHtml(s)}</span>`
         ).join('') || '—';
-        const summary = (a.summary || '').replace(/\n/g, '<br>');
-        const reason = a.reason || '';
+        const summary = escapeHtml(a.summary || '').replace(/\n/g, '<br>');
+        const reason = escapeHtml(a.reason || '');
         const bearCase = a.bear_case || '';
+        const safeUrl = safeHref(a.url);
         const thumbs = (a.thumbs_up || a.thumbs_down)
           ? `<span style="font-size:10px;color:var(--text-muted);margin-left:8px">👍 ${a.thumbs_up||0} · 👎 ${a.thumbs_down||0}</span>`
           : '';
@@ -1668,12 +1670,12 @@
         const mainRow = `<tr id="article-row-${i}" style="cursor:pointer;transition:background 0.15s" onclick="toggleArticleExpand(${i})">` +
           `<td><span style="display:flex;align-items:center;gap:6px">` +
           `<span id="article-chevron-${i}" style="font-size:8px;color:var(--text-muted);transition:transform 0.2s;flex-shrink:0;user-select:none">&#9658;</span>` +
-          `${secBadge}<span style="color:var(--text)">${a.title}</span></span></td>` +
-          `<td><span style="display:inline-flex;align-items:center;gap:4px"><span style="width:6px;height:6px;border-radius:1px;background:${SECTOR_COLORS[a.category] || 'var(--text-dim)'};display:inline-block;flex-shrink:0"></span>${a.category || '—'}</span></td>` +
-          `<td class="${sentimentClass(a.impact)}">${sentimentArrow(a.impact)} ${a.impact || '—'}</td>` +
-          `<td><span style="font-weight:600;font-family:'JetBrains Mono',monospace">${a.impact_score || '—'}</span><span style="color:var(--text-muted)">/10</span></td>` +
+          `${secBadge}<span style="color:var(--text)">${escapeHtml(a.title)}</span></span></td>` +
+          `<td><span style="display:inline-flex;align-items:center;gap:4px"><span style="width:6px;height:6px;border-radius:1px;background:${SECTOR_COLORS[a.category] || 'var(--text-dim)'};display:inline-block;flex-shrink:0"></span>${escapeHtml(a.category || '—')}</span></td>` +
+          `<td class="${sentimentClass(a.impact)}">${sentimentArrow(a.impact)} ${escapeHtml(a.impact || '—')}</td>` +
+          `<td><span style="font-weight:600;font-family:'JetBrains Mono',monospace">${escapeHtml(a.impact_score || '—')}</span><span style="color:var(--text-muted)">/10</span></td>` +
           `<td>${stocks}</td>` +
-          `<td style="text-align:right"><a href="${a.url || '#'}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-size:10px;color:var(--gold)">&#128279;</a></td></tr>`;
+          `<td style="text-align:right"><a href="${safeUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-size:10px;color:var(--gold)">&#128279;</a></td></tr>`;
 
         const detailRow = `<tr id="article-detail-${i}" style="display:none">` +
           `<td colspan="6" style="padding:0">` +
@@ -1682,7 +1684,7 @@
           (reason ? `<div style="font-size:11px;color:var(--text-muted);font-style:italic;margin-bottom:8px">&#128161; ${reason}</div>` : '') +
           (bearCase ? `<div style="font-size:11px;color:#e0b257;font-style:italic;margin-bottom:10px;padding:6px 10px;background:rgba(224,178,87,0.06);border-left:2px solid rgba(224,178,87,0.4);border-radius:2px">⚠️ ${escapeHtml(bearCase)}</div>` : '') +
           `<div style="display:flex;align-items:center;gap:8px">` +
-          `<a href="${a.url || '#'}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-size:11px;color:var(--gold);text-decoration:none">Read full article &#8594;</a>` +
+          `<a href="${safeUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-size:11px;color:var(--gold);text-decoration:none">Read full article &#8594;</a>` +
           thumbs +
           `</div>` +
           `</div></td></tr>`;
@@ -1721,7 +1723,7 @@
           <span style="font-size:11px;display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:var(--danger);display:inline-block"></span>${failing} failing</span>
           <span style="font-size:11px;color:var(--text-dim)">${entries.length} total feeds</span>
         </div>
-        ${entries.slice(0, 40).map(f => `<div class="feed-row"><span class="feed-status ${f.status}"></span><span style="flex:1;font-weight:500">${f.feed_name}</span><span style="color:var(--text-muted);font-size:10px;font-family:'JetBrains Mono',monospace">${f.articles_fetched || 0}</span>${f.status === 'failed' ? `<span style="color:var(--danger);font-size:10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(f.error_message || '').slice(0, 50)}</span>` : ''}</div>`).join('')}
+        ${entries.slice(0, 40).map(f => `<div class="feed-row"><span class="feed-status ${f.status}"></span><span style="flex:1;font-weight:500">${escapeHtml(f.feed_name)}</span><span style="color:var(--text-muted);font-size:10px;font-family:'JetBrains Mono',monospace">${f.articles_fetched || 0}</span>${f.status === 'failed' ? `<span style="color:var(--danger);font-size:10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml((f.error_message || '').slice(0, 50))}</span>` : ''}</div>`).join('')}
       `;
     }
 
@@ -1766,7 +1768,7 @@
     function renderCapex(capex) {
       const tbody = document.getElementById('capexBody');
       if (!capex.length) { tbody.innerHTML = '<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--text-dim)">No capex tracked yet</td></tr>'; return; }
-      tbody.innerHTML = capex.map(c => `<tr><td><strong>${c.company}</strong></td><td><span style="font-family:'JetBrains Mono',monospace;font-weight:600">${c.amount || '—'}</span></td><td><span style="font-size:10px;background:var(--bg-hover);padding:1px 6px;border-radius:2px">${c.category || '—'}</span></td><td style="color:var(--text-dim);font-size:11px">${c.description || ''}</td></tr>`).join('');
+      tbody.innerHTML = capex.map(c => `<tr><td><strong>${escapeHtml(c.company)}</strong></td><td><span style="font-family:'JetBrains Mono',monospace;font-weight:600">${escapeHtml(c.amount || '—')}</span></td><td><span style="font-size:10px;background:var(--bg-hover);padding:1px 6px;border-radius:2px">${escapeHtml(c.category || '—')}</span></td><td style="color:var(--text-dim);font-size:11px">${escapeHtml(c.description || '')}</td></tr>`).join('');
     }
 
     function renderTrendingSection(metrics) {
@@ -1781,7 +1783,7 @@
       for (const item of items.slice(0, 8)) {
         const te = item.type === 'ticker' ? '📈' : item.type === 'sector' ? '📊' : '🏢';
         const se = item.dominantSentiment === 'positive' ? '🟢' : item.dominantSentiment === 'negative' ? '🔴' : '⚪';
-        html += `<div class="feed-row"><span>${te}</span><span style="flex:1;font-weight:600;font-size:12px">${item.entity}</span><span style="color:var(--text-muted);font-size:10px">${item.mentionCount} mentions</span><span style="color:var(--text-dim);font-size:10px;font-family:'JetBrains Mono',monospace">${item.avgScore}/10</span><span>${se}</span></div>`;
+        html += `<div class="feed-row"><span>${te}</span><span style="flex:1;font-weight:600;font-size:12px">${escapeHtml(item.entity)}</span><span style="color:var(--text-muted);font-size:10px">${item.mentionCount} mentions</span><span style="color:var(--text-dim);font-size:10px;font-family:'JetBrains Mono',monospace">${item.avgScore}/10</span><span>${se}</span></div>`;
       }
       el.innerHTML = html;
     }

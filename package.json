@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "test-digest": "tsx scripts/test-digest.ts",
+    "retention-cleanup": "tsx scripts/run-retention-cleanup.ts",
     "scheduler": "tsx src/scheduler.ts",
     "webhook": "tsx src/webhook.ts",
     "start:webhook": "node dist/webhook.js",

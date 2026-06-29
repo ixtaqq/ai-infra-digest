@@ -1,0 +1,32 @@
+name: Weekly Data Retention Cleanup
+
+on:
+  schedule:
+    # Sunday 3:00 AM UTC — prunes articles (90d), pipeline_health (30d),
+    # ai_usage (90d), user_delivery_log (90d), capex_tracking (365d)
+    - cron: "0 3 * * 0"
+  workflow_dispatch: # Allow manual trigger for testing
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run retention cleanup
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: npx tsx scripts/run-retention-cleanup.ts

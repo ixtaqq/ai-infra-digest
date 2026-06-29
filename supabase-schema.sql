@@ -299,13 +299,15 @@ CREATE POLICY "Allow public read access" ON stock_prices FOR SELECT USING (true)
 CREATE POLICY "Allow public read access" ON user_preferences FOR SELECT USING (true);
 
 -- Allow service_role full access (for pipeline writes)
-CREATE POLICY "Allow service full access" ON digest_runs FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow service full access" ON articles FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow service full access" ON sector_activity FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow service full access" ON stock_mentions FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow service full access" ON pipeline_health FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow service full access" ON capex_tracking FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow service full access" ON ai_usage FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow service full access" ON daily_metrics FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow service full access" ON stock_prices FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow service full access" ON user_preferences FOR ALL USING (true) WITH CHECK (true);
+-- NOTE: scoped TO service_role explicitly (see migration 20260629000000) — omitting
+-- the TO clause defaults to PUBLIC and lets the client-exposed anon key write/delete.
+CREATE POLICY "service_role_write" ON digest_runs FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_write" ON articles FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_write" ON sector_activity FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_write" ON stock_mentions FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_write" ON pipeline_health FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_write" ON capex_tracking FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_write" ON ai_usage FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_write" ON daily_metrics FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_write" ON stock_prices FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_full_access" ON user_preferences FOR ALL TO service_role USING (true) WITH CHECK (true);

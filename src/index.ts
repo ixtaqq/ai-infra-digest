@@ -1,6 +1,6 @@
 import { config } from "./config";
 import { logger } from "./utils/logger";
-import { collectArticles, skipFeed, resetSkippedFeeds } from "./collector/rss";
+import { collectArticles, skipFeed, resetSkippedFeeds, DEAD_FEED_THRESHOLD } from "./collector/rss";
 import { processArticles, NEWS_CATEGORIES, isSECFilingArticle } from "./processor/ai";
 import { formatDigestTelegram } from "./formatter/telegram";
 import {
@@ -78,6 +78,18 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
   const runDate = new Date().toISOString().split("T")[0];
 
   try {
+    // ─── Pre-spend budget gate: block the run if the 30-day cap is already hit ──
+    if (await isMonthlyBudgetExceeded()) {
+      logger.warn(`AI budget gate: 30-day spend cap ($${config.app.budgetMonthlyUsd.toFixed(2)}) already reached — skipping run for ${runDate}`);
+      await sendDigestMessage(
+        `⚠️ <b>AI Infra Digest — Run Skipped</b>\n\n` +
+          `The 30-day AI budget cap (<b>$${config.app.budgetMonthlyUsd.toFixed(2)}</b>) has already been reached, ` +
+          `so today's digest was not generated to avoid further spend.\n\n` +
+          `<i>Raise <code>AI_BUDGET_MONTHLY_USD</code> or wait for the rolling window to clear.</i>`
+      );
+      return null;
+    }
+
     // ─── Conditional RSS: skip consistently failing feeds ──
     const skipFeeds = new Set<string>();
     if (supabase.isConfigured()) {
@@ -119,12 +131,25 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
     const { articles, feedStatuses } = await collectArticles(skipFeeds);
 
     // ─── Emit feed metrics & check for errors ────
+    const deadFeeds: string[] = [];
     for (const f of feedStatuses) {
       emitFeedFetch(f.name, f.url, f.status, f.articlesFetched, f.response_time_ms || 0, false, 0, f.error);
       if (f.status === "failed" && f.error) {
-        emitError("rss", "warn", `Feed "${f.name}" failed: ${f.error}`, undefined,
-          "The feed may be temporarily unreachable — retry mechanism will handle it on next run");
+        const isLikelyDead = (f.consecutiveFailures || 0) >= DEAD_FEED_THRESHOLD;
+        if (isLikelyDead) deadFeeds.push(f.name);
+        emitError(
+          "rss",
+          "warn",
+          `Feed "${f.name}" failed: ${f.error}`,
+          undefined,
+          isLikelyDead
+            ? `Failed ${f.consecutiveFailures} consecutive runs — likely a dead/changed URL, not transient. Update or remove this feed from src/collector/rss.ts.`
+            : "The feed may be temporarily unreachable — retry mechanism will handle it on next run"
+        );
       }
+    }
+    if (deadFeeds.length > 0) {
+      logger.warn(`${deadFeeds.length} feed(s) appear permanently dead (${DEAD_FEED_THRESHOLD}+ consecutive failures): ${deadFeeds.join(", ")}`);
     }
 
     // ─── Health Alert: Check feed failure rate ────
@@ -837,6 +862,39 @@ export async function persistDigestMetrics(
   return articleIds;
 }
 
+/**
+ * Sum estimated_cost across daily_metrics for the trailing 30 days.
+ * Returns 0 (fail-open) if Supabase isn't configured or the query fails —
+ * a Supabase hiccup should never be able to silently block every future run.
+ */
+async function getRolling30DaySpend(): Promise<number> {
+  if (!supabase.isConfigured()) return 0;
+  try {
+    const cfg = getSupabaseConfig()!;
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+      .toISOString().split("T")[0];
+    const resp = await fetch(
+      `${cfg.url}/rest/v1/daily_metrics?date=gte.${thirtyDaysAgo}&select=estimated_cost`,
+      { headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` } }
+    );
+    if (!resp.ok) return 0;
+    const rows = (await resp.json()) as { estimated_cost: number }[];
+    return rows.reduce((s, r) => s + (r.estimated_cost || 0), 0);
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Pre-spend gate, checked before any AI call is made for the run.
+ * Unlike checkBudget() (post-spend, alert-only), this can actually prevent
+ * the run from incurring AI cost once the rolling 30-day cap is reached.
+ */
+async function isMonthlyBudgetExceeded(): Promise<boolean> {
+  const spend = await getRolling30DaySpend();
+  return spend >= config.app.budgetMonthlyUsd;
+}
+
 async function checkBudget(runDate: string, todayCost: number): Promise<void> {
   const { budgetDailyUsd, budgetMonthlyUsd } = config.app;
   const alerts: string[] = [];
@@ -850,31 +908,15 @@ async function checkBudget(runDate: string, todayCost: number): Promise<void> {
     );
   }
 
-  // Check rolling 30-day spend from daily_metrics
-  if (supabase.isConfigured()) {
-    try {
-      const cfg = getSupabaseConfig()!;
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-        .toISOString().split("T")[0];
-      const resp = await fetch(
-        `${cfg.url}/rest/v1/daily_metrics?date=gte.${thirtyDaysAgo}&select=estimated_cost`,
-        { headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` } }
-      );
-      if (resp.ok) {
-        const rows = (await resp.json()) as { estimated_cost: number }[];
-        const monthlyTotal = rows.reduce((s, r) => s + (r.estimated_cost || 0), 0) + todayCost;
-        if (monthlyTotal >= budgetMonthlyUsd) {
-          alerts.push(
-            `⚠️ <b>AI Cost Alert — Monthly budget hit</b>\n` +
-              `30-day spend: <b>$${monthlyTotal.toFixed(4)}</b>\n` +
-              `Monthly cap: $${budgetMonthlyUsd.toFixed(2)}\n\n` +
-              `<i>Adjust <code>AI_BUDGET_MONTHLY_USD</code> or review token usage.</i>`
-          );
-        }
-      }
-    } catch {
-      // Budget check is best-effort; don't block the pipeline
-    }
+  // Check rolling 30-day spend from daily_metrics (includes today's just-recorded cost)
+  const monthlyTotal = (await getRolling30DaySpend()) + todayCost;
+  if (monthlyTotal >= budgetMonthlyUsd) {
+    alerts.push(
+      `⚠️ <b>AI Cost Alert — Monthly budget hit</b>\n` +
+        `30-day spend: <b>$${monthlyTotal.toFixed(4)}</b>\n` +
+        `Monthly cap: $${budgetMonthlyUsd.toFixed(2)}\n\n` +
+        `<i>Adjust <code>AI_BUDGET_MONTHLY_USD</code> or review token usage. Next run will be skipped until spend drops below the cap.</i>`
+    );
   }
 
   for (const alert of alerts) {

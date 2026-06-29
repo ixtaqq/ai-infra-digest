@@ -14,10 +14,21 @@
 
 import { config } from "../config";
 import { logger } from "../utils/logger";
+import { withRetry } from "../utils/retry";
 import type { ProcessedArticle } from "./ai";
 
 const BEAR_CASE_THRESHOLD = 7;
 const MAX_ARTICLES = 6; // bound token cost to ~800 tokens per run
+
+class HttpError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status === 429 || status >= 500;
+}
 
 interface BearCaseRow {
   url: string;
@@ -102,32 +113,40 @@ export async function generateBearCases(
   const prompt = buildPrompt(qualifying, deepDiveUrl);
 
   try {
-    const res = await fetch(`${url}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${key}`,
+    const data = await withRetry(
+      async () => {
+        const res = await fetch(`${url}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${key}`,
+          },
+          body: JSON.stringify({
+            model: config.ai.model,
+            messages: [
+              { role: "system", content: "You are an equity research AI. Always respond with valid JSON only." },
+              { role: "user", content: prompt },
+            ],
+            temperature: 0.4,
+            max_tokens: 1500,
+          }),
+          signal: AbortSignal.timeout(60_000),
+        });
+
+        if (!res.ok) {
+          throw new HttpError(res.status, `AI HTTP ${res.status}`);
+        }
+
+        return (await res.json()) as {
+          choices?: Array<{ message?: { content?: string } }>;
+        };
       },
-      body: JSON.stringify({
-        model: config.ai.model,
-        messages: [
-          { role: "system", content: "You are an equity research AI. Always respond with valid JSON only." },
-          { role: "user", content: prompt },
-        ],
-        temperature: 0.4,
-        max_tokens: 1500,
-      }),
-      signal: AbortSignal.timeout(60_000),
-    });
+      {
+        label: "bear-cases AI call",
+        shouldRetry: (err) => err instanceof HttpError && isRetryableStatus(err.status),
+      }
+    );
 
-    if (!res.ok) {
-      logger.warn(`bear-cases: AI HTTP ${res.status}`);
-      return { bearCases: new Map() };
-    }
-
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
     const content = data.choices?.[0]?.message?.content ?? "";
     const rows = parseResponse(content);
 

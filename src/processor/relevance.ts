@@ -4,9 +4,20 @@ import crypto from "crypto";
 import { config } from "../config";
 import { logger } from "../utils/logger";
 import { cosineSimilarity } from "../utils/dedup";
+import { withRetry } from "../utils/retry";
 
 const EMBED_URL = "https://api.openai.com/v1/embeddings";
 const GATE_THRESHOLD = 0.55;
+
+class HttpError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status === 429 || status >= 500;
+}
 
 // 20 canonical AI infrastructure topic sentences
 export const RELEVANCE_SEEDS = [
@@ -74,28 +85,41 @@ export async function embedSeeds(): Promise<number[][]> {
     return cached.embeddings;
   }
 
-  const resp = await fetch(EMBED_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${key}`,
-    },
-    body: JSON.stringify({ model: config.ai.embeddingModel, input: RELEVANCE_SEEDS }),
-  });
+  try {
+    const data = await withRetry(
+      async () => {
+        const resp = await fetch(EMBED_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${key}`,
+          },
+          body: JSON.stringify({ model: config.ai.embeddingModel, input: RELEVANCE_SEEDS }),
+        });
 
-  if (!resp.ok) {
-    logger.warn(`Seed embedding failed: HTTP ${resp.status}`);
+        if (!resp.ok) {
+          throw new HttpError(resp.status, `HTTP ${resp.status}`);
+        }
+
+        return (await resp.json()) as { data: { index: number; embedding: number[] }[] };
+      },
+      {
+        label: "seed embeddings",
+        shouldRetry: (err) => err instanceof HttpError && isRetryableStatus(err.status),
+      }
+    );
+
+    const result: number[][] = new Array(RELEVANCE_SEEDS.length);
+    for (const item of data.data) {
+      result[item.index] = item.embedding;
+    }
+
+    saveSeedCache(result);
+    return result;
+  } catch (err) {
+    logger.warn(`Seed embedding failed: ${(err as Error).message}`);
     return [];
   }
-
-  const data = (await resp.json()) as { data: { index: number; embedding: number[] }[] };
-  const result: number[][] = new Array(RELEVANCE_SEEDS.length);
-  for (const item of data.data) {
-    result[item.index] = item.embedding;
-  }
-
-  saveSeedCache(result);
-  return result;
 }
 
 export function passesSemanticGate(

@@ -116,6 +116,18 @@ function createClient(): OpenAI {
   });
 }
 
+function createFallbackClient(): OpenAI | null {
+  const fb = config.ai.fallback;
+  if (!fb) return null;
+  return new OpenAI({
+    apiKey: fb.apiKey,
+    baseURL: fb.baseUrl,
+    timeout: 180000,
+    maxRetries: 2,
+    fetch: globalThis.fetch,
+  });
+}
+
 // ─── Build Category Map ──────────────────────────────
 function buildCategoriesMap(articles: ProcessedArticle[]): Record<string, ProcessedArticle[]> {
   const map: Record<string, ProcessedArticle[]> = {};
@@ -250,51 +262,76 @@ async function backoff(attempt: number, baseDelayMs = 2000): Promise<void> {
 }
 
 // ─── Call AI with Retry ──────────────────────────────
+async function callAIOnce(
+  client: OpenAI,
+  prompt: string,
+  model: string,
+  useJsonMode: boolean
+): Promise<CallAIResult> {
+  const response = await client.chat.completions.create({
+    model,
+    messages: [
+      {
+        role: "system",
+        content: "You are an equity research AI. Always respond with valid JSON only.",
+      },
+      { role: "user", content: prompt },
+    ],
+    temperature: 0.3,
+    max_tokens: 2048,
+    ...(useJsonMode ? { response_format: { type: "json_object" as const } } : {}),
+  });
+
+  const content = response.choices[0]?.message?.content;
+  if (!content) throw new Error("Empty AI response");
+
+  const usage = response.usage;
+  return {
+    content,
+    usage: {
+      totalTokens: usage?.total_tokens ?? 0,
+      promptTokens: usage?.prompt_tokens ?? 0,
+      completionTokens: usage?.completion_tokens ?? 0,
+    },
+  };
+}
+
 /**
  * Call the AI model with retry logic.
  * Uses the cheap fast model for classification and the expensive strong model for synthesis.
+ * If the primary provider exhausts all retries and a fallback provider is configured
+ * (AI_FALLBACK_API_KEY), one attempt is made against the fallback before giving up —
+ * this prevents a single provider outage from aborting the entire day's digest.
  */
 async function callAI(client: OpenAI, prompt: string, model?: string): Promise<CallAIResult> {
   const activeModel = model || config.ai.model;
+  const useJsonMode = config.ai.provider !== "custom";
   let lastError: Error | null = null;
   const maxRetries = 3;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const response = await client.chat.completions.create({
-        model: activeModel,
-        messages: [
-          {
-            role: "system",
-            content: "You are an equity research AI. Always respond with valid JSON only.",
-          },
-          { role: "user", content: prompt },
-        ],
-        temperature: 0.3,
-        max_tokens: 2048,
-        ...(config.ai.provider !== "custom"
-          ? { response_format: { type: "json_object" as const } }
-          : {}),
-      });
-
-      const content = response.choices[0]?.message?.content;
-      if (!content) throw new Error("Empty AI response");
-
-      const usage = response.usage;
-      return {
-        content,
-        usage: {
-          totalTokens: usage?.total_tokens ?? 0,
-          promptTokens: usage?.prompt_tokens ?? 0,
-          completionTokens: usage?.completion_tokens ?? 0,
-        },
-      };
+      return await callAIOnce(client, prompt, activeModel, useJsonMode);
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
       if (attempt < maxRetries) {
         logger.warn(`AI call attempt ${attempt + 1}/${maxRetries + 1} failed: ${lastError.message}. Retrying...`);
         await backoff(attempt);
       }
+    }
+  }
+
+  const fallbackClient = createFallbackClient();
+  if (fallbackClient && config.ai.fallback) {
+    logger.warn(`Primary AI provider exhausted all retries (${lastError?.message}) — trying fallback provider...`);
+    try {
+      const isFast = activeModel === config.ai.fastModel;
+      const fallbackModel = isFast ? config.ai.fallback.fastModel : config.ai.fallback.model;
+      const result = await callAIOnce(fallbackClient, prompt, fallbackModel, true);
+      logger.info(`Fallback AI provider succeeded with model ${fallbackModel}`);
+      return result;
+    } catch (fallbackError) {
+      logger.error(`Fallback AI provider also failed: ${(fallbackError as Error).message}`);
     }
   }
 
