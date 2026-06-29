@@ -712,7 +712,7 @@
       <div id="content" style="display:none">
 
         <!-- Greeting -->
-        <div class="greeting-section">
+        <div class="greeting-section" id="section-overview">
           <div class="date-row" id="dateRow"></div>
           <h2>Good morning, <span class="gold">Analyst</span>.</h2>
         </div>
@@ -751,7 +751,7 @@
         </div>
 
         <!-- Charts Grid -->
-        <div class="charts-grid">
+        <div class="charts-grid" id="section-stocks">
           <div class="chart-card"><h3>📈 Top Stock Movers</h3><canvas id="stockChart"></canvas></div>
           <div class="chart-card" id="stockPriceCard">
             <h3>💹 Stock Price History <span class="badge" id="tickerBadge" style="font-size:9px;background:var(--bg-hover);padding:2px 6px;border-radius:2px;color:var(--text-muted);font-weight:500;letter-spacing:0;text-transform:none">top 5</span></h3>
@@ -776,13 +776,13 @@
         </div>
 
         <!-- Pipeline Health -->
-        <div class="table-card"><h3>🔌 Pipeline Health</h3><div id="pipelineHealth"></div></div>
+        <div class="table-card" id="section-pipeline"><h3>🔌 Pipeline Health</h3><div id="pipelineHealth"></div></div>
 
         <!-- Trending -->
         <div class="table-card"><h3>🔥 Trending Now</h3><div id="trendingSection"></div></div>
 
         <!-- Feedback -->
-        <div class="table-card"><h3>💬 User Feedback</h3><div id="feedbackSection"></div></div>
+        <div class="table-card" id="section-feedback"><h3>💬 User Feedback</h3><div id="feedbackSection"></div></div>
 
         <!-- SEC Filings -->
         <div class="table-card" id="secSectionCard"><h3>📜 SEC Filings</h3><div id="secSection"></div></div>
@@ -791,7 +791,7 @@
         <div class="table-card"><h3>💰 Capex Announcements</h3><table><thead><tr><th>Company</th><th>Amount</th><th>Category</th><th>Description</th></tr></thead><tbody id="capexBody"></tbody></table></div>
 
         <!-- Articles -->
-        <div class="table-card">
+        <div class="table-card" id="section-articles">
           <h3>📰 Latest Articles</h3>
           <div class="filter-bar" style="margin-bottom:8px">
             <span class="filter-label">Search</span>
@@ -961,9 +961,19 @@
       try { localStorage.setItem('savedFilters', JSON.stringify(activeFilters)); } catch {}
     }
 
+    const SECTION_ANCHORS = {
+      overview: 'section-overview',
+      pipeline: 'section-pipeline',
+      stocks: 'section-stocks',
+      sec: 'secSectionCard',
+      articles: 'section-articles',
+      feedback: 'section-feedback',
+    };
     function switchSection(id, el) {
       document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
       if (el) el.classList.add('active');
+      const target = document.getElementById(SECTION_ANCHORS[id]);
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     const TICKER_COLORS = [
