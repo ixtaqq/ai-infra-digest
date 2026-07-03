@@ -13,7 +13,7 @@
     "scheduler": "tsx src/scheduler.ts",
     "webhook": "tsx src/webhook.ts",
     "start:webhook": "node dist/webhook.js",
-    "lint": "tsc --noEmit",
+    "lint": "tsc --noEmit && tsc -p tsconfig.scripts.json",
     "test": "vitest run",
     "test:unit": "vitest run --exclude '**/*.integration.test.ts'",
     "test:watch": "vitest",

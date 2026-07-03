@@ -21,4 +21,8 @@ ENV NODE_ENV=production
 # Hosts inject PORT; the webhook server reads process.env.PORT (default 3000).
 EXPOSE 3000
 
+# Run as the unprivileged user that ships with the node base image —
+# a webhook server has no reason to hold root inside the container.
+USER node
+
 CMD ["node", "dist/webhook.js"]

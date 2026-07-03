@@ -26,7 +26,7 @@ async function main() {
     });
 
     if (response.ok) {
-      const data = await response.json();
+      const data = (await response.json()) as unknown[];
       console.log("✅ Connection OK! Table `digest_runs` exists.");
       console.log(`   Records: ${data.length}`);
       console.log("\n🚀 Dashboard is ready. Run the digest to populate data:");
