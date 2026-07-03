@@ -89,6 +89,7 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 | `/trends NVDA 30d` | Sparkline + WoW delta for any ticker (default: NVDA, 30 days) |
 | `/trends sector Datacenters 30d` | Sparkline + WoW delta for a sector |
 | `/sec NVDA` | Latest SEC filing highlights for a ticker |
+| `/thesis NVDA` | Weekly bull/bear thesis snapshot for a ticker (no arg: top 5 by confidence) |
 | `/feedback 5` | Rate today's digest (1–5) with optional comment |
 | `/settings` | View your user preferences |
 | `/watchlist NVDA,AMD,AVGO` | Set your ticker watchlist |
@@ -175,7 +176,7 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 - **Structured error events** — AI 429, Yahoo Finance failures, Supabase errors all emit `ErrorEvent` with recovery suggestions
 
 ### 🧪 Testing & CI
-- **91 tests** with **Vitest**:
+- **116 tests** with **Vitest**:
   - Deduplication + cosine similarity: 9 unit tests (`cosineSimilarity` — identical, orthogonal, mismatched length, zero vectors; `deduplicateArticles` — 5 cases)
   - Keyword matching: 13 unit tests
   - Stock price fetching: 3 unit tests
@@ -190,7 +191,7 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
   - Supabase integration: 15 tests (requires live credentials)
   - Telegram integration: 9 tests (requires live credentials)
   - Stocks integration: 8 tests (requires live credentials)
-- **59 unit tests** run offline; integration tests require live credentials — use `npm run test:unit` for offline CI
+- **84 unit tests** run offline; integration tests require live credentials — use `npm run test:unit` for offline CI
 - **CI workflow** — `.github/workflows/ci.yml` runs `npm run lint` (`tsc --noEmit`) then `npm run test:unit` on every push/PR to main
 - **TypeScript strict mode** — entire project compiles cleanly with zero errors (`tsc --noEmit`)
 
@@ -325,7 +326,7 @@ cp .env.example .env
 npm run dev          # Run pipeline once (polling mode)
 npm run scheduler    # Run per-user delivery check
 npm run webhook      # Start webhook server (tsx, local dev)
-npm run test:unit    # Run 59 unit tests (offline, no credentials needed)
+npm run test:unit    # Run 84 unit tests (offline, no credentials needed)
 npm test             # Run all tests (integration tests need live credentials)
 
 # Backfill historical derived metrics (run once after first pipeline runs)
@@ -370,6 +371,7 @@ npm run db:pull      # Sync remote schema to local
 | `20260625100000_security_rls.sql` | Tighten RLS: service-role-only for `user_preferences`, `user_delivery_log`, `earnings_transcripts`; public read + service write for `sec_filings` |
 | `20260625200000_v80_articles_embedding.sql` | Enable `pgvector`; `embedding vector(1536)` column + IVFFlat index on `articles` |
 | `20260629000000_v9_rls_writes_service_role.sql` | Security fix: scope the 9 `"Allow service full access"` policies (`digest_runs`, `articles`, `sector_activity`, `stock_mentions`, `pipeline_health`, `capex_tracking`, `ai_usage`, `daily_metrics`, `stock_prices`) to `TO service_role` — they previously had no `TO` clause and defaulted to `PUBLIC`, letting the client-exposed anon key write/delete |
+| `20260703000000_v10_ticker_theses.sql` | `ticker_theses` table (bull/bear thesis snapshots, `UNIQUE(ticker)`) + RLS (public read, service write) |
 
 ---
 
@@ -387,9 +389,13 @@ npm run db:pull      # Sync remote schema to local
 
 `.github/workflows/data-retention.yml` — runs **weekly (Sunday 3 AM UTC)**, calling the `cleanup_old_data()` Supabase RPC (see `scripts/run-retention-cleanup.ts`) to prune `articles` (90d), `pipeline_health` (30d), `ai_usage` (90d), `user_delivery_log` (90d), and `capex_tracking` (365d). Supports manual `workflow_dispatch`.
 
+### Weekly Thesis Snapshots
+
+`.github/workflows/weekly-thesis.yml` — runs **weekly (Sunday 4 AM UTC)**, generating bull/bear thesis snapshots for the top-10 most-mentioned tickers from 30 days of `daily_derived_metrics` + `sec_filings` data (one batched strong-model call, ~$0.01/week); upserts into `ticker_theses`. Query via `/thesis NVDA` or the dashboard's Thesis Snapshots card. Supports manual `workflow_dispatch`.
+
 ### CI
 
-`.github/workflows/ci.yml` — runs on every push and PR to `main`. Executes `tsc --noEmit` (type gate) then unit tests (59 tests, no credentials needed, fast).
+`.github/workflows/ci.yml` — runs on every push and PR to `main`. Executes `tsc --noEmit` (type gate) then unit tests (84 tests, no credentials needed, fast).
 
 ### Required Secrets
 
@@ -598,9 +604,15 @@ Tom's Hardware, AnandTech, Ars Technica, TechCrunch, The Verge, Seeking Alpha, S
   - **Webhook secret** — now required whenever `WEBHOOK_URL` is set, regardless of `NODE_ENV`
   - Removed the stale duplicate `dashboard/` directory (`website/dashboard/` is canonical)
 
-### Phase X · Next Steps 🔭 Exploring
+### Phase X · Hardening + Thesis Layer ✅ Shipped
+- **v10.0 (code health)** — retry helpers deduplicated into `utils/retry.ts`; generic `supabase.queryRows<T>()` replaces 7 hand-rolled fetch call sites; PostgREST params URL-encoded; `resetSkippedFeeds()` per run; LLM article rows validated/normalized at the trust boundary; all 10 dead RSS feeds repaired (68/68 healthy, was 57/68)
+- **v10.0 (tests)** — 59 → 84 unit tests: bear-cases parsing/index-matching, Slack mrkdwn + chunking, email template, budget gate; new tests immediately caught + fixed a bug where Slack digests had every link silently stripped
+- **v10.0 (perf)** — AI batches run with concurrency 2 (was sequential); `.ai-cache/` prunes expired entries; embeddings abort with an operator-facing quota warning on persistent 429
+- **v10.0 (supply chain)** — GitHub Actions pinned to commit SHAs; container runs as non-root `node` user; `scripts/` now type-checked in CI
+- **v10.1** — 🧭 Bull/Bear Thesis Snapshots — weekly batched AI pass over 30d of `daily_derived_metrics` + latest SEC filings for the top-10 tickers; `ticker_theses` table; `/thesis NVDA` command; dashboard Thesis Snapshots card; `.github/workflows/weekly-thesis.yml` (Sunday 4 AM UTC)
+
+### Phase XI · Next Steps 🔭 Exploring
 - Price threshold alerts — user-defined ticker price targets trigger instant Telegram notifications
-- Bull/bear thesis snapshots — per-ticker AI narrative updated weekly from accumulated mention + price + validation data
 - Source reputation leaderboard — public dashboard view ranking sources by approval rate and hallucination flags
 - Related prior coverage — surface top-3 semantically similar articles from the past 7 days inline in the digest
 

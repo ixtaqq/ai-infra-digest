@@ -371,6 +371,19 @@ export const supabase = {
     return success;
   },
 
+  /** Upsert weekly bull/bear thesis snapshots (v10), keyed by ticker. */
+  async upsertTickerTheses(
+    theses: { ticker: string; bull_case: string; bear_case: string; confidence: number; key_drivers: string[] }[]
+  ): Promise<boolean> {
+    if (!theses.length) return true;
+    return supabaseFetch(
+      "POST",
+      "ticker_theses",
+      theses.map((t) => ({ ...t, updated_at: new Date().toISOString() })),
+      "on_conflict=ticker"
+    );
+  },
+
   // ─── User Management ────────────────────────────────
 
   async upsertUserPreferences(

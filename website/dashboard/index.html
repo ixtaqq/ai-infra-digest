@@ -787,6 +787,9 @@
         <!-- SEC Filings -->
         <div class="table-card" id="secSectionCard"><h3>📜 SEC Filings</h3><div id="secSection"></div></div>
 
+        <!-- Thesis Snapshots (v10) -->
+        <div class="table-card" id="thesesCard"><h3>🧭 Bull/Bear Thesis Snapshots <span class="badge" style="font-size:9px;background:var(--bg-hover);padding:2px 6px;border-radius:2px;color:var(--text-muted);font-weight:500;letter-spacing:0;text-transform:none">weekly</span></h3><div id="thesesSection"></div></div>
+
         <!-- Capex -->
         <div class="table-card"><h3>💰 Capex Announcements</h3><table><thead><tr><th>Company</th><th>Amount</th><th>Category</th><th>Description</th></tr></thead><tbody id="capexBody"></tbody></table></div>
 
@@ -1171,7 +1174,7 @@
       }, 8000);
 
       try {
-        const [digests, sectors, stocks, articles, feeds, capex, metrics, prices, deliveries, secFilings] = await Promise.all([
+        const [digests, sectors, stocks, articles, feeds, capex, metrics, prices, deliveries, secFilings, theses] = await Promise.all([
           supabaseQuery('digest_runs', { order: 'run_date', limit: 60, rangeColumn: 'run_date', range: rangeDate }).catch(() => []),
           supabaseQuery('sector_activity', { select: 'date,sector,article_count,avg_impact_score', order: 'date', range: rangeDate }).catch(() => []),
           supabaseQuery('stock_mentions', { order: 'mention_count', limit: 10, range: rangeDate }).catch(() => []),
@@ -1182,6 +1185,7 @@
           supabaseQuery('stock_prices', { order: 'date', limit: 500, range: rangeDate }).catch(() => []),
           supabaseQuery('user_delivery_log', { order: 'created_at', limit: 100, range: rangeDate, rangeColumn: 'run_date' }).catch(() => []),
           supabaseQuery('sec_filings', { order: 'filing_date', limit: 50, range: rangeDate, rangeColumn: 'filing_date' }).catch(() => []),
+          supabaseQuery('ticker_theses', { order: 'confidence', limit: 10 }).catch(() => []),
         ]);
 
         clearTimeout(slowTimer);
@@ -1224,6 +1228,7 @@
         renderDeliverySection(deliveries);
         renderSECSection(secFilings);
         renderCapex(capex);
+        renderThesesSection(theses);
 
         const btn = document.getElementById('loadMoreBtn');
         const info = document.getElementById('paginationInfo');
@@ -1773,6 +1778,28 @@
       html += `</tbody></table>`;
       if (filings.length > 20) html += `<div style="margin-top:8px;font-size:10px;color:var(--text-muted)">Showing 20 of ${filings.length} filings</div>`;
       el.innerHTML = html;
+    }
+
+    function renderThesesSection(theses) {
+      const el = document.getElementById('thesesSection');
+      if (!theses.length) { el.innerHTML = '<p style="color:var(--text-dim);padding:10px 0;font-size:12px">No thesis snapshots yet — they generate weekly (Sundays) for the top-10 most-mentioned tickers</p>'; return; }
+      el.innerHTML = theses.map(t => {
+        const confColor = t.confidence >= 7 ? 'var(--bullish)' : t.confidence >= 4 ? 'var(--warn)' : 'var(--text-muted)';
+        const drivers = (t.key_drivers || []).map(d =>
+          `<span style="font-size:10px;background:var(--bg-hover);padding:1px 6px;border-radius:2px;margin-right:4px">${escapeHtml(d)}</span>`
+        ).join('');
+        const updated = (t.updated_at || '').split('T')[0];
+        return `<div style="padding:10px 0;border-bottom:1px solid var(--border-light)">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <strong style="font-family:'JetBrains Mono',monospace">${escapeHtml(t.ticker)}</strong>
+            <span style="color:${confColor};font-size:11px;font-weight:600">confidence ${t.confidence}/10</span>
+            <span style="color:var(--text-muted);font-size:10px;margin-left:auto">${escapeHtml(updated)}</span>
+          </div>
+          <div style="font-size:12px;color:var(--text-dim);line-height:1.5;margin-bottom:4px">🟢 ${escapeHtml(t.bull_case)}</div>
+          <div style="font-size:12px;color:var(--text-dim);line-height:1.5;margin-bottom:6px">🔴 ${escapeHtml(t.bear_case)}</div>
+          ${drivers ? `<div>${drivers}</div>` : ''}
+        </div>`;
+      }).join('');
     }
 
     function renderCapex(capex) {

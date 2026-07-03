@@ -1453,6 +1453,51 @@ export function registerDigestCommands(): void {
     }
   });
 
+  // ─── /thesis command — weekly bull/bear thesis snapshot (v10) ──
+  registerCommand("thesis", async (ctx) => {
+    if (!supabase.isConfigured()) {
+      return "Supabase not configured. Thesis snapshots require a database.";
+    }
+
+    const parts = ctx.text.split(/\s+/).slice(1);
+    const ticker = parts[0]?.toUpperCase();
+
+    try {
+      const params = ticker
+        ? `ticker=eq.${encodeURIComponent(ticker)}&select=*`
+        : "select=*&order=confidence.desc&limit=5";
+      const theses = await supabase.queryRows<{
+        ticker: string;
+        bull_case: string;
+        bear_case: string;
+        confidence: number;
+        key_drivers: string[] | null;
+        updated_at: string;
+      }>("ticker_theses", params);
+
+      if (!theses.length) {
+        return ticker
+          ? `No thesis snapshot for <b>${escapeHtml(ticker)}</b> yet. Snapshots refresh weekly for the top-10 most-mentioned tickers.`
+          : "No thesis snapshots yet. They generate weekly (Sundays) once the pipeline has ≥1 week of history.";
+      }
+
+      const lines: string[] = [ticker ? `🧭 <b>Thesis — ${escapeHtml(ticker)}</b>` : "🧭 <b>Top Thesis Snapshots</b>", ""];
+      for (const t of theses) {
+        const updated = t.updated_at?.split("T")[0] || "";
+        if (!ticker) lines.push(`<b>${escapeHtml(t.ticker)}</b> — confidence ${t.confidence}/10`);
+        else lines.push(`Confidence: <b>${t.confidence}/10</b> · updated ${updated}`);
+        lines.push(`🟢 <i>${escapeHtml(t.bull_case)}</i>`);
+        lines.push(`🔴 <i>${escapeHtml(t.bear_case)}</i>`);
+        if (t.key_drivers?.length) lines.push(`🔑 ${t.key_drivers.map((d) => escapeHtml(d)).join(" · ")}`);
+        lines.push("");
+      }
+      lines.push("<i>Refreshed weekly from 30d of pipeline data · Not financial advice</i>");
+      return { text: lines.join("\n") };
+    } catch {
+      return "Could not fetch thesis snapshots.";
+    }
+  });
+
   // ─── /feedback command ──
   registerCommand("feedback", async (ctx) => {
     const parts = ctx.text.split(/\s+/).slice(1);

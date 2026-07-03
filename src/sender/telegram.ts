@@ -100,6 +100,7 @@ function initCommands() {
       `• /sources — Show all 57 tracked RSS feeds\n` +
       `• /last — Show the most recent digest summary\n` +
       `• /trending — See what's trending in AI infra\n` +
+      `• /thesis <code>NVDA</code> — Weekly bull/bear thesis snapshot for a ticker\n` +
       `• /feedback N — Rate today's digest (1-5)\n` +
       `• /settings — View your user preferences\n` +
       `• /watchlist <code>NVDA,AMD,AVGO</code> — Set your ticker watchlist\n` +
