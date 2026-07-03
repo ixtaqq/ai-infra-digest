@@ -29,6 +29,8 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 - **AI response caching** — SHA-256 hash of article URLs as cache key; 23-hour TTL prevents redundant AI spend on same article set during dev re-runs
 - **Cross-source grounding (v9.1)** — each article is annotated with a one-line note linking it to same-run SEC filings, earnings guidance, or stock moves for matching tickers; zero extra DB calls
 - **Daily Deep-Dive (v9.2)** — the highest-scoring article gets a full bull/bear/context thesis (🟢/🔴/📊) appended to the bear-case AI pass; one prompt extension, no extra AI round-trip
+- **Prompt-injection guardrails (v10.2)** — untrusted RSS content is passed to the AI as fenced, escaped JSON (not interpolated prose), with an explicit system instruction to treat article fields as data only, never as instructions — a hostile feed can't steer the model's output
+- **Zod-validated AI responses (v10.2)** — every AI JSON response (classification, synthesis, SEC extraction, bear cases, thesis, earnings) is parsed through a zod schema that coerces type-confused fields (e.g. a numeric field returned as a string) instead of letting them crash downstream `.toFixed()` calls or silently corrupt state
 
 ### 🏛️ SEC Filing Intelligence
 - **EDGAR watcher** — monitors 8-K, 10-K, 10-Q filings for 35 tracked companies
@@ -105,15 +107,15 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
   - `watchlist` — floats watchlist-ticker articles and stocks to the top; adds a `🎯 Filtered for you` note in the header
   - `digest_length` — `brief` trims summaries to one line; `standard` (default) sends full bullets; `detailed` includes analyst rationale
 - **Custom delivery times** — each user sets `preferred_time` via `/start` onboarding or `/settings`
-- **Timezone-aware** — delivery triggers at the user's local time
-- **Idempotent** — `user_delivery_log` prevents duplicate deliveries on overlapping cron runs
+- **Timezone-aware** — delivery triggers at the user's local time; the run date itself is computed in the configured timezone (not UTC), so digests, delta comparisons, and delivery logs never drift a day off during part of the day
+- **Idempotent** — delivery is claimed atomically per `(chat_id, run_date)` in `user_delivery_log` immediately before sending (not just checked-then-logged-after), closing the race where two overlapping cron runs could both pass a stale "already delivered?" check
 - **GitHub Actions cron** — runs every 30 minutes, checks all active users, delivers only to those at their preferred time
 - **Budget caps** — daily cap triggers a Telegram alert; the 30-day rolling cap is a real **pre-spend gate** — once hit, the run is skipped entirely (no AI calls made) until spend drops below the cap
 
 ### 🌐 Production Webhook Bot
 - **`src/webhook.ts`** — zero-dependency Node `http` server; registers all command handlers in non-polling mode
 - **`enableWebhookMode()`** — switches bot from polling to `processUpdate` before startup
-- **Secret token validation** — rejects requests without matching `X-Telegram-Bot-Api-Secret-Token` header
+- **Secret token validation** — rejects requests without matching `X-Telegram-Bot-Api-Secret-Token` header; `WEBHOOK_SECRET` is required unconditionally to start the server (not just once `WEBHOOK_URL` is set) — an unauthenticated listener is never safe, regardless of whether the webhook has been registered with Telegram yet
 - **Auto-registers webhook** on startup when `WEBHOOK_URL` is set
 - **`Dockerfile`** — multi-stage build, runs `dist/webhook.js`, exposes port 3000
 - Deploy to Render/Railway/Fly.io — see **`WEBHOOK_SETUP.md`**
@@ -176,8 +178,8 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 - **Structured error events** — AI 429, Yahoo Finance failures, Supabase errors all emit `ErrorEvent` with recovery suggestions
 
 ### 🧪 Testing & CI
-- **116 tests** with **Vitest**:
-  - Deduplication + cosine similarity: 9 unit tests (`cosineSimilarity` — identical, orthogonal, mismatched length, zero vectors; `deduplicateArticles` — 5 cases)
+- **166 tests** with **Vitest**:
+  - Deduplication + cosine similarity: 9 unit tests (`cosineSimilarity` — identical, orthogonal, mismatched length, zero vectors; `deduplicateArticles` — 5 cases, now async)
   - Keyword matching: 13 unit tests
   - Stock price fetching: 3 unit tests
   - Telegram formatter: 5 unit tests
@@ -188,12 +190,20 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
   - Cross-source grounding: 4 unit tests (`attachGroundingNotes` — SEC/earnings/stock matching)
   - Semantic relevance: 4 unit tests (`passesSemanticGate`, `embedSeeds` — success, HTTP error)
   - Scheduler: 3 unit tests (`isTimeMatch` — exact match, ±1 min within window, outside window)
+  - **AI batch processing** (`processor/ai.test.ts`): 8 tests — `normalizeArticles` zod coercion/defaults, `processArticles` success/retry/all-fail/malformed-synthesis paths (mocked chat completions)
+  - **SEC extraction** (`processor/sec.test.ts`): 6 tests — including the exact numeric-string-in-a-financial-field case that used to crash `.toFixed()`
+  - **Earnings analysis** (`processor/earnings.test.ts`): 5 tests — numeric coercion, guidance delta computation, graceful degradation on unparseable output
+  - **Earnings collection** (`collector/earnings.test.ts`): 9 tests — including a regression guard for the 429 retry-cap fix (no more unbounded recursion)
+  - **SEC EDGAR collection** (`collector/sec.test.ts`): 10 tests — filing age/form-type filtering, `getTopFilings` scoring
+  - **Thesis snapshots** (`processor/thesis.test.ts`): 8 tests — response parsing/validation, end-to-end generation
+  - **Embeddings** (`processor/embeddings.test.ts`): 4 tests — batch mapping, 429 circuit breaker, non-429 continue-to-next-batch
   - Supabase integration: 15 tests (requires live credentials)
   - Telegram integration: 9 tests (requires live credentials)
   - Stocks integration: 8 tests (requires live credentials)
-- **84 unit tests** run offline; integration tests require live credentials — use `npm run test:unit` for offline CI
-- **CI workflow** — `.github/workflows/ci.yml` runs `npm run lint` (`tsc --noEmit`) then `npm run test:unit` on every push/PR to main
+- **134 unit tests** run offline; integration tests require live credentials — use `npm run test:unit` for offline CI
+- **CI workflow** — `.github/workflows/ci.yml` runs `npm run lint` (`tsc --noEmit`) then `npm run test:unit` on every push/PR to main; all 5 workflows now declare explicit `permissions: contents: read` and run on Node 22
 - **TypeScript strict mode** — entire project compiles cleanly with zero errors (`tsc --noEmit`)
+- **Full audit** — see [`AUDIT.md`](AUDIT.md) for the complete findings report (30 items across security/bugs/performance/architecture/tests/deps) and remediation checklist
 
 ---
 
@@ -305,7 +315,7 @@ cp .env.example .env
 | `OPENAI_EMBEDDING_API_KEY` | ❌ | — | OpenAI key for `text-embedding-3-small` vectors (Phase VIII); can share `OPENAI_API_KEY` if using OpenAI provider. ⚠️ The key's account needs available quota — on persistent HTTP 429 the pipeline logs a quota warning and Phase VIII features (semantic dedup, relevance gate, corroboration) silently degrade to lexical fallbacks for that run |
 | `ROIC_AI_API_KEY` | ❌ | — | Roic.ai API key for earnings transcripts |
 | `WEBHOOK_URL` | ❌ | — | Public URL for webhook bot auto-registration |
-| `WEBHOOK_SECRET` | ❌ | — | Secret token for webhook request validation (required in production) |
+| `WEBHOOK_SECRET` | ❌* | — | Secret token for webhook request validation. *Required to start `src/webhook.ts` at all (not just when `WEBHOOK_URL` is set) — not needed for `npm run dev`/`npm run scheduler` |
 | `PORT` | ❌ | `3000` | Webhook server port |
 | `SLACK_WEBHOOK_URL` | ❌ | — | Slack Incoming Webhook URL for digest delivery |
 | `SMTP_USER` | ❌ | — | Gmail address that *owns* the App Password (e.g. `sender@gmail.com`) |
@@ -326,7 +336,7 @@ cp .env.example .env
 npm run dev          # Run pipeline once (polling mode)
 npm run scheduler    # Run per-user delivery check
 npm run webhook      # Start webhook server (tsx, local dev)
-npm run test:unit    # Run 84 unit tests (offline, no credentials needed)
+npm run test:unit    # Run 134 unit tests (offline, no credentials needed)
 npm test             # Run all tests (integration tests need live credentials)
 
 # Backfill historical derived metrics (run once after first pipeline runs)
@@ -395,7 +405,7 @@ npm run db:pull      # Sync remote schema to local
 
 ### CI
 
-`.github/workflows/ci.yml` — runs on every push and PR to `main`. Executes `tsc --noEmit` (type gate) then unit tests (84 tests, no credentials needed, fast).
+`.github/workflows/ci.yml` — runs on every push and PR to `main`. Executes `tsc --noEmit` (type gate) then unit tests (134 tests, no credentials needed, fast).
 
 ### Required Secrets
 
@@ -433,11 +443,13 @@ See **`WEBHOOK_SETUP.md`** for Render/Railway/Fly.io deployment steps.
 ```
 ai-infra-digest/
 ├── .env.example
+├── AUDIT.md                                  # Full codebase audit — findings, root causes, roadmap, checklist
 ├── .github/workflows/
 │   ├── ci.yml                                # Push/PR: lint + unit tests
 │   ├── daily-digest.yml                      # 8 AM MYT cron
 │   ├── scheduled-delivery.yml               # Every 30 min, per-user fan-out
-│   └── data-retention.yml                    # Weekly: calls cleanup_old_data() RPC
+│   ├── data-retention.yml                    # Weekly: calls cleanup_old_data() RPC
+│   └── weekly-thesis.yml                     # Weekly: bull/bear thesis snapshots
 ├── Dockerfile                                # Webhook bot container
 ├── WEBHOOK_SETUP.md                          # Webhook deployment guide
 ├── website/
@@ -483,16 +495,19 @@ ai-infra-digest/
 │   └── utils/
 │       ├── grounding.ts                      # v9.1 — attachGroundingNotes(): cross-reference tickers vs SEC/earnings/stock data in-memory
 │       ├── ai-cache.ts                       # File-based AI response cache (SHA-256 key, 23h TTL)
+│       ├── ai-schema.ts                      # v10.2 — shared zod nullableFinancialNumber (used by processor/sec.ts + earnings.ts)
+│       ├── escape.ts                         # v10.2 — escapeHtml() + stripHtmlTags() (single source, used at collection + render time)
 │       ├── derived-metrics.ts                # daily_derived_metrics writer + query helpers
-│       ├── dedup.ts                          # URL + Jaccard/cosine dedup + cosineSimilarity() + buildCorroborationMap()
+│       ├── dedup.ts                          # URL + Jaccard/cosine dedup + cosineSimilarity() + buildCorroborationMap() (async cache I/O)
+│       ├── helpers.ts                        # sleep() + todayInTimezone() (v10.2 — timezone-correct run-date helper)
 │       ├── source-credibility.ts             # Static source-name → credibility multiplier + isPRWireSource() PR wire detection
 │       ├── novelty.ts                        # 48h rehash detection — flags isRehash via Jaccard similarity against recent DB articles
 │       ├── trust-scores.ts                   # Vote-learned source/sector multipliers from article_validations (1h TTL cache)
 │       ├── logger.ts                         # Structured timestamped logger
-│       ├── metrics.ts                        # NDJSON event logging
+│       ├── metrics.ts                        # NDJSON event logging (async file writes)
 │       ├── retry.ts                          # withRetry<T> + tryStage<T> utilities
 │       ├── stocks.ts                         # Yahoo Finance price fetcher
-│       └── supabase.ts                       # Supabase REST CRUD (15 tables); insertArticles returns {id,url}[]
+│       └── supabase.ts                       # Supabase REST CRUD (15 tables); insertArticles returns {id,url}[]; claimUserDelivery() for atomic idempotency
 ├── supabase-schema.sql                       # Full schema reference (15 tables + RLS)
 ├── vitest.config.ts
 ├── package.json
@@ -601,7 +616,7 @@ Tom's Hardware, ServeTheHome, Ars Technica, TechCrunch, The Verge, Seeking Alpha
   - **Dead-feed detection** — feeds failing 3+ consecutive runs are now flagged distinctly from transient blips
   - **SEC EDGAR 403 fix** — descriptive `User-Agent` header per their fair-use policy
   - **Scheduled retention** — `.github/workflows/data-retention.yml` (weekly) actually invokes the `cleanup_old_data()` RPC that previously had no scheduler wired up
-  - **Webhook secret** — now required whenever `WEBHOOK_URL` is set, regardless of `NODE_ENV`
+  - **Webhook secret** — now required whenever `WEBHOOK_URL` is set, regardless of `NODE_ENV` (superseded in v10.2 — required unconditionally)
   - Removed the stale duplicate `dashboard/` directory (`website/dashboard/` is canonical)
 
 ### Phase X · Hardening + Thesis Layer ✅ Shipped
@@ -610,6 +625,14 @@ Tom's Hardware, ServeTheHome, Ars Technica, TechCrunch, The Verge, Seeking Alpha
 - **v10.0 (perf)** — AI batches run with concurrency 2 (was sequential); `.ai-cache/` prunes expired entries; embeddings abort with an operator-facing quota warning on persistent 429
 - **v10.0 (supply chain)** — GitHub Actions pinned to commit SHAs; container runs as non-root `node` user; `scripts/` now type-checked in CI
 - **v10.1** — 🧭 Bull/Bear Thesis Snapshots — weekly batched AI pass over 30d of `daily_derived_metrics` + latest SEC filings for the top-10 tickers; `ticker_theses` table; `/thesis NVDA` command; dashboard Thesis Snapshots card; `.github/workflows/weekly-thesis.yml` (Sunday 4 AM UTC)
+- **v10.2 — Full codebase audit + remediation** — see [`AUDIT.md`](AUDIT.md) for the complete report (30 findings, root-cause analysis, 3-horizon roadmap). Every Critical/High finding fixed, plus the full Short-Term checklist:
+  - **Security** — untrusted RSS content now passed to the AI as fenced/escaped JSON with explicit anti-injection instructions (was raw prose interpolation); RSS titles/content HTML-stripped at collection time in addition to render-time escaping; `WEBHOOK_SECRET` required unconditionally to start the webhook server; NDJSON logs untracked from git
+  - **Reliability** — `fetchTranscript()`'s 429 retry now caps at 2 attempts (was unbounded recursion); scheduler delivery is now claimed atomically per `(chat_id, run_date)` immediately before sending, closing a double-delivery race under overlapping cron runs; run dates computed in the configured timezone instead of UTC
+  - **Data integrity** — a zod validation layer now sits in front of every AI JSON response (`ai.ts`, `sec.ts`, `bear-cases.ts`, `thesis.ts`, `earnings.ts`), coercing type-confused fields (e.g. `"8"` instead of `8`) instead of crashing `.toFixed()` calls downstream — caught and fixed a live instance of this exact bug in `processor/earnings.ts` while adding coverage
+  - **Performance** — `metrics.ts` and `dedup.ts` switched from sync to async file I/O; onboarding sessions now expire after 30 minutes with a periodic sweep (was unbounded growth)
+  - **CI/CD** — all 5 workflows hardened with explicit `permissions: contents: read`, standardized on Node 22, and now alert Slack on failure
+  - **Tests** — 5 new test files targeting the previously-uncovered AI/collector layer (116 → 166 tests), each written against the specific bug class it guards against
+  - **Cleanup** — removed the redundant `node-telegram-bot-api` postinstall patch duplicated in `Dockerfile`/CI (the `package.json` postinstall already covers it via `npm ci`); consolidated `escapeHtml()` into one shared module
 
 ### Phase XI · Next Steps 🔭 Exploring
 - Price threshold alerts — user-defined ticker price targets trigger instant Telegram notifications
