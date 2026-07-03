@@ -51,6 +51,18 @@ export async function withRetry<T>(
   throw lastError;
 }
 
+/** HTTP error carrying its status code, for use with `shouldRetry` predicates. */
+export class HttpError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
+
+/** True for statuses worth retrying: rate limits (429) and server errors (5xx). */
+export function isRetryableStatus(status: number): boolean {
+  return status === 429 || status >= 500;
+}
+
 /**
  * Run `fn` and return `{ ok: true, value }` or `{ ok: false, error }`.
  * Never throws — use for optional pipeline stages.

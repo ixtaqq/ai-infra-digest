@@ -160,6 +160,29 @@ export const supabase = {
     return !!getConfig();
   },
 
+  /**
+   * Generic REST SELECT. `params` is the PostgREST query string (caller is
+   * responsible for encoding values with encodeURIComponent where needed).
+   * Returns [] when unconfigured or on any error — never throws.
+   */
+  async queryRows<T>(table: string, params: string): Promise<T[]> {
+    const cfg = getConfig();
+    if (!cfg) return [];
+    try {
+      const response = await fetch(`${cfg.url}/rest/v1/${table}?${params}`, {
+        headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` },
+      });
+      if (!response.ok) {
+        logger.warn(`Supabase query ${table}: ${response.status}`);
+        return [];
+      }
+      return (await response.json()) as T[];
+    } catch (error) {
+      logger.warn(`Supabase query ${table}: ${(error as Error).message}`);
+      return [];
+    }
+  },
+
   async createDigestRun(data: DigestRunData): Promise<number | null> {
     const cfg = getConfig();
     if (!cfg) return null;
@@ -388,7 +411,7 @@ export const supabase = {
 
     try {
       const response = await fetch(
-        `${cfg.url}/rest/v1/user_preferences?chat_id=eq.${chatId}&select=*`,
+        `${cfg.url}/rest/v1/user_preferences?chat_id=eq.${encodeURIComponent(chatId)}&select=*`,
         {
           headers: {
             "apikey": cfg.key,
@@ -466,7 +489,7 @@ export const supabase = {
 
     try {
       const response = await fetch(
-        `${cfg.url}/rest/v1/user_delivery_log?chat_id=eq.${chatId}&run_date=eq.${runDate}&status=eq.success&select=id&limit=1`,
+        `${cfg.url}/rest/v1/user_delivery_log?chat_id=eq.${encodeURIComponent(chatId)}&run_date=eq.${encodeURIComponent(runDate)}&status=eq.success&select=id&limit=1`,
         {
           headers: {
             apikey: cfg.key,
@@ -523,7 +546,7 @@ export const supabase = {
     if (!cfg) return null;
     try {
       const response = await fetch(
-        `${cfg.url}/rest/v1/earnings_transcripts?ticker=eq.${ticker}&year=eq.${year}&quarter=eq.${quarter}&select=*`,
+        `${cfg.url}/rest/v1/earnings_transcripts?ticker=eq.${encodeURIComponent(ticker)}&year=eq.${encodeURIComponent(year)}&quarter=eq.${encodeURIComponent(quarter)}&select=*`,
         {
           headers: {
             "apikey": cfg.key,

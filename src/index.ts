@@ -91,38 +91,33 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
     }
 
     // ─── Conditional RSS: skip consistently failing feeds ──
+    // Start each run from a clean slate — in the long-lived webhook process the
+    // module-level SKIPPED_FEEDS set would otherwise only ever grow across runs.
+    resetSkippedFeeds();
     const skipFeeds = new Set<string>();
     if (supabase.isConfigured()) {
-      try {
-        const cfg = getSupabaseConfig()!;
-        const resp = await fetch(
-          `${cfg.url}/rest/v1/pipeline_health?select=feed_name,status&order=created_at.desc&limit=200`,
-          { headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` } }
-        );
-        if (resp.ok) {
-          const data = (await resp.json()) as { feed_name: string; status: string }[];
-          // Count consecutive failures per feed
-          const lastSeen = new Map<string, { fails: number; checked: boolean }>();
-          for (const row of data) {
-            const entry = lastSeen.get(row.feed_name) || { fails: 0, checked: false };
-            if (!entry.checked) {
-              entry.checked = true;
-              if (row.status === "failed") entry.fails++;
-            }
-            lastSeen.set(row.feed_name, entry);
-          }
-          for (const [name, info] of lastSeen) {
-            if (info.fails >= 2) {
-              skipFeeds.add(name);
-              skipFeed(name);
-            }
-          }
-          if (skipFeeds.size > 0) {
-            logger.info(`Conditional RSS: skipping ${skipFeeds.size} consistently failing feeds`);
-          }
+      const data = await supabase.queryRows<{ feed_name: string; status: string }>(
+        "pipeline_health",
+        "select=feed_name,status&order=created_at.desc&limit=200"
+      );
+      // Count consecutive failures per feed
+      const lastSeen = new Map<string, { fails: number; checked: boolean }>();
+      for (const row of data) {
+        const entry = lastSeen.get(row.feed_name) || { fails: 0, checked: false };
+        if (!entry.checked) {
+          entry.checked = true;
+          if (row.status === "failed") entry.fails++;
         }
-      } catch {
-        // Proceed without conditional skipping
+        lastSeen.set(row.feed_name, entry);
+      }
+      for (const [name, info] of lastSeen) {
+        if (info.fails >= 2) {
+          skipFeeds.add(name);
+          skipFeed(name);
+        }
+      }
+      if (skipFeeds.size > 0) {
+        logger.info(`Conditional RSS: skipping ${skipFeeds.size} consistently failing feeds`);
       }
     }
 
@@ -868,21 +863,13 @@ export async function persistDigestMetrics(
  * a Supabase hiccup should never be able to silently block every future run.
  */
 async function getRolling30DaySpend(): Promise<number> {
-  if (!supabase.isConfigured()) return 0;
-  try {
-    const cfg = getSupabaseConfig()!;
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-      .toISOString().split("T")[0];
-    const resp = await fetch(
-      `${cfg.url}/rest/v1/daily_metrics?date=gte.${thirtyDaysAgo}&select=estimated_cost`,
-      { headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` } }
-    );
-    if (!resp.ok) return 0;
-    const rows = (await resp.json()) as { estimated_cost: number }[];
-    return rows.reduce((s, r) => s + (r.estimated_cost || 0), 0);
-  } catch {
-    return 0;
-  }
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    .toISOString().split("T")[0];
+  const rows = await supabase.queryRows<{ estimated_cost: number }>(
+    "daily_metrics",
+    `date=gte.${encodeURIComponent(thirtyDaysAgo)}&select=estimated_cost`
+  );
+  return rows.reduce((s, r) => s + (r.estimated_cost || 0), 0);
 }
 
 /**
@@ -1076,16 +1063,13 @@ export function registerDigestCommands(): void {
       return "No preferences found. Use /watchlist to set your tickers, or /start to register.";
     }
 
-    const cfg = getSupabaseConfig();
-    if (!cfg) return "Database not available.";
+    if (!supabase.isConfigured()) return "Database not available.";
 
     try {
-      const resp = await fetch(
-        `${cfg.url}/rest/v1/articles?order=created_at.desc&limit=30&select=title,url,source,impact,impact_score,category,affected_stocks,summary`,
-        { headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` } }
+      let articles = await supabase.queryRows<Record<string, unknown>>(
+        "articles",
+        "order=created_at.desc&limit=30&select=title,url,source,impact,impact_score,category,affected_stocks,summary"
       );
-      if (!resp.ok) return "Could not fetch articles.";
-      let articles = (await resp.json()) as Record<string, unknown>[];
 
       // Filter by watchlist
       if (useWatchlist && prefs?.watchlist?.length) {
@@ -1196,21 +1180,11 @@ export function registerDigestCommands(): void {
       return "Supabase not configured. Run the digest locally with <code>npm run dev</code> to see results.";
     }
 
-    const cfg = getSupabaseConfig();
-    if (!cfg) return "Database not available.";
-
     try {
-      const response = await fetch(
-        `${cfg.url}/rest/v1/digest_runs?order=run_date.desc&limit=1&select=*`,
-        {
-          headers: {
-            apikey: cfg.key,
-            Authorization: `Bearer ${cfg.key}`,
-          },
-        }
+      const runs = await supabase.queryRows<Record<string, unknown>>(
+        "digest_runs",
+        "order=run_date.desc&limit=1&select=*"
       );
-      if (!response.ok) return "Could not fetch latest digest.";
-      const runs = (await response.json()) as Record<string, unknown>[];
       if (!runs?.length) return "No digest runs found yet.";
 
       const run = runs[0];
@@ -1306,18 +1280,12 @@ export function registerDigestCommands(): void {
       return "Supabase not configured. Run the digest first to see trends.";
     }
 
-    const cfg = getSupabaseConfig();
-    if (!cfg) return "Database not available.";
-
     try {
       const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
-      const resp = await fetch(
-        `${cfg.url}/rest/v1/daily_metrics?select=date,trending_json,trending_entities&date=gte.${sevenDaysAgo}&order=date.desc`,
-        { headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` } }
+      const metrics = await supabase.queryRows<Record<string, unknown>>(
+        "daily_metrics",
+        `select=date,trending_json,trending_entities&date=gte.${encodeURIComponent(sevenDaysAgo)}&order=date.desc`
       );
-      if (!resp.ok) return "Could not fetch trending data.";
-
-      const metrics = (await resp.json()) as Record<string, unknown>[];
       if (!metrics.length) return "No trending data available yet. Run the daily digest first.";
 
       const latest = metrics.find((m) => m.trending_json);
@@ -1443,28 +1411,14 @@ export function registerDigestCommands(): void {
       return "Supabase not configured. Run the daily digest to start SEC filing analysis.";
     }
 
-    const cfg = getSupabaseConfig();
-    if (!cfg) return "Database not available.";
-
     const parts = ctx.text.split(/\s+/).slice(1);
     const ticker = parts[0]?.toUpperCase();
 
     try {
-      let url: string;
-      if (ticker) {
-        // Show filings for a specific ticker
-        url = `${cfg.url}/rest/v1/sec_filings?ticker=eq.${ticker}&order=filing_date.desc&limit=5&select=*`;
-      } else {
-        // Show latest filings across all companies
-        url = `${cfg.url}/rest/v1/sec_filings?order=filing_date.desc&limit=8&select=*`;
-      }
-
-      const resp = await fetch(url, {
-        headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` },
-      });
-      if (!resp.ok) return "Could not fetch SEC filings.";
-
-      const filings = (await resp.json()) as Record<string, unknown>[];
+      const params = ticker
+        ? `ticker=eq.${encodeURIComponent(ticker)}&order=filing_date.desc&limit=5&select=*`
+        : "order=filing_date.desc&limit=8&select=*";
+      const filings = await supabase.queryRows<Record<string, unknown>>("sec_filings", params);
       if (!filings.length) {
         return ticker
           ? `No SEC filings found for <b>${ticker}</b>. Run the daily digest to populate filing data.`
@@ -1545,27 +1499,21 @@ export function registerDigestCommands(): void {
       return `✅ Thanks for your ${rating}/5 rating! ${comment ? `Comment: "${escapeHtml(comment)}"` : ""}\n\nYour feedback helps improve the digest.`;
     }
 
-    const cfg = getSupabaseConfig();
-    if (!cfg) return `✅ Thanks for your ${rating}/5 rating!`;
-
     try {
       const today = new Date().toISOString().split("T")[0];
-      const getResp = await fetch(
-        `${cfg.url}/rest/v1/daily_metrics?date=eq.${today}&select=date,feedback_ratings`,
-        { headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` } }
+      const existing = await supabase.queryRows<Record<string, unknown>>(
+        "daily_metrics",
+        `date=eq.${encodeURIComponent(today)}&select=date,feedback_ratings`
       );
 
       let existingRatings: number[] = [];
       let existingComments: string[] = [];
-      if (getResp.ok) {
-        const existing = (await getResp.json()) as Record<string, unknown>[];
-        if (existing.length > 0 && existing[0].feedback_ratings) {
-          try {
-            const parsed = JSON.parse(existing[0].feedback_ratings as string) as { ratings: number[]; comments: string[] };
-            existingRatings = parsed.ratings || [];
-            existingComments = parsed.comments || [];
-          } catch { /* start fresh */ }
-        }
+      if (existing.length > 0 && existing[0].feedback_ratings) {
+        try {
+          const parsed = JSON.parse(existing[0].feedback_ratings as string) as { ratings: number[]; comments: string[] };
+          existingRatings = parsed.ratings || [];
+          existingComments = parsed.comments || [];
+        } catch { /* start fresh */ }
       }
 
       existingRatings.push(rating);
@@ -1606,8 +1554,7 @@ async function computeAndStoreTrending(
   digest: import("./processor/ai").DigestResult
 ): Promise<void> {
   try {
-    const cfg = getSupabaseConfig();
-    if (!cfg) return;
+    if (!supabase.isConfigured()) return;
 
     // Compute trending from current digest
     const tickerCounts = new Map<string, { count: number; totalScore: number; sentiments: number[] }>();
@@ -1670,12 +1617,6 @@ async function computeAndStoreTrending(
   } catch (error) {
     logger.warn(`Trending computation failed: ${(error as Error).message}`);
   }
-}
-
-function getSupabaseConfig(): { url: string; key: string } | null {
-  const url = config.app.supabaseUrl;
-  const key = config.app.supabaseServiceKey;
-  return url && key ? { url, key } : null;
 }
 
 if (require.main === module) {

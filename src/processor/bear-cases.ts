@@ -14,21 +14,11 @@
 
 import { config } from "../config";
 import { logger } from "../utils/logger";
-import { withRetry } from "../utils/retry";
+import { withRetry, HttpError, isRetryableStatus } from "../utils/retry";
 import type { ProcessedArticle } from "./ai";
 
 const BEAR_CASE_THRESHOLD = 7;
 const MAX_ARTICLES = 6; // bound token cost to ~800 tokens per run
-
-class HttpError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-  }
-}
-
-function isRetryableStatus(status: number): boolean {
-  return status === 429 || status >= 500;
-}
 
 interface BearCaseRow {
   /** 1-based index matching the article's position in the prompt (see buildPrompt). */

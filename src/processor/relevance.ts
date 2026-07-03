@@ -4,20 +4,10 @@ import crypto from "crypto";
 import { config } from "../config";
 import { logger } from "../utils/logger";
 import { cosineSimilarity } from "../utils/dedup";
-import { withRetry } from "../utils/retry";
+import { withRetry, HttpError, isRetryableStatus } from "../utils/retry";
 
 const EMBED_URL = "https://api.openai.com/v1/embeddings";
 const GATE_THRESHOLD = 0.55;
-
-class HttpError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-  }
-}
-
-function isRetryableStatus(status: number): boolean {
-  return status === 429 || status >= 500;
-}
 
 // 20 canonical AI infrastructure topic sentences
 export const RELEVANCE_SEEDS = [

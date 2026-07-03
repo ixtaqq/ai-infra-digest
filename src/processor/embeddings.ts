@@ -1,20 +1,10 @@
 import { config } from "../config";
 import { logger } from "../utils/logger";
-import { withRetry } from "../utils/retry";
+import { withRetry, HttpError, isRetryableStatus } from "../utils/retry";
 import type { ProcessedArticle } from "./ai";
 
 const EMBED_BATCH_SIZE = 20;
 const EMBED_URL = "https://api.openai.com/v1/embeddings";
-
-class HttpError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-  }
-}
-
-function isRetryableStatus(status: number): boolean {
-  return status === 429 || status >= 500;
-}
 
 export async function generateEmbeddings(
   articles: ProcessedArticle[]

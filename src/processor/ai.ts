@@ -241,6 +241,28 @@ function parseJSON<T>(text: string): T | null {
   }
 }
 
+/**
+ * Validate + normalize LLM-returned article rows at the trust boundary.
+ * Drops rows missing the required title/url, and coerces optional fields to
+ * safe defaults so downstream code (flatMap over affectedStocks, formatters)
+ * never sees undefined where the prompt promised a value.
+ */
+function normalizeArticles(rows: ProcessedArticle[]): ProcessedArticle[] {
+  const valid = rows.filter(
+    (a) => typeof a?.title === "string" && a.title.length > 0 && typeof a?.url === "string"
+  );
+  if (valid.length < rows.length) {
+    logger.warn(`AI batch: dropped ${rows.length - valid.length} malformed article row(s) (missing title/url)`);
+  }
+  for (const a of valid) {
+    if (!Array.isArray(a.affectedStocks)) a.affectedStocks = [];
+    if (typeof a.summary !== "string") a.summary = "";
+    if (typeof a.impactScore !== "number" || Number.isNaN(a.impactScore)) a.impactScore = 5;
+    if (a.impact !== "Bullish" && a.impact !== "Bearish" && a.impact !== "Neutral") a.impact = "Neutral";
+  }
+  return valid;
+}
+
 export interface CallAIResult {
   content: string;
   usage: {
@@ -357,16 +379,17 @@ async function processBatch(
   const { content, usage } = await callAI(client, prompt, config.ai.fastModel);
   const result = parseJSON<{ articles: ProcessedArticle[] }>(content);
 
-  if (!result?.articles) {      logger.warn(`Batch ${batchNum} returned unparseable result, retrying with fast model...`);
+  if (!result?.articles || !Array.isArray(result.articles)) {
+    logger.warn(`Batch ${batchNum} returned unparseable result, retrying with fast model...`);
     const retryResult = await callAI(client, prompt, config.ai.fastModel);
     const retryContent = retryResult.content;
     const retryParsed = parseJSON<{ articles: ProcessedArticle[] }>(retryContent);
-    if (!retryParsed?.articles) {
+    if (!retryParsed?.articles || !Array.isArray(retryParsed.articles)) {
       logger.error(`Batch ${batchNum} failed after retry`);
       return { articles: [], totalTokens: 0, promptTokens: 0, completionTokens: 0 };
     }
     return {
-      articles: retryParsed.articles,
+      articles: normalizeArticles(retryParsed.articles),
       totalTokens: retryResult.usage.totalTokens + usage.totalTokens,
       promptTokens: retryResult.usage.promptTokens + usage.promptTokens,
       completionTokens: retryResult.usage.completionTokens + usage.completionTokens,
@@ -374,7 +397,7 @@ async function processBatch(
   }
 
   return {
-    articles: result.articles,
+    articles: normalizeArticles(result.articles),
     totalTokens: usage.totalTokens,
     promptTokens: usage.promptTokens,
     completionTokens: usage.completionTokens,

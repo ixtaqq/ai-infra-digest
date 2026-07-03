@@ -52,7 +52,9 @@ vi.mock("./sender/telegram", () => ({
   registerCommand: vi.fn(),
 }));
 // Supabase reports "not configured" so persistence/alert branches are skipped.
-vi.mock("./utils/supabase", () => ({ supabase: { isConfigured: () => false } }));
+vi.mock("./utils/supabase", () => ({
+  supabase: { isConfigured: () => false, queryRows: vi.fn(async () => []) },
+}));
 // Prevent filesystem cache from skipping the mocked processArticles call.
 vi.mock("./utils/ai-cache", () => ({ getCached: vi.fn(() => null), setCached: vi.fn() }));
 

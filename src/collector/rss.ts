@@ -137,9 +137,9 @@ async function rssBackoff(attempt: number, baseDelayMs = 2000): Promise<void> {
 
 // ─── Tier 1: Major company news + Financial news ───────
 const TIER_1_FEEDS = [
-  { url: "https://nvidianews.nvidia.com/news-rss", name: "NVIDIA" },
+  { url: "https://news.google.com/rss/search?q=NVIDIA+AI+GPU+datacenter&hl=en-US&gl=US&ceid=US:en", name: "NVIDIA" },
   { url: "https://news.microsoft.com/feed/", name: "Microsoft" },
-  { url: "https://www.amd.com/en/newsroom/press-releases/rss.html", name: "AMD" },
+  { url: "https://news.google.com/rss/search?q=AMD+AI+chips+GPU&hl=en-US&gl=US&ceid=US:en", name: "AMD" },
   { url: "https://news.google.com/rss/search?q=Broadcom+AI&hl=en-US&gl=US&ceid=US:en", name: "Broadcom" },
   { url: "https://news.google.com/rss/search?q=Amazon+AWS+AI+infrastructure&hl=en-US&gl=US&ceid=US:en", name: "Amazon" },
   { url: "https://news.google.com/rss/search?q=Google+AI+infrastructure+datacenter&hl=en-US&gl=US&ceid=US:en", name: "Google" },
@@ -180,34 +180,34 @@ const TIER_1_FEEDS = [
   { url: "https://feeds.content.dowjones.io/public/rss/mw_topstories", name: "MarketWatch" },
   { url: "https://finance.yahoo.com/news/rssindex", name: "Yahoo Finance" },
   { url: "https://www.cnbc.com/id/100003114/device/rss/rss.html", name: "CNBC" },
-  { url: "https://www.reutersagency.com/feed/?taxonomy=best-sectors&post_type=bundles&best-sectors=tech", name: "Reuters Tech" },
-  { url: "https://www.bloomberg.com/technology/feeds", name: "Bloomberg Tech" },
+  { url: "https://news.google.com/rss/search?q=Reuters+technology+AI&hl=en-US&gl=US&ceid=US:en", name: "Reuters Tech" },
+  { url: "https://news.google.com/rss/search?q=Bloomberg+technology+AI&hl=en-US&gl=US&ceid=US:en", name: "Bloomberg Tech" },
   { url: "https://www.ft.com/technology?format=rss", name: "Financial Times Tech" },
-  { url: "https://www.barrons.com/feed/top-stories", name: "Barron's" },
+  { url: "https://news.google.com/rss/search?q=Barrons+AI+semiconductor+stocks&hl=en-US&gl=US&ceid=US:en", name: "Barron's" },
   { url: "https://feeds.a.dj.com/rss/RSSMarketsMain.xml", name: "WSJ Markets" },
-  { url: "https://www.investors.com/category/news/feed/", name: "Investor's Business Daily" },
+  { url: "https://news.google.com/rss/search?q=AI+stocks+investing+analysis&hl=en-US&gl=US&ceid=US:en", name: "Investor's Business Daily" },
   { url: "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&CIK=&type=8-K&company=&dateb=&owner=include&start=0&count=20&output=atom", name: "SEC Filings" },
 ];
 
 // ─── Tier 2: AI Infrastructure + Semiconductor news ────
 const TIER_2_FEEDS = [
   { url: "https://www.tomshardware.com/feeds/all", name: "Tom's Hardware" },
-  { url: "https://www.anandtech.com/rss", name: "AnandTech" },
+  { url: "https://www.servethehome.com/feed/", name: "ServeTheHome" },
   { url: "https://arstechnica.com/feed/", name: "Ars Technica" },
   { url: "https://techcrunch.com/feed/", name: "TechCrunch" },
   { url: "https://www.theverge.com/rss/index.xml", name: "The Verge" },
   { url: "https://seekingalpha.com/market_currents.xml", name: "Seeking Alpha" },
   { url: "https://www.semianalysis.com/feed", name: "SemiAnalysis" },
   { url: "https://www.theregister.com/headlines.rss", name: "The Register" },
-  { url: "https://www.datacenterdynamics.com/en/feed/", name: "Datacenter Dynamics" },
+  { url: "https://www.datacenterdynamics.com/en/rss/", name: "Datacenter Dynamics" },
   { url: "https://semiengineering.com/feed/", name: "Semiconductor Engineering" },
   { url: "https://blog.google/technology/ai/rss/", name: "Google AI Blog" },
-  { url: "https://openai.com/blog/rss/", name: "OpenAI" },
+  { url: "https://openai.com/news/rss.xml", name: "OpenAI" },
   { url: "https://aws.amazon.com/blogs/ai/feed/", name: "AWS AI" },
   { url: "https://venturebeat.com/category/ai/feed/", name: "VentureBeat AI" },
   { url: "https://artificialintelligence-news.com/feed/", name: "AI News" },
   { url: "https://medium.com/feed/tag/artificial-intelligence", name: "Medium AI" },
-  { url: "https://aibusiness.com/feed.rss", name: "AI Business" },
+  { url: "https://aibusiness.com/rss.xml", name: "AI Business" },
   { url: "https://www.zdnet.com/topic/artificial-intelligence/rss.xml", name: "ZDNet AI" },
 ];
 
