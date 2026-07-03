@@ -18,6 +18,8 @@ import { logger } from "./utils/logger";
 import { supabase } from "./utils/supabase";
 import { generateDigest, deliverDigest, persistDigestMetrics } from "./index";
 import { startInteractiveBot, sendValidationFollowUp } from "./sender/telegram";
+import { config } from "./config";
+import { todayInTimezone } from "./utils/helpers";
 
 // ─── Time Helpers ───────────────────────────────────────
 
@@ -70,7 +72,9 @@ export function isTimeMatch(
 
 async function schedulerMain(): Promise<void> {
   const startTime = Date.now();
-  const today = new Date().toISOString().split("T")[0];
+  // Must match generateDigest()'s runDate (also computed in the app's configured
+  // timezone) so the pre-check and the claim/log writes key off the same day.
+  const today = todayInTimezone(config.app.timezone);
 
   logger.info("⏰ Scheduled delivery check — starting");
 
@@ -101,7 +105,11 @@ async function schedulerMain(): Promise<void> {
       matchingUsers.map((u) => `${u.first_name || u.chat_id} (${u.preferred_time || "08:00"} ${u.timezone || "MYT"})`).join(", ")
   );
 
-  // Check idempotency — skip users already delivered today
+  // Cheap read-only pre-filter to avoid running the full digest pipeline when
+  // nobody is actually pending. This is an optimization, not the correctness
+  // guarantee — deliverDigest() atomically claims each (chat_id, run_date) slot
+  // right before sending, which is what actually prevents double delivery from
+  // overlapping scheduler runs.
   const toDeliver = await Promise.all(
     matchingUsers.map(async (user) => {
       const alreadyDelivered = await supabase.wasUserDeliveredToday(user.chat_id, today);

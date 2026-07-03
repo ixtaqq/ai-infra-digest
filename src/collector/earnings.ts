@@ -88,10 +88,13 @@ async function rateLimitRoic(): Promise<void> {
  * Fetch an earnings call transcript for a ticker from a specific fiscal quarter.
  * Falls back to fetching the latest transcript if no specific quarter is given.
  */
+const MAX_RATE_LIMIT_RETRIES = 2;
+
 export async function fetchTranscript(
   ticker: string,
   year?: number,
-  quarter?: number
+  quarter?: number,
+  retryCount = 0
 ): Promise<EarningsTranscript | null> {
   const apiKey = config.app.roicAiApiKey;
   if (!apiKey) {
@@ -123,9 +126,13 @@ export async function fetchTranscript(
       }
       // Rate limit handling
       if (response.status === 429) {
-        logger.warn(`Roic.ai rate limited on ${ticker}, waiting 60s...`);
+        if (retryCount >= MAX_RATE_LIMIT_RETRIES) {
+          logger.warn(`Roic.ai rate limited on ${ticker} — max retries (${MAX_RATE_LIMIT_RETRIES}) exceeded, giving up`);
+          return null;
+        }
+        logger.warn(`Roic.ai rate limited on ${ticker}, waiting 60s... (retry ${retryCount + 1}/${MAX_RATE_LIMIT_RETRIES})`);
         await sleep(62000);
-        return fetchTranscript(ticker, year, quarter);
+        return fetchTranscript(ticker, year, quarter, retryCount + 1);
       }
       throw new Error(`Roic.ai HTTP ${response.status}: ${response.statusText}`);
     }

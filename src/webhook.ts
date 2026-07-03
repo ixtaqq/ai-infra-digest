@@ -127,18 +127,15 @@ function createServer(): http.Server {
 }
 
 async function main(): Promise<void> {
-  // A publicly registered webhook (WEBHOOK_URL set) without a secret accepts
-  // unauthenticated requests from anyone who finds the URL — this is never safe,
-  // regardless of NODE_ENV. Only skip the requirement for pure local testing
-  // where no public URL has been registered with Telegram.
+  // The webhook port is reachable by anyone with network access to the host
+  // (VPN, same cloud region, exploited box) even before WEBHOOK_URL is registered
+  // with Telegram — an unauthenticated listener is never safe, so the secret is
+  // required unconditionally rather than only once WEBHOOK_URL is set.
   if (!process.env.WEBHOOK_SECRET) {
-    if (process.env.WEBHOOK_URL) {
-      throw new Error(
-        "WEBHOOK_SECRET is required whenever WEBHOOK_URL is set (the endpoint is publicly reachable). " +
-          "Set it in your environment and configure it in @BotFather (Telegram → Bot → Edit Bot → Webhook Secret)."
-      );
-    }
-    console.warn("[SECURITY] WEBHOOK_SECRET is not set — webhook accepts unauthenticated requests. Required once WEBHOOK_URL is set.");
+    throw new Error(
+      "WEBHOOK_SECRET is required to start the webhook server. " +
+        "Set it in your environment and configure it in @BotFather (Telegram → Bot → Edit Bot → Webhook Secret)."
+    );
   }
 
   // Configure the bot for webhook (non-polling) mode BEFORE any handler registers.

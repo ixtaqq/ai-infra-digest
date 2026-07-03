@@ -114,7 +114,9 @@ describe("Supabase Integration", () => {
     it("should handle empty article list gracefully", async () => {
       const { supabase } = await import("../utils/supabase");
       const result = await supabase.insertArticles(1, []);
-      expect(result).toBe(true);
+      // Empty input short-circuits before any network call and returns no rows.
+      expect(result).toEqual([]);
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 

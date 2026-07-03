@@ -490,6 +490,47 @@ export const supabase = {
   },
 
   /**
+   * Atomically reserve the (chat_id, run_date) delivery slot before sending.
+   * Inserts a placeholder row and relies on the table's UNIQUE(chat_id, run_date)
+   * constraint plus `resolution=ignore-duplicates` to make the reservation
+   * race-free at the database level: only the first caller for a given user+date
+   * gets a non-empty response back. Callers MUST NOT send the digest unless this
+   * returns true — this closes the TOCTOU gap where two overlapping scheduler
+   * runs both pass a read-only "already delivered?" check before either has
+   * written anything (the whole digest-generation pipeline runs in between).
+   */
+  async claimUserDelivery(chatId: number, runDate: string): Promise<boolean> {
+    const cfg = getConfig();
+    if (!cfg) return true; // Not configured — nothing to guard against, let the caller proceed.
+
+    try {
+      const response = await fetch(
+        `${cfg.url}/rest/v1/user_delivery_log?on_conflict=chat_id,run_date`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": cfg.key,
+            "Authorization": `Bearer ${cfg.key}`,
+            "Prefer": "return=representation,resolution=ignore-duplicates",
+          },
+          body: JSON.stringify({
+            chat_id: chatId,
+            run_date: runDate,
+            status: "failed", // Conservative placeholder — overwritten by logUserDelivery once the send resolves.
+            details: "claimed — send in progress",
+          }),
+        }
+      );
+      if (!response.ok) return true; // Fail open on infra errors — best-effort guard, not a hard gate.
+      const rows = (await response.json()) as unknown[];
+      return rows.length > 0; // Non-empty = we won the race and inserted a fresh row.
+    } catch {
+      return true; // Fail open — see above.
+    }
+  },
+
+  /**
    * Check if a user was already successfully delivered today.
    * Returns true if a successful delivery record exists for this user+date.
    */

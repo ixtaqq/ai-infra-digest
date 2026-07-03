@@ -40,6 +40,7 @@ import { attachGroundingNotes } from "./utils/grounding";
 import { flagRehashes } from "./utils/novelty";
 import { generateEmbeddings } from "./processor/embeddings";
 import { embedSeeds, passesSemanticGate } from "./processor/relevance";
+import { todayInTimezone } from "./utils/helpers";
 import type { Article, FeedResult } from "./collector/rss";
 import type { SECFinancialExtract } from "./processor/sec";
 import type { EarningsAnalysis } from "./processor/earnings";
@@ -76,7 +77,7 @@ export interface GeneratedDigest {
  */
 export async function generateDigest(): Promise<GeneratedDigest | null> {
   const startTime = Date.now();
-  const runDate = new Date().toISOString().split("T")[0];
+  const runDate = todayInTimezone(config.app.timezone);
 
   try {
     // ─── Pre-spend budget gate: block the run if the 30-day cap is already hit ──
@@ -640,6 +641,18 @@ export async function deliverDigest(
 
   let sendResult: SendResult;
   if (targetChatId) {
+    // Reserve the delivery slot atomically before sending — closes the race where
+    // two overlapping scheduler runs both pass a read-only pre-check before either
+    // has recorded a delivery (see claimUserDelivery for details).
+    const claimed = supabase.isConfigured()
+      ? await supabase.claimUserDelivery(targetChatId, runDate)
+      : true;
+
+    if (!claimed) {
+      logger.info(`Skipping delivery to user ${targetChatId} — already claimed for ${runDate} (concurrent run)`);
+      return { success: false, error: "already delivered for this run date" };
+    }
+
     sendResult = await sendDigestMessageToUser(targetChatId, messageToSend);
     if (supabase.isConfigured()) {
       await supabase.logUserDelivery(
@@ -1521,7 +1534,7 @@ export function registerDigestCommands(): void {
     }
 
     try {
-      const today = new Date().toISOString().split("T")[0];
+      const today = todayInTimezone(config.app.timezone);
       const existing = await supabase.queryRows<Record<string, unknown>>(
         "daily_metrics",
         `date=eq.${encodeURIComponent(today)}&select=date,feedback_ratings`
