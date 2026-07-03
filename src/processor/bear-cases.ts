@@ -73,7 +73,8 @@ function buildPrompt(articles: ProcessedArticle[], deepDiveUrl: string): string 
   );
 }
 
-function parseResponse(text: string): BearCaseRow[] {
+// Exported for unit tests
+export function parseResponse(text: string): BearCaseRow[] {
   const clean = text.replace(/^```[a-z]*\n?/m, "").replace(/```$/m, "").trim();
   try {
     const parsed = JSON.parse(clean) as { results?: BearCaseRow[] };

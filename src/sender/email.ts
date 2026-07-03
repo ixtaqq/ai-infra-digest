@@ -2,7 +2,8 @@ import nodemailer from "nodemailer";
 import { config } from "../config";
 import { logger } from "../utils/logger";
 
-function htmlToEmailHtml(telegramHtml: string): string {
+// Exported for unit tests
+export function htmlToEmailHtml(telegramHtml: string): string {
   // Telegram HTML is already valid HTML subset — wrap in a simple template
   const body = telegramHtml
     .replace(/\n/g, "<br>")

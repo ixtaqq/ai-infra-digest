@@ -28,6 +28,7 @@ import { analyzeSECFilings } from "./processor/sec";
 import { collectEarningsTranscripts } from "./collector/earnings";
 import { analyzeEarningsTranscripts } from "./processor/earnings";
 import { withRetry, tryStage } from "./utils/retry";
+import { getRolling30DaySpend, isMonthlyBudgetExceeded } from "./utils/budget";
 import { getCached, setCached } from "./utils/ai-cache";
 import { writeDerivedMetrics, queryRecentDerivedMetrics, queryDerivedMetrics } from "./utils/derived-metrics";
 import { getTrustScores } from "./utils/trust-scores";
@@ -855,31 +856,6 @@ export async function persistDigestMetrics(
 
   logger.info("✅ Metrics written to Supabase");
   return articleIds;
-}
-
-/**
- * Sum estimated_cost across daily_metrics for the trailing 30 days.
- * Returns 0 (fail-open) if Supabase isn't configured or the query fails —
- * a Supabase hiccup should never be able to silently block every future run.
- */
-async function getRolling30DaySpend(): Promise<number> {
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-    .toISOString().split("T")[0];
-  const rows = await supabase.queryRows<{ estimated_cost: number }>(
-    "daily_metrics",
-    `date=gte.${encodeURIComponent(thirtyDaysAgo)}&select=estimated_cost`
-  );
-  return rows.reduce((s, r) => s + (r.estimated_cost || 0), 0);
-}
-
-/**
- * Pre-spend gate, checked before any AI call is made for the run.
- * Unlike checkBudget() (post-spend, alert-only), this can actually prevent
- * the run from incurring AI cost once the rolling 30-day cap is reached.
- */
-async function isMonthlyBudgetExceeded(): Promise<boolean> {
-  const spend = await getRolling30DaySpend();
-  return spend >= config.app.budgetMonthlyUsd;
 }
 
 async function checkBudget(runDate: string, todayCost: number): Promise<void> {
