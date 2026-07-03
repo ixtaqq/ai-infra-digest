@@ -12,6 +12,7 @@
  * Runs as a tryStage in generateDigest() — failure never blocks delivery.
  */
 
+import { z } from "zod";
 import { config } from "../config";
 import { logger } from "../utils/logger";
 import { withRetry, HttpError, isRetryableStatus } from "../utils/retry";
@@ -23,10 +24,23 @@ const MAX_ARTICLES = 6; // bound token cost to ~800 tokens per run
 interface BearCaseRow {
   /** 1-based index matching the article's position in the prompt (see buildPrompt). */
   index: number;
-  bearCase: string;
+  bearCase?: string;
   bullCase?: string;
   contextNote?: string;
 }
+
+// index is coerced (AI occasionally returns "1" instead of 1); bearCase is
+// genuinely optional at this layer — the caller drops rows missing it.
+const BearCaseRowSchema = z.object({
+  index: z.coerce.number(),
+  bearCase: z.string().optional().catch(undefined),
+  bullCase: z.string().optional().catch(undefined),
+  contextNote: z.string().optional().catch(undefined),
+});
+
+const ResultsResponseSchema = z.object({
+  results: z.array(z.unknown()).catch([]),
+});
 
 export interface DeepDiveResult {
   url: string;
@@ -76,17 +90,27 @@ function buildPrompt(articles: ProcessedArticle[], deepDiveUrl: string): string 
 // Exported for unit tests
 export function parseResponse(text: string): BearCaseRow[] {
   const clean = text.replace(/^```[a-z]*\n?/m, "").replace(/```$/m, "").trim();
+
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(clean) as { results?: BearCaseRow[] };
-    if (!Array.isArray(parsed.results)) {
-      logger.warn(`bear-cases: parsed JSON had no "results" array. Raw (first 500 chars): ${clean.slice(0, 500)}`);
-      return [];
-    }
-    return parsed.results;
+    parsed = JSON.parse(clean);
   } catch (err) {
     logger.warn(`bear-cases: failed to parse AI response as JSON (${(err as Error).message}). Raw (first 500 chars): ${clean.slice(0, 500)}`);
     return [];
   }
+
+  const outer = ResultsResponseSchema.safeParse(parsed);
+  if (!outer.success || outer.data.results.length === 0) {
+    logger.warn(`bear-cases: parsed JSON had no "results" array. Raw (first 500 chars): ${clean.slice(0, 500)}`);
+    return [];
+  }
+
+  const rows: BearCaseRow[] = [];
+  for (const raw of outer.data.results) {
+    const row = BearCaseRowSchema.safeParse(raw);
+    if (row.success) rows.push(row.data);
+  }
+  return rows;
 }
 
 export async function generateBearCases(
@@ -160,7 +184,11 @@ export async function generateBearCases(
       // the model mangling/truncating long URLs (e.g. Google News redirect links)
       // when asked to echo them back verbatim.
       const article = qualifying[row.index - 1];
-      if (!article || !row.bearCase) continue;
+      if (!article) {
+        logger.warn(`bear-cases: received out-of-range index ${row.index} (only ${qualifying.length} qualifying articles)`);
+        continue;
+      }
+      if (!row.bearCase) continue;
       bearCases.set(article.url, row.bearCase.slice(0, 300));
 
       if (article.url === deepDiveUrl && row.bullCase && row.contextNote) {

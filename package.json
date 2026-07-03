@@ -36,7 +36,8 @@
     "node-telegram-bot-api": "^1.1.1",
     "nodemailer": "^9.0.1",
     "openai": "^4.73.0",
-    "rss-parser": "^3.13.0"
+    "rss-parser": "^3.13.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^22.5.0",

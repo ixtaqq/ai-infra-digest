@@ -20,9 +20,37 @@ interface OnboardingState {
   minScore?: number;
   digestLength?: "brief" | "standard" | "detailed";
   promptMessageId?: number;
+  /** When this session was created — used to expire abandoned flows. */
+  startedAt: number;
 }
 
 const sessions = new Map<number, OnboardingState>();
+
+/** Abandoned onboarding flows (user never taps a button again) expire after this. */
+const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+function getActiveSession(chatId: number): OnboardingState | undefined {
+  const state = sessions.get(chatId);
+  if (!state) return undefined;
+  if (Date.now() - state.startedAt > SESSION_TTL_MS) {
+    sessions.delete(chatId);
+    return undefined;
+  }
+  return state;
+}
+
+/**
+ * Periodically evict expired sessions so users who abandon onboarding entirely
+ * (and never send another message) don't accumulate in memory forever in the
+ * long-lived webhook process. unref()'d so it never keeps a short-lived process
+ * (npm run dev / a single GitHub Actions run) alive past its own work.
+ */
+setInterval(() => {
+  const now = Date.now();
+  for (const [chatId, state] of sessions) {
+    if (now - state.startedAt > SESSION_TTL_MS) sessions.delete(chatId);
+  }
+}, 10 * 60 * 1000).unref();
 
 // ── Inline keyboard helpers ──────────────────────────────────────────────────
 
@@ -177,7 +205,7 @@ export async function startOnboarding(
     is_active: true,
   });
 
-  sessions.set(chatId, { step: "delivery_time", firstName });
+  sessions.set(chatId, { step: "delivery_time", firstName, startedAt: Date.now() });
 
   await bot.sendMessage(
     chatId,
@@ -199,7 +227,7 @@ export async function handleOnboardingCallback(
   const chatId = query.message?.chat.id;
   if (!chatId || !data.startsWith("ob_")) return false;
 
-  const state = sessions.get(chatId);
+  const state = getActiveSession(chatId);
   if (!state) {
     await bot.answerCallbackQuery(query.id, { text: "Session expired — send /start to begin again." });
     return true;
@@ -289,7 +317,7 @@ export async function handleOnboardingText(
   msg: Message
 ): Promise<boolean> {
   const chatId = msg.chat.id;
-  const state = sessions.get(chatId);
+  const state = getActiveSession(chatId);
   if (!state || state.step !== "watchlist") return false;
 
   const raw = msg.text || "";

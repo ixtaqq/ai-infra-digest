@@ -41,6 +41,7 @@ import { flagRehashes } from "./utils/novelty";
 import { generateEmbeddings } from "./processor/embeddings";
 import { embedSeeds, passesSemanticGate } from "./processor/relevance";
 import { todayInTimezone } from "./utils/helpers";
+import { escapeHtml } from "./utils/escape";
 import type { Article, FeedResult } from "./collector/rss";
 import type { SECFinancialExtract } from "./processor/sec";
 import type { EarningsAnalysis } from "./processor/earnings";
@@ -192,7 +193,7 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
     logger.info(`Step 1b: Deduplicating ${articles.length} articles...`);
     // Build corroboration map BEFORE dedup — needs full raw batch to count clusters
     let corroborationMap = buildCorroborationMap(articles);
-    const uniqueArticles = deduplicateArticles(articles);
+    const uniqueArticles = await deduplicateArticles(articles);
 
     let articlesToProcess: Article[];
     if (uniqueArticles.length === 0) {
@@ -991,10 +992,6 @@ async function sendHighImpactAlerts(articles: import("./processor/ai").Processed
       }
     }
   }
-}
-
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 // ─── Feed Health Monitoring ────────────────────────────

@@ -85,12 +85,16 @@ function writeEvent(event: MetricsEvent): void {
   // Stream to stdout
   process.stdout.write(line);
 
-  // Append to per-day NDJSON file
+  // Append to per-day NDJSON file — fired async so a slow/network-mounted disk
+  // never blocks the event loop mid-pipeline. Not awaited: callers treat metrics
+  // as fire-and-forget, so this keeps every emit* signature synchronous.
   try {
     ensureLogDir();
-    fs.appendFileSync(getLogFilePath(), line, "utf-8");
+    fs.promises.appendFile(getLogFilePath(), line, "utf-8").catch((err) => {
+      // Non-critical — don't let logging failure crash the pipeline
+      logger.debug(`Metrics write failed: ${(err as Error).message}`);
+    });
   } catch (err) {
-    // Non-critical — don't let logging failure crash the pipeline
     logger.debug(`Metrics write failed: ${(err as Error).message}`);
   }
 }

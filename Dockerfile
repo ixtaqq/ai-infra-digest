@@ -5,13 +5,11 @@ FROM node:22-slim
 
 WORKDIR /app
 
-# Install deps first for better layer caching
+# Install deps first for better layer caching. `npm ci` runs the postinstall
+# script (package.json) which patches node-telegram-bot-api's broken "exports"
+# field so require() resolves to "main" — no separate patch step needed here.
 COPY package.json package-lock.json ./
 RUN npm ci
-
-# Patch node-telegram-bot-api: strip its broken "exports" field so require() resolves
-# to "main" (the package is ESM-only; require(esm) works on Node 22.12+).
-RUN node -e "const fs=require('fs'),p='node_modules/node-telegram-bot-api/package.json',pkg=JSON.parse(fs.readFileSync(p,'utf8'));if(pkg.exports){delete pkg.exports;fs.writeFileSync(p,JSON.stringify(pkg,null,2));console.log('patched: removed exports field')}else{console.log('no exports field present')}"
 
 # Build TypeScript -> dist/
 COPY . .

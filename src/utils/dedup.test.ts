@@ -72,7 +72,7 @@ describe("deduplicateArticles", () => {
       { url: "https://example.com/1", title: "Article 1" },
       { url: "https://example.com/2", title: "Article 2" },
     ];
-    const result = deduplicateArticles(articles, 48);
+    const result = await deduplicateArticles(articles, 48);
     expect(result).toHaveLength(2);
     expect(result[0].url).toBe("https://example.com/1");
   });
@@ -83,9 +83,9 @@ describe("deduplicateArticles", () => {
       { url: "https://example.com/1", title: "Article 1" },
     ];
     // First call: all articles are new
-    deduplicateArticles(articles, 48);
+    await deduplicateArticles(articles, 48);
     // Second call with same articles: should be empty
-    const result = deduplicateArticles(articles, 48);
+    const result = await deduplicateArticles(articles, 48);
     expect(result).toHaveLength(0);
   });
 
@@ -95,11 +95,11 @@ describe("deduplicateArticles", () => {
       { url: "", title: "No URL" },
       { url: "https://example.com/1", title: "Has URL" },
     ];
-    const firstRun = deduplicateArticles(articles, 48);
+    const firstRun = await deduplicateArticles(articles, 48);
     expect(firstRun).toHaveLength(2);
 
     // Second run: no-URL article should pass through, has-URL should be skipped
-    const secondRun = deduplicateArticles(articles, 48);
+    const secondRun = await deduplicateArticles(articles, 48);
     expect(secondRun).toHaveLength(1);
     expect(secondRun[0].url).toBe("");
   });
@@ -109,11 +109,11 @@ describe("deduplicateArticles", () => {
     const article1 = { url: "https://example.com/1", title: "Same Title" };
     const article2 = { url: "https://example.com/2", title: "Same Title" };
 
-    const firstRun = deduplicateArticles([article1, article2], 48);
+    const firstRun = await deduplicateArticles([article1, article2], 48);
     expect(firstRun).toHaveLength(2);
 
     // Same articles (dup URLs) should be skipped
-    const secondRun = deduplicateArticles([article1, article2], 48);
+    const secondRun = await deduplicateArticles([article1, article2], 48);
     expect(secondRun).toHaveLength(0);
   });
 
@@ -123,9 +123,9 @@ describe("deduplicateArticles", () => {
       { url: "https://example.com/1", title: "Article 1" },
     ];
     // First call adds to cache
-    deduplicateArticles(articles, 0); // 0 hours retention = expire immediately
+    await deduplicateArticles(articles, 0); // 0 hours retention = expire immediately
     // Second call: retention is 0, so previous entries are expired
-    const result = deduplicateArticles(articles, 0);
+    const result = await deduplicateArticles(articles, 0);
     // With 0 retention, entries are expired and re-added
     expect(result).toHaveLength(1);
   });

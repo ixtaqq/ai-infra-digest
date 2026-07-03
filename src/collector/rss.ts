@@ -4,6 +4,7 @@ import * as path from "path";
 import { logger } from "../utils/logger";
 import { config } from "../config";
 import { sleep } from "../utils/helpers";
+import { stripHtmlTags } from "../utils/escape";
 
 // ─── Conditional GET Cache ─────────────────────────────
 interface FeedCacheEntry {
@@ -333,12 +334,14 @@ async function fetchFeedWithStatus(
 
     for (const item of result.items) {
       if (articles.length >= maxArticles) break;
-      const title = item.title?.trim();
-      if (!title) continue;
-      const contentSnippet =
-        item.contentSnippet?.trim() ||
-        item.content?.replace(/<[^>]*>/g, "").trim() ||
-        "";
+      const rawTitle = item.title?.trim();
+      if (!rawTitle) continue;
+      // Untrusted external input — strip markup here (in addition to escaping at
+      // render time) so it can never reach the AI prompt or storage with tags intact.
+      const title = stripHtmlTags(rawTitle);
+      const contentSnippet = stripHtmlTags(
+        item.contentSnippet?.trim() || item.content?.trim() || ""
+      );
       articles.push({
         title,
         url: item.link || "",

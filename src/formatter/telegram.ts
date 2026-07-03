@@ -1,6 +1,7 @@
 import type { DigestResult, NewsCategory } from "../processor/ai";
 import type { StockPrice } from "../utils/stocks";
 import type { SECFinancialExtract } from "../processor/sec";
+import { escapeHtml } from "../utils/escape";
 
 function formatDate(): string {
   const now = new Date();
@@ -44,15 +45,6 @@ const CATEGORY_EMOJIS: Record<string, string> = {
   "M&A and Partnerships": "🤝",
   "Earnings & Guidance": "📊",
 };
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 import type { EarningsAnalysis } from "../processor/earnings";
 import type { DeepDiveResult } from "../processor/bear-cases";

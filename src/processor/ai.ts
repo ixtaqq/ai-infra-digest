@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { z } from "zod";
 import { config } from "../config";
 import { logger } from "../utils/logger";
 import { sleep } from "../utils/helpers";
@@ -246,37 +247,66 @@ Respond with JSON:
 }
 
 // ─── Parse JSON from AI Response ─────────────────────
-function parseJSON<T>(text: string): T | null {
+function extractJSON(text: string): unknown {
   let cleaned = text.trim();
   const codeBlock = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (codeBlock) cleaned = codeBlock[1].trim();
   const objectMatch = cleaned.match(/\{[\s\S]*\}/);
   if (objectMatch) cleaned = objectMatch[0];
   try {
-    return JSON.parse(cleaned) as T;
+    return JSON.parse(cleaned);
   } catch {
     return null;
   }
 }
 
 /**
- * Validate + normalize LLM-returned article rows at the trust boundary.
- * Drops rows missing the required title/url, and coerces optional fields to
- * safe defaults so downstream code (flatMap over affectedStocks, formatters)
- * never sees undefined where the prompt promised a value.
+ * Schema for a single article row from the batch classification response.
+ * Coerces number-ish strings (a model returning "8" instead of 8 for
+ * impactScore) instead of letting them silently reach `.toFixed()` calls or
+ * numeric comparisons downstream, and falls back to safe defaults for any
+ * field that fails validation rather than dropping the whole row.
  */
-function normalizeArticles(rows: ProcessedArticle[]): ProcessedArticle[] {
-  const valid = rows.filter(
-    (a) => typeof a?.title === "string" && a.title.length > 0 && typeof a?.url === "string"
-  );
-  if (valid.length < rows.length) {
-    logger.warn(`AI batch: dropped ${rows.length - valid.length} malformed article row(s) (missing title/url)`);
+const ArticleRowSchema = z.object({
+  title: z.string().min(1),
+  url: z.string().catch(""),
+  source: z.string().catch(""),
+  summary: z.string().catch(""),
+  impact: z.enum(["Bullish", "Bearish", "Neutral"]).catch("Neutral"),
+  impactScore: z.coerce.number().catch(5),
+  relevanceScore: z.coerce.number().optional().catch(undefined),
+  affectedStocks: z.array(z.string()).catch([]),
+  reason: z.string().catch(""),
+  category: z.enum(NEWS_CATEGORIES).catch(NEWS_CATEGORIES[0]),
+});
+
+const TopStockSchema = z.object({
+  ticker: z.string().min(1),
+  reason: z.string().catch(""),
+  sentiment: z.enum(["positive", "negative", "neutral"]).catch("neutral"),
+});
+
+const SynthesisResponseSchema = z.object({
+  topStocks: z.array(TopStockSchema).catch([]),
+  marketOutlook: z.string().optional().catch(undefined),
+  summary: z.string().optional().catch(undefined),
+});
+
+/**
+ * Validate + normalize LLM-returned article rows at the trust boundary.
+ * Drops rows missing the required title, and coerces every other field to a
+ * safe default so downstream code (flatMap over affectedStocks, formatters,
+ * numeric comparisons) never sees a malformed or wrong-typed value.
+ * Exported for unit tests.
+ */
+export function normalizeArticles(rows: unknown[]): ProcessedArticle[] {
+  const valid: ProcessedArticle[] = [];
+  for (const row of rows) {
+    const result = ArticleRowSchema.safeParse(row);
+    if (result.success) valid.push(result.data as ProcessedArticle);
   }
-  for (const a of valid) {
-    if (!Array.isArray(a.affectedStocks)) a.affectedStocks = [];
-    if (typeof a.summary !== "string") a.summary = "";
-    if (typeof a.impactScore !== "number" || Number.isNaN(a.impactScore)) a.impactScore = 5;
-    if (a.impact !== "Bullish" && a.impact !== "Bearish" && a.impact !== "Neutral") a.impact = "Neutral";
+  if (valid.length < rows.length) {
+    logger.warn(`AI batch: dropped ${rows.length - valid.length} malformed article row(s) (missing/invalid title)`);
   }
   return valid;
 }
@@ -395,13 +425,16 @@ async function processBatch(
   const prompt = buildBatchPrompt(batch, batchNum, totalBatches);
   // Classification uses the fast/cheap model (llama-3.1-8b-instant)
   const { content, usage } = await callAI(client, prompt, config.ai.fastModel);
-  const result = parseJSON<{ articles: ProcessedArticle[] }>(content);
+  const parsed = extractJSON(content) as { articles?: unknown } | null;
 
-  if (!result?.articles || !Array.isArray(result.articles)) {
+  if (!parsed?.articles || !Array.isArray(parsed.articles)) {
     logger.warn(`Batch ${batchNum} returned unparseable result, retrying with fast model...`);
-    const retryResult = await callAI(client, prompt, config.ai.fastModel);
-    const retryContent = retryResult.content;
-    const retryParsed = parseJSON<{ articles: ProcessedArticle[] }>(retryContent);
+    // Force strict JSON mode on retry (a no-op for groq/openai, which already use
+    // it, but meaningful for the "custom" provider where the first attempt ran
+    // without it) — a stateless model given the exact same prompt/mode otherwise
+    // tends to fail the same way.
+    const retryResult = await callAIOnce(client, prompt, config.ai.fastModel, true);
+    const retryParsed = extractJSON(retryResult.content) as { articles?: unknown } | null;
     if (!retryParsed?.articles || !Array.isArray(retryParsed.articles)) {
       logger.error(`Batch ${batchNum} failed after retry`);
       return { articles: [], totalTokens: 0, promptTokens: 0, completionTokens: 0 };
@@ -415,7 +448,7 @@ async function processBatch(
   }
 
   return {
-    articles: normalizeArticles(result.articles),
+    articles: normalizeArticles(parsed.articles),
     totalTokens: usage.totalTokens,
     promptTokens: usage.promptTokens,
     completionTokens: usage.completionTokens,
@@ -501,16 +534,15 @@ export async function processArticles(
     totalTokens += synthesisResult.usage.totalTokens;
     totalPromptTokens += synthesisResult.usage.promptTokens;
     totalCompletionTokens += synthesisResult.usage.completionTokens;
-    const synthesis = parseJSON<{
-      topStocks: DigestResult["topStocks"];
-      marketOutlook: string;
-      summary: string;
-    }>(synthesisResult.content);
+    const rawSynthesis = extractJSON(synthesisResult.content);
+    const synthesis = SynthesisResponseSchema.safeParse(rawSynthesis);
 
-    if (synthesis) {
-      topStocks = synthesis.topStocks || [];
-      marketOutlook = synthesis.marketOutlook || marketOutlook;
-      summary = synthesis.summary || summary;
+    if (synthesis.success) {
+      topStocks = synthesis.data.topStocks;
+      marketOutlook = synthesis.data.marketOutlook || marketOutlook;
+      summary = synthesis.data.summary || summary;
+    } else {
+      logger.warn(`Synthesis response failed validation: ${synthesis.error.issues[0]?.message ?? "unknown"}`);
     }
   } catch (error) {
     logger.warn("Synthesis pass failed, using defaults", {

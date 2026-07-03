@@ -6,6 +6,9 @@ on:
     - cron: "0 0 * * *"
   workflow_dispatch: # Allow manual trigger for testing
 
+permissions:
+  contents: read
+
 jobs:
   generate-digest:
     runs-on: ubuntu-latest
@@ -17,7 +20,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
           cache-dependency-path: package-lock.json
 
@@ -42,6 +45,19 @@ jobs:
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           DIGEST_EMAIL_TO: ${{ secrets.DIGEST_EMAIL_TO }}
           TZ: Asia/Kuala_Lumpur
+        # `npm ci` above already ran the postinstall script (package.json), which
+        # patches node-telegram-bot-api's "exports" field — no separate step needed.
+        run: node dist/index.js
+
+      - name: Notify Slack on failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
-          node -e "const fs=require('fs'),p='node_modules/node-telegram-bot-api/package.json',pkg=JSON.parse(fs.readFileSync(p,'utf8'));if(pkg.exports){delete pkg.exports;fs.writeFileSync(p,JSON.stringify(pkg,null,2));console.log('patched: removed exports field')}else{console.log('no exports field present')}"
-          node dist/index.js
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL not configured — skipping failure notification"
+            exit 0
+          fi
+          curl -sf -X POST -H 'Content-Type: application/json' \
+            -d "{\"text\":\":warning: *${{ github.workflow }}* failed on \`${{ github.repository }}\` — <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|view run>\"}" \
+            "$SLACK_WEBHOOK_URL"

@@ -151,24 +151,26 @@ No copyleft (GPL/AGPL) licenses detected in the direct dependency tree.
 
 ## 5. Concrete Improvement Actions (Checklist Style)
 
-- [ ] Cap retry recursion in `fetchTranscript()` at 2–3 attempts (`src/collector/earnings.ts:125-128`)
-- [ ] Require `WEBHOOK_SECRET` unconditionally in `src/webhook.ts:134-142`
-- [ ] Make scheduler delivery idempotent via DB-level upsert-before-send (`src/scheduler.ts:104-134`)
-- [ ] Compute `runDate` using `Intl.DateTimeFormat` with `config.app.timezone` (`src/index.ts:79`)
-- [ ] Add delimited/structured framing + explicit "treat as data" instruction to the AI prompt (`src/processor/ai.ts:173-183`)
-- [ ] Fix `insertArticles(1, [])` behavior and its integration test (`src/tests/supabase.integration.test.ts:114-118`)
-- [ ] Remove `logs/2026-06-23.ndjson` from git and add `logs/` to `.gitignore`
-- [ ] Introduce a zod schema for every AI JSON response shape (`processor/ai.ts`, `sec.ts`, `bear-cases.ts`, `thesis.ts`)
-- [ ] Sanitize/strip HTML tags from `article.contentSnippet` at collection time, not just at render
-- [ ] Consolidate `escapeHtml()` into `src/utils/escape.ts`
-- [ ] Write unit tests (mocked responses) for `processor/ai.ts`, `sec.ts`, `earnings.ts`, `embeddings.ts`, `thesis.ts`
-- [ ] Add `permissions:` blocks to all 5 GitHub workflows; standardize on Node 22
-- [ ] Add failure-notification step to `daily-digest.yml`, `scheduled-delivery.yml`, `data-retention.yml`, `weekly-thesis.yml`
-- [ ] Switch `fs.appendFileSync` in `src/utils/metrics.ts:91` to async
-- [ ] Add TTL/prune loop to `src/utils/trust-scores.ts` cache and `src/onboarding.ts` sessions Map
-- [ ] Consolidate the `node-telegram-bot-api` exports-field patch into a single reusable script
+- [x] Cap retry recursion in `fetchTranscript()` at 2–3 attempts (`src/collector/earnings.ts:125-128`)
+- [x] Require `WEBHOOK_SECRET` unconditionally in `src/webhook.ts:134-142`
+- [x] Make scheduler delivery idempotent via DB-level upsert-before-send (`src/scheduler.ts:104-134`) — implemented as an atomic `claimUserDelivery` in `src/utils/supabase.ts`, called from `deliverDigest` before every send
+- [x] Compute `runDate` using `Intl.DateTimeFormat` with `config.app.timezone` (`src/index.ts:79`) — added `todayInTimezone()` in `src/utils/helpers.ts`, applied consistently in `index.ts` and `scheduler.ts`
+- [x] Add delimited/structured framing + explicit "treat as data" instruction to the AI prompt (`src/processor/ai.ts:173-183`)
+- [x] Fix `insertArticles(1, [])` behavior and its integration test (`src/tests/supabase.integration.test.ts:114-118`) — implementation was already correct; the test's assertion was stale
+- [x] Remove `logs/2026-06-23.ndjson` from git and add `logs/` to `.gitignore`
+- [x] Introduce a zod schema for every AI JSON response shape (`processor/ai.ts`, `sec.ts`, `bear-cases.ts`, `thesis.ts`) — also applied to `processor/earnings.ts`, which had the identical unvalidated-cast bug (found while adding tests); shared `nullableFinancialNumber` helper extracted to `src/utils/ai-schema.ts`
+- [x] Sanitize/strip HTML tags from `article.contentSnippet` at collection time, not just at render — `stripHtmlTags()` added to `src/utils/escape.ts`, applied in `src/collector/rss.ts`
+- [x] Consolidate `escapeHtml()` into `src/utils/escape.ts` — only 2 real duplicates existed (`index.ts`, `formatter/telegram.ts`), not 3 as originally flagged; `sender/telegram.ts` never had its own copy
+- [x] Write unit tests (mocked responses) for `processor/ai.ts`, `sec.ts`, `earnings.ts`, `embeddings.ts`, `thesis.ts`, plus `collector/sec.ts` and `collector/earnings.ts` — 5 new test files, 50 new tests (116 → 166 total)
+- [x] Add `permissions:` blocks to all 5 GitHub workflows; standardize on Node 22
+- [x] Add failure-notification step to `daily-digest.yml`, `scheduled-delivery.yml`, `data-retention.yml`, `weekly-thesis.yml`
+- [x] Switch `fs.appendFileSync` in `src/utils/metrics.ts:91` to async
+- [x] Add TTL/prune loop to `src/onboarding.ts` sessions Map — `src/utils/trust-scores.ts`'s cache was re-checked and found to be permanently bounded to 2 keys (`source_trust`/`sector_trust`, always overwritten), not actually unbounded; no fix was needed there
+- [x] Consolidate the `node-telegram-bot-api` exports-field patch into a single reusable script — `npm ci` already runs the `package.json` postinstall script automatically, so the duplicate steps in `Dockerfile` and `daily-digest.yml` were simply redundant and removed
 - [ ] Document Gmail app-password requirement in `WEBHOOK_SETUP.md` / README SMTP section
 - [ ] Enable `pg_cron` for `cleanup_old_data()` or replace with an app-level scheduled call
+
+All Immediate and Short-Term items are now complete except the two doc/DB-ops items above, which are Long-Term-adjacent and low-risk to leave open.
 
 ---
 

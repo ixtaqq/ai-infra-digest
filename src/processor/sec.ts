@@ -12,9 +12,11 @@
  */
 
 import OpenAI from "openai";
+import { z } from "zod";
 import { config } from "../config";
 import { logger } from "../utils/logger";
 import { sleep } from "../utils/helpers";
+import { nullableFinancialNumber } from "../utils/ai-schema";
 import type { SECFiling } from "../collector/sec";
 
 // ─── Types ──────────────────────────────────────────────
@@ -199,28 +201,60 @@ function cleanJSON(text: string): string {
   return cleaned;
 }
 
+const SECFinancialExtractSchema = z.object({
+  capex: nullableFinancialNumber,
+  capexGuidance: nullableFinancialNumber,
+  capexSource: z.string().catch(""),
+  aiRevenue: nullableFinancialNumber,
+  aiRevenueGrowthPct: nullableFinancialNumber,
+  aiRevenueSource: z.string().catch(""),
+  grossMargin: nullableFinancialNumber,
+  operatingMargin: nullableFinancialNumber,
+  marginSource: z.string().catch(""),
+  inventory: nullableFinancialNumber,
+  inventoryTurnover: nullableFinancialNumber,
+  inventorySource: z.string().catch(""),
+  revenueGuidance: nullableFinancialNumber,
+  epsGuidance: nullableFinancialNumber,
+  guidanceText: z.string().catch(""),
+  impactScore: z.coerce.number().catch(5),
+  impactRationale: z.string().catch(""),
+  keyTakeaways: z.array(z.string()).catch([]),
+});
+
+/**
+ * Parses + validates the Pass 2 extraction response. Returns null (not a
+ * half-populated object) if the AI response isn't even a JSON object — ticker/
+ * formType/filingDate/companyName are merged in by the caller afterward.
+ */
 function parseSECJSON(text: string): SECFinancialExtract | null {
+  let raw: unknown;
   try {
-    return JSON.parse(cleanJSON(text)) as SECFinancialExtract;
+    raw = JSON.parse(cleanJSON(text));
   } catch {
     return null;
   }
+  const result = SECFinancialExtractSchema.safeParse(raw);
+  if (!result.success) return null;
+  // ticker/formType/filingDate/companyName are filled in by the caller (processFiling).
+  return result.data as SECFinancialExtract;
 }
+
+const FlagResponseSchema = z.object({
+  hasFinancialData: z.boolean(),
+  reason: z.string().catch(""),
+});
 
 /** Lightweight parser for the Pass 1 flag response shape. */
 function parseFlagResponse(text: string): { hasFinancialData: boolean; reason: string } | null {
+  let raw: unknown;
   try {
-    const parsed = JSON.parse(cleanJSON(text));
-    if (typeof parsed === 'object' && parsed !== null && typeof parsed.hasFinancialData === 'boolean') {
-      return {
-        hasFinancialData: parsed.hasFinancialData,
-        reason: typeof parsed.reason === 'string' ? parsed.reason : '',
-      };
-    }
-    return null;
+    raw = JSON.parse(cleanJSON(text));
   } catch {
     return null;
   }
+  const result = FlagResponseSchema.safeParse(raw);
+  return result.success ? result.data : null;
 }
 
 // ─── Call AI with Retry ────────────────────────────────

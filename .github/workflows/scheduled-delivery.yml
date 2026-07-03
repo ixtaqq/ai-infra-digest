@@ -6,6 +6,9 @@ on:
     - cron: "*/30 * * * *"
   workflow_dispatch: # Allow manual trigger for testing
 
+permissions:
+  contents: read
+
 jobs:
   deliver-digests:
     runs-on: ubuntu-latest
@@ -38,3 +41,16 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           TZ: Asia/Kuala_Lumpur
         run: node dist/scheduler.js
+
+      - name: Notify Slack on failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL not configured — skipping failure notification"
+            exit 0
+          fi
+          curl -sf -X POST -H 'Content-Type: application/json' \
+            -d "{\"text\":\":warning: *${{ github.workflow }}* failed on \`${{ github.repository }}\` — <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|view run>\"}" \
+            "$SLACK_WEBHOOK_URL"

@@ -11,6 +11,7 @@
  * which exists because models don't reliably echo long strings back verbatim.
  */
 
+import { z } from "zod";
 import { config } from "../config";
 import { logger } from "../utils/logger";
 import { supabase } from "../utils/supabase";
@@ -40,11 +41,25 @@ export interface ThesisRow {
 
 interface ThesisAIRow {
   index: number;
-  bullCase: string;
-  bearCase: string;
+  bullCase?: string;
+  bearCase?: string;
   confidence: number;
   keyDrivers?: string[];
 }
+
+// index/confidence are coerced (models occasionally return them as strings);
+// bullCase/bearCase are genuinely optional here — the caller drops rows missing them.
+const ThesisAIRowSchema = z.object({
+  index: z.coerce.number(),
+  bullCase: z.string().optional().catch(undefined),
+  bearCase: z.string().optional().catch(undefined),
+  confidence: z.coerce.number().catch(5),
+  keyDrivers: z.array(z.string()).optional().catch(undefined),
+});
+
+const ResultsResponseSchema = z.object({
+  results: z.array(z.unknown()).catch([]),
+});
 
 /** Aggregate 30d of derived metrics into per-ticker snapshots, top N by mentions. */
 export async function collectTickerSnapshots(): Promise<TickerSnapshot[]> {
@@ -135,19 +150,30 @@ function buildPrompt(snapshots: TickerSnapshot[]): string {
   );
 }
 
-function parseThesisResponse(text: string): ThesisAIRow[] {
+// Exported for unit tests
+export function parseThesisResponse(text: string): ThesisAIRow[] {
   const clean = text.replace(/^```[a-z]*\n?/m, "").replace(/```$/m, "").trim();
+
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(clean) as { results?: ThesisAIRow[] };
-    if (!Array.isArray(parsed.results)) {
-      logger.warn(`thesis: parsed JSON had no "results" array. Raw (first 300 chars): ${clean.slice(0, 300)}`);
-      return [];
-    }
-    return parsed.results;
+    parsed = JSON.parse(clean);
   } catch (err) {
     logger.warn(`thesis: failed to parse AI response (${(err as Error).message}). Raw (first 300 chars): ${clean.slice(0, 300)}`);
     return [];
   }
+
+  const outer = ResultsResponseSchema.safeParse(parsed);
+  if (!outer.success || outer.data.results.length === 0) {
+    logger.warn(`thesis: parsed JSON had no "results" array. Raw (first 300 chars): ${clean.slice(0, 300)}`);
+    return [];
+  }
+
+  const rows: ThesisAIRow[] = [];
+  for (const raw of outer.data.results) {
+    const row = ThesisAIRowSchema.safeParse(raw);
+    if (row.success) rows.push(row.data);
+  }
+  return rows;
 }
 
 /** Generate theses for the top tickers and upsert them into ticker_theses. */

@@ -12,10 +12,12 @@
  */
 
 import OpenAI from "openai";
+import { z } from "zod";
 import { config } from "../config";
 import { logger } from "../utils/logger";
 import { sleep } from "../utils/helpers";
 import { supabase } from "../utils/supabase";
+import { nullableFinancialNumber } from "../utils/ai-schema";
 import type { EarningsTranscript } from "../collector/earnings";
 
 // ─── Types ──────────────────────────────────────────────
@@ -172,12 +174,26 @@ interface SegmentationResult {
   segments: TranscriptSegment[];
 }
 
+const TranscriptSegmentSchema = z.object({
+  topic: z.enum(["capex", "ai_revenue", "supply_chain", "macro_outlook", "guidance", "other"]).catch("other"),
+  relevance: z.coerce.number().catch(5),
+  keyQuote: z.string().catch(""),
+  summary: z.string().catch(""),
+});
+
+const SegmentationResultSchema = z.object({
+  segments: z.array(TranscriptSegmentSchema).catch([]),
+});
+
 function parseSegmentation(text: string): SegmentationResult | null {
+  let raw: unknown;
   try {
-    return JSON.parse(cleanJSON(text)) as SegmentationResult;
+    raw = JSON.parse(cleanJSON(text));
   } catch {
     return null;
   }
+  const result = SegmentationResultSchema.safeParse(raw);
+  return result.success ? result.data : null;
 }
 
 // ─── Pass 2: Financial Extraction (Strong Model) ────────
@@ -236,12 +252,34 @@ interface ExtractionResult {
   keyTakeaways: string[];
 }
 
+const ExtractionResultSchema = z.object({
+  metrics: z.object({
+    revenueGuidance: nullableFinancialNumber,
+    epsGuidance: nullableFinancialNumber,
+    capexGuidance: nullableFinancialNumber,
+    aiRevenueMentioned: nullableFinancialNumber,
+    aiRevenueGrowthPct: nullableFinancialNumber,
+    capexSpend: nullableFinancialNumber,
+  }),
+  tone: z.object({
+    overall: z.enum(["bullish", "cautious", "neutral", "bearish"]).catch("neutral"),
+    confidence: z.coerce.number().catch(5),
+    keyPhrase: z.string().catch(""),
+    risksMentioned: z.array(z.string()).catch([]),
+  }),
+  summary: z.string().optional().catch(undefined),
+  keyTakeaways: z.array(z.string()).catch([]),
+});
+
 function parseExtraction(text: string): ExtractionResult | null {
+  let raw: unknown;
   try {
-    return JSON.parse(cleanJSON(text)) as ExtractionResult;
+    raw = JSON.parse(cleanJSON(text));
   } catch {
     return null;
   }
+  const result = ExtractionResultSchema.safeParse(raw);
+  return result.success ? (result.data as ExtractionResult) : null;
 }
 
 // ─── Compute Guidance Delta ─────────────────────────────

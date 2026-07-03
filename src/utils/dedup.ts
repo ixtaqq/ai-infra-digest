@@ -68,11 +68,11 @@ function getCachePath(): string {
   return path.join(dir, "articles-cache.json");
 }
 
-function loadCache(): CacheData {
+async function loadCache(): Promise<CacheData> {
   try {
     const cachePath = getCachePath();
     if (fs.existsSync(cachePath)) {
-      const raw = fs.readFileSync(cachePath, "utf-8");
+      const raw = await fs.promises.readFile(cachePath, "utf-8");
       return JSON.parse(raw) as CacheData;
     }
   } catch (error) {
@@ -83,10 +83,10 @@ function loadCache(): CacheData {
   return { entries: [] };
 }
 
-function saveCache(cache: CacheData): void {
+async function saveCache(cache: CacheData): Promise<void> {
   try {
     const cachePath = getCachePath();
-    fs.writeFileSync(cachePath, JSON.stringify(cache, null, 2), "utf-8");
+    await fs.promises.writeFile(cachePath, JSON.stringify(cache, null, 2), "utf-8");
   } catch (error) {
     logger.warn("Failed to save article cache", {
       error: (error as Error).message,
@@ -164,11 +164,11 @@ export function buildCorroborationMap(
  * Removes entries older than the specified hours and
  * filters out articles that were already processed.
  */
-export function deduplicateArticles<T extends { url: string; title: string }>(
+export async function deduplicateArticles<T extends { url: string; title: string }>(
   articles: T[],
   retentionHours = 48
-): T[] {
-  const cache = loadCache();
+): Promise<T[]> {
+  const cache = await loadCache();
   const now = new Date();
   const cutoff = new Date(now.getTime() - retentionHours * 60 * 60 * 1000);
 
@@ -204,7 +204,7 @@ export function deduplicateArticles<T extends { url: string; title: string }>(
   }));
 
   cache.entries.push(...newEntries);
-  saveCache(cache);
+  await saveCache(cache);
 
   const skipped = articles.length - newArticles.length;
   if (skipped > 0) {
