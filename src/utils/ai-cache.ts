@@ -11,7 +11,7 @@
  */
 
 import { createHash } from "crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync, unlinkSync } from "fs";
 import { join } from "path";
 import { logger } from "./logger";
 import type { DigestResult } from "../processor/ai";
@@ -54,9 +54,27 @@ export function getCached(articleUrls: string[]): DigestResult | null {
   }
 }
 
+/** Delete cache files older than the TTL — otherwise they accumulate forever on dev machines. */
+function pruneExpired(): void {
+  try {
+    const now = Date.now();
+    for (const file of readdirSync(CACHE_DIR)) {
+      if (!file.endsWith(".json")) continue;
+      const full = join(CACHE_DIR, file);
+      if (now - statSync(full).mtimeMs > TTL_MS) {
+        unlinkSync(full);
+        logger.debug(`AI cache: pruned expired ${file}`);
+      }
+    }
+  } catch {
+    // Pruning is best-effort — never let it break a cache write
+  }
+}
+
 export function setCached(articleUrls: string[], result: DigestResult): void {
   try {
     ensureDir();
+    pruneExpired();
     const key = cacheKey(articleUrls);
     const entry: CacheEntry = { createdAt: Date.now(), result };
     writeFileSync(cachePath(key), JSON.stringify(entry), "utf-8");

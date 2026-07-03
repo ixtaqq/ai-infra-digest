@@ -53,6 +53,15 @@ export async function generateEmbeddings(
       }
     } catch (err) {
       logger.warn(`Embeddings batch ${batchNum} failed: ${(err as Error).message}`);
+      if (err instanceof HttpError && err.status === 429) {
+        // A 429 that survives full-jitter retries is a quota problem, not a blip.
+        logger.warn(
+          "Embeddings: persistent HTTP 429 from OpenAI — the OPENAI_EMBEDDING_API_KEY account is out of quota/credits. " +
+            "Phase VIII features (semantic dedup, relevance gate, corroboration) will silently degrade until quota is restored. " +
+            "Aborting remaining embedding batches for this run."
+        );
+        break;
+      }
       continue;
     }
   }

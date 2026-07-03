@@ -425,24 +425,42 @@ export async function processArticles(
   const totalBatches = batches.length;
   logger.info(`Split into ${totalBatches} batches`);
 
-  // Process all batches
+  // Process batches with limited concurrency. Batches are independent, so
+  // running them in parallel cuts wall-clock time roughly in half — but keep
+  // concurrency at 2 (not all 4) to stay under Groq free-tier rate limits.
+  const BATCH_CONCURRENCY = 2;
+  const batchResults: (BatchResult | null)[] = new Array(batches.length).fill(null);
+  let nextBatch = 0;
+
+  async function batchWorker(): Promise<void> {
+    while (nextBatch < batches.length) {
+      const i = nextBatch++;
+      logger.info(`Processing batch ${i + 1}/${batches.length} (${batches[i].length} articles)...`);
+      try {
+        const result = await processBatch(client, batches[i], i + 1, batches.length);
+        batchResults[i] = result;
+        logger.info(`Batch ${i + 1}: ${result.articles.length} articles, ${result.totalTokens} tokens`);
+      } catch (error) {
+        logger.error(`Batch ${i + 1} failed`, { error: (error as Error).message });
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(BATCH_CONCURRENCY, batches.length) }, () => batchWorker())
+  );
+
+  // Collect in original batch order so article ordering stays deterministic
   const allBatchResults: ProcessedArticle[] = [];
   let totalTokens = 0;
   let totalPromptTokens = 0;
   let totalCompletionTokens = 0;
-
-  for (let i = 0; i < batches.length; i++) {
-    logger.info(`Processing batch ${i + 1}/${batches.length} (${batches[i].length} articles)...`);
-    try {
-      const result = await processBatch(client, batches[i], i + 1, batches.length);
-      allBatchResults.push(...result.articles);
-      totalTokens += result.totalTokens;
-      totalPromptTokens += result.promptTokens;
-      totalCompletionTokens += result.completionTokens;
-      logger.info(`Batch ${i + 1}: ${result.articles.length} articles, ${result.totalTokens} tokens`);
-    } catch (error) {
-      logger.error(`Batch ${i + 1} failed`, { error: (error as Error).message });
-    }
+  for (const result of batchResults) {
+    if (!result) continue;
+    allBatchResults.push(...result.articles);
+    totalTokens += result.totalTokens;
+    totalPromptTokens += result.promptTokens;
+    totalCompletionTokens += result.completionTokens;
   }
 
   if (allBatchResults.length === 0) {

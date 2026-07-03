@@ -301,7 +301,7 @@ cp .env.example .env
 | `AI_FALLBACK_FAST_MODEL` | ❌ | `gpt-4o-mini` | Fast model on the fallback provider |
 | `SUPABASE_URL` | ❌ | — | Supabase project URL |
 | `SUPABASE_SERVICE_KEY` | ❌ | — | Supabase service role key |
-| `OPENAI_EMBEDDING_API_KEY` | ❌ | — | OpenAI key for `text-embedding-3-small` vectors (Phase VIII); can share `OPENAI_API_KEY` if using OpenAI provider |
+| `OPENAI_EMBEDDING_API_KEY` | ❌ | — | OpenAI key for `text-embedding-3-small` vectors (Phase VIII); can share `OPENAI_API_KEY` if using OpenAI provider. ⚠️ The key's account needs available quota — on persistent HTTP 429 the pipeline logs a quota warning and Phase VIII features (semantic dedup, relevance gate, corroboration) silently degrade to lexical fallbacks for that run |
 | `ROIC_AI_API_KEY` | ❌ | — | Roic.ai API key for earnings transcripts |
 | `WEBHOOK_URL` | ❌ | — | Public URL for webhook bot auto-registration |
 | `WEBHOOK_SECRET` | ❌ | — | Secret token for webhook request validation (required in production) |
