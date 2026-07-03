@@ -1,6 +1,6 @@
 # 🏆 Goldirham Stack
 
-**Daily intelligence for the AI infrastructure age.** A pipeline that collects 57+ RSS feeds, analyzes news with AI, extracts SEC filings from 35 companies, and delivers a personalized morning digest via Telegram at each user's preferred time.
+**Daily intelligence for the AI infrastructure age.** A pipeline that collects 68 RSS feeds, analyzes news with AI, extracts SEC filings from 35 companies, and delivers a personalized morning digest via Telegram at each user's preferred time.
 
 Covers the **full AI infrastructure value chain**: power generation → cooling → networking → chips → AI models.
 
@@ -9,7 +9,7 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 ## Features
 
 ### 📡 News Pipeline
-- **57 RSS feeds** across 2 tiers (company news + industry analysis)
+- **68 RSS feeds** across 2 tiers (company news + industry analysis)
 - **Smart deduplication** — URL matching + **Jaccard similarity** (catches near-identical headlines); upgraded to **cosine similarity on embeddings** (0.85 threshold) when Phase VIII embeddings are active
 - **10-sector classification**: Chips & GPUs, Cloud & Hyperscalers, Datacenters, Networking, Semiconductor Manufacturing, Power & Utilities, Cooling Infrastructure, AI Models & Labs, M&A, Earnings
 - **Two-layer relevance filtering** — AI scores each article's relevance (1–10, < 4 dropped); followed by **semantic relevance gate** (cosine similarity vs 20 canonical AI-infra seed sentences, threshold 0.55) when embeddings are active
@@ -82,7 +82,7 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 | `/digest` | Show recent stored articles (filtered by your watchlist/sector if set) |
 | `/digest watchlist` | Filter stored articles by your saved watchlist tickers |
 | `/digest sector=Chips_&_GPUs` | Filter stored articles by sector |
-| `/sources` | List all 57 tracked RSS feeds with health status |
+| `/sources` | List all 68 tracked RSS feeds with health status |
 | `/sources quality` | Show source trust scores ranked by approval rate (vote-learned multipliers) |
 | `/last` | Show the most recent digest summary from Supabase |
 | `/trending` | See what's trending in AI infra (last 7 days, snapshot) |
@@ -200,7 +200,7 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 ## Architecture
 
 ```
-RSS Feeds (57 sources, conditional GET + ETag cache)
+RSS Feeds (68 sources, conditional GET + ETag cache)
       │
       ▼
 Step 1: News Collector (rss-parser + keyword filter + retry backoff)
@@ -461,7 +461,7 @@ ai-infra-digest/
 │   ├── webhook.ts                            # Zero-dep webhook HTTP server
 │   ├── config.ts                             # Env config loader (incl. budget caps)
 │   ├── collector/
-│   │   ├── rss.ts                            # 57 RSS feeds, conditional GET, retry backoff
+│   │   ├── rss.ts                            # 68 RSS feeds, conditional GET, retry backoff
 │   │   ├── sec.ts                            # SEC EDGAR watcher — 35 companies
 │   │   └── earnings.ts                       # Roic.ai earnings transcript fetcher
 │   ├── formatter/
@@ -503,11 +503,11 @@ ai-infra-digest/
 
 ## News Sources
 
-**Tier 1 — Company & Financial (37 feeds)**
-NVIDIA, AMD, Broadcom, Microsoft, Amazon, Google, Meta, TSMC, Intel, Qualcomm, Oracle, IBM, Micron, ASML, Super Micro, Dell, ARM, Arista, Cisco, Marvell, Applied Materials, Lam Research, KLA, Digital Realty, Equinix, Constellation Energy, Vistra, GE Vernova, Siemens Energy, Vertiv, Schneider Electric, Eaton, Anthropic, xAI, Mistral AI, Cohere + MarketWatch, Yahoo Finance, CNBC, Reuters, Bloomberg Tech, FT Tech, Barron's, WSJ Markets
+**Tier 1 — Company & Financial (50 feeds)**
+NVIDIA, Microsoft, AMD, Broadcom, Amazon, Google, Meta, TSMC, Intel, Qualcomm, Oracle, IBM, Micron, ASML, Super Micro, Dell, ARM, Arista, Cisco, Marvell, Applied Materials, Lam Research, KLA, Tokyo Electron, Digital Realty, Equinix, Constellation Energy, Vistra, GE Vernova, Siemens Energy, Vertiv, Schneider Electric, Eaton, Anthropic, xAI, Mistral AI, Cohere, SK hynix, Samsung, GlobalFoundries + MarketWatch, Yahoo Finance, CNBC, Reuters Tech, Bloomberg Tech, FT Tech, Barron's, WSJ Markets, Investor's Business Daily, SEC Filings (EDGAR current filings feed)
 
-**Tier 2 — Industry News (20 feeds)**
-Tom's Hardware, AnandTech, Ars Technica, TechCrunch, The Verge, Seeking Alpha, SemiAnalysis, The Register, Datacenter Dynamics, Semiconductor Engineering, Google AI Blog, OpenAI, AWS AI, VentureBeat AI, AI News, Medium AI, AI Business, ZDNet AI
+**Tier 2 — Industry News (18 feeds)**
+Tom's Hardware, ServeTheHome, Ars Technica, TechCrunch, The Verge, Seeking Alpha, SemiAnalysis, The Register, Datacenter Dynamics, Semiconductor Engineering, Google AI Blog, OpenAI, AWS AI, VentureBeat AI, AI News, Medium AI, AI Business, ZDNet AI
 
 ---
 

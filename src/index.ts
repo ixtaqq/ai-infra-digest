@@ -1132,7 +1132,7 @@ export function registerDigestCommands(): void {
     // Static fallback
     return {
       text:
-        `📡 <b>RSS Feeds (57 tracked)</b>\n\n` +
+        `📡 <b>RSS Feeds (68 tracked)</b>\n\n` +
         `<b>Tier 1 — Major Cos & Financial News (37):</b>\n` +
         `NVIDIA, AMD, Broadcom, Microsoft, Amazon, Google, Meta, TSMC, Intel, ` +
         `Qualcomm, Oracle, IBM, Micron, ASML, Super Micro, Dell, ARM, Arista, ` +

@@ -97,7 +97,7 @@ function initCommands() {
       `<b>Commands:</b>\n` +
       `• /start — Welcome & intro\n` +
       `• /digest — Generate and send the latest digest now\n` +
-      `• /sources — Show all 57 tracked RSS feeds\n` +
+      `• /sources — Show all 68 tracked RSS feeds\n` +
       `• /last — Show the most recent digest summary\n` +
       `• /trending — See what's trending in AI infra\n` +
       `• /thesis <code>NVDA</code> — Weekly bull/bear thesis snapshot for a ticker\n` +
