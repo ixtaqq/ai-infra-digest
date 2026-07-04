@@ -1174,7 +1174,7 @@
       }, 8000);
 
       try {
-        const [digests, sectors, stocks, articles, feeds, capex, metrics, prices, deliveries, secFilings, theses] = await Promise.all([
+        const [digests, sectors, stocks, articles, feeds, capex, metrics, prices, deliveries, secFilings, theses, thesisHistory] = await Promise.all([
           supabaseQuery('digest_runs', { order: 'run_date', limit: 60, rangeColumn: 'run_date', range: rangeDate }).catch(() => []),
           supabaseQuery('sector_activity', { select: 'date,sector,article_count,avg_impact_score', order: 'date', range: rangeDate }).catch(() => []),
           supabaseQuery('stock_mentions', { order: 'mention_count', limit: 10, range: rangeDate }).catch(() => []),
@@ -1186,6 +1186,9 @@
           supabaseQuery('user_delivery_log', { order: 'created_at', limit: 100, range: rangeDate, rangeColumn: 'run_date' }).catch(() => []),
           supabaseQuery('sec_filings', { order: 'filing_date', limit: 50, range: rangeDate, rangeColumn: 'filing_date' }).catch(() => []),
           supabaseQuery('ticker_theses', { order: 'confidence', limit: 10 }).catch(() => []),
+          // v11 — up to ~10 tracked tickers × recent weeks; one batched fetch,
+          // no per-ticker query loop. Sorted client-side (see renderThesesSection).
+          supabaseQuery('ticker_thesis_history', { limit: 100 }).catch(() => []),
         ]);
 
         clearTimeout(slowTimer);
@@ -1228,7 +1231,7 @@
         renderDeliverySection(deliveries);
         renderSECSection(secFilings);
         renderCapex(capex);
-        renderThesesSection(theses);
+        renderThesesSection(theses, thesisHistory);
 
         const btn = document.getElementById('loadMoreBtn');
         const info = document.getElementById('paginationInfo');
@@ -1780,15 +1783,47 @@
       el.innerHTML = html;
     }
 
-    function renderThesesSection(theses) {
+    function renderThesesSection(theses, history) {
       const el = document.getElementById('thesesSection');
       if (!theses.length) { el.innerHTML = '<p style="color:var(--text-dim);padding:10px 0;font-size:12px">No thesis snapshots yet — they generate weekly (Sundays) for the top-10 most-mentioned tickers</p>'; return; }
+
+      // v11 — group history rows by ticker, newest week first, client-side
+      // (no per-ticker query loop; one batched fetch already happened above).
+      const historyByTicker = {};
+      (history || []).forEach(h => {
+        (historyByTicker[h.ticker] = historyByTicker[h.ticker] || []).push(h);
+      });
+      Object.values(historyByTicker).forEach(rows => rows.sort((a, b) => (b.week_of || '').localeCompare(a.week_of || '')));
+
       el.innerHTML = theses.map(t => {
         const confColor = t.confidence >= 7 ? 'var(--bullish)' : t.confidence >= 4 ? 'var(--warn)' : 'var(--text-muted)';
         const drivers = (t.key_drivers || []).map(d =>
           `<span style="font-size:10px;background:var(--bg-hover);padding:1px 6px;border-radius:2px;margin-right:4px">${escapeHtml(d)}</span>`
         ).join('');
         const updated = (t.updated_at || '').split('T')[0];
+
+        // Timeline: last 6 weeks max, week_of shown explicitly next to each
+        // entry so a skipped cron run is visible as a real date gap rather
+        // than silently mislabeling a multi-week jump as a one-week delta.
+        const tickerHistory = (historyByTicker[t.ticker] || []).slice(0, 6);
+        let historyHtml = '';
+        if (tickerHistory.length > 1) {
+          const rows = tickerHistory.map((h, i) => {
+            const prev = tickerHistory[i + 1];
+            const delta = prev ? h.confidence - prev.confidence : null;
+            const deltaHtml = delta == null || delta === 0
+              ? ''
+              : delta > 0
+                ? ` <span style="color:var(--bullish)">(+${delta})</span>`
+                : ` <span style="color:var(--bearish)">(${delta})</span>`;
+            return `<div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);padding:2px 0">
+              <span style="font-family:'JetBrains Mono',monospace">${escapeHtml(h.week_of || '')}</span>
+              <span>confidence ${h.confidence}/10${deltaHtml}</span>
+            </div>`;
+          }).join('');
+          historyHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border-light)">${rows}</div>`;
+        }
+
         return `<div style="padding:10px 0;border-bottom:1px solid var(--border-light)">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
             <strong style="font-family:'JetBrains Mono',monospace">${escapeHtml(t.ticker)}</strong>
@@ -1798,6 +1833,7 @@
           <div style="font-size:12px;color:var(--text-dim);line-height:1.5;margin-bottom:4px">🟢 ${escapeHtml(t.bull_case)}</div>
           <div style="font-size:12px;color:var(--text-dim);line-height:1.5;margin-bottom:6px">🔴 ${escapeHtml(t.bear_case)}</div>
           ${drivers ? `<div>${drivers}</div>` : ''}
+          ${historyHtml}
         </div>`;
       }).join('');
     }
