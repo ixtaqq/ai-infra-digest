@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("../config", () => ({
-  config: { ai: { apiKey: "test-key", model: "strong-model", baseUrl: "https://api.test/v1" } },
+  config: { ai: { apiKey: "test-key", model: "strong-model", baseUrl: "https://api.test/v1" }, app: { timezone: "Asia/Kuala_Lumpur" } },
 }));
 
 vi.mock("../utils/logger", () => ({
@@ -11,9 +11,14 @@ vi.mock("../utils/logger", () => ({
 const h = vi.hoisted(() => ({
   queryRowsMock: vi.fn(),
   upsertTickerThesesMock: vi.fn(),
+  insertTickerThesisHistoryMock: vi.fn(),
 }));
 vi.mock("../utils/supabase", () => ({
-  supabase: { queryRows: h.queryRowsMock, upsertTickerTheses: h.upsertTickerThesesMock },
+  supabase: {
+    queryRows: h.queryRowsMock,
+    upsertTickerTheses: h.upsertTickerThesesMock,
+    insertTickerThesisHistory: h.insertTickerThesisHistoryMock,
+  },
 }));
 
 import { parseThesisResponse, generateTheses } from "./thesis";
@@ -101,11 +106,46 @@ describe("generateTheses", () => {
       )
     );
     h.upsertTickerThesesMock.mockResolvedValue(true);
+    h.insertTickerThesisHistoryMock.mockResolvedValue(true);
 
     const result = await generateTheses();
     expect(result).toHaveLength(1);
     expect(result[0].ticker).toBe("NVDA");
     expect(result[0].bull_case).toBe("Strong AI demand.");
     expect(h.upsertTickerThesesMock).toHaveBeenCalledTimes(1);
+    expect(h.insertTickerThesisHistoryMock).toHaveBeenCalledTimes(1);
+    const [historyTheses, weekOf] = h.insertTickerThesisHistoryMock.mock.calls[0];
+    expect(historyTheses[0].ticker).toBe("NVDA");
+    expect(weekOf).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("still returns the generated theses when the history insert fails (independent, best-effort write)", async () => {
+    h.queryRowsMock
+      .mockResolvedValueOnce([
+        { date: "2026-06-01", entity: "NVDA", mention_count: 10, avg_impact_score: 8, bullish_count: 8, bearish_count: 2, price_close: 900 },
+      ])
+      .mockResolvedValueOnce([]);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: JSON.stringify({ results: [{ index: 1, bullCase: "b", bearCase: "b", confidence: 6 }] }) } }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+    );
+    h.upsertTickerThesesMock.mockResolvedValue(true);
+    h.insertTickerThesisHistoryMock.mockResolvedValue(false); // history write fails
+
+    const result = await generateTheses();
+
+    // The latest-only upsert succeeded and the function still returns the theses —
+    // a failed history insert never blocks or reverts the main write.
+    expect(result).toHaveLength(1);
+    expect(h.upsertTickerThesesMock).toHaveBeenCalledTimes(1);
+    expect(h.insertTickerThesisHistoryMock).toHaveBeenCalledTimes(1);
   });
 });

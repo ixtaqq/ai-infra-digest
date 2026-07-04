@@ -16,6 +16,7 @@ import { config } from "../config";
 import { logger } from "../utils/logger";
 import { supabase } from "../utils/supabase";
 import { withRetry, HttpError, isRetryableStatus } from "../utils/retry";
+import { todayInTimezone } from "../utils/helpers";
 
 const TOP_TICKERS = 10;
 const LOOKBACK_DAYS = 30;
@@ -232,6 +233,14 @@ export async function generateTheses(): Promise<ThesisRow[]> {
   if (theses.length) {
     const ok = await supabase.upsertTickerTheses(theses);
     logger.info(`Thesis: generated ${theses.length}/${snapshots.length} theses${ok ? ", stored in Supabase" : " (Supabase store failed)"}`);
+
+    // Independent, best-effort write to the history table (v11) — a failure
+    // here is logged and never blocks or reverts the latest-only upsert above.
+    const weekOf = todayInTimezone(config.app.timezone);
+    const historyOk = await supabase.insertTickerThesisHistory(theses, weekOf);
+    if (!historyOk) {
+      logger.warn(`Thesis: history insert failed for week ${weekOf} (latest snapshot was still stored)`);
+    }
   } else {
     logger.warn(`Thesis: AI returned 0 usable rows for ${snapshots.length} tickers`);
   }

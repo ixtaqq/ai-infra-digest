@@ -384,6 +384,26 @@ export const supabase = {
     );
   },
 
+  /**
+   * Append this week's thesis snapshots to the history table (v11), keyed by
+   * (ticker, week_of). Independent of upsertTickerTheses — a failure here is
+   * logged and does not affect the latest-only ticker_theses write. A re-run
+   * for the same week overwrites that week's row rather than erroring or
+   * duplicating (insert-or-overwrite-per-week, not append-only).
+   */
+  async insertTickerThesisHistory(
+    theses: { ticker: string; bull_case: string; bear_case: string; confidence: number; key_drivers: string[] }[],
+    weekOf: string
+  ): Promise<boolean> {
+    if (!theses.length) return true;
+    return supabaseFetch(
+      "POST",
+      "ticker_thesis_history",
+      theses.map((t) => ({ ...t, week_of: weekOf })),
+      "on_conflict=ticker,week_of"
+    );
+  },
+
   // ─── User Management ────────────────────────────────
 
   async upsertUserPreferences(
