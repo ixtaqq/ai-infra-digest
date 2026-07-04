@@ -43,3 +43,17 @@
 **Context:** Directly analogous to the `/coverage` pivot from this session's `/plan-eng-review`: the outside voice's strategic critique caught that "Thesis Evolution Dashboard" as originally scoped (new history table) didn't match the validated incident, and a query against existing data (`articles`) did. Worth checking the same question for Catalyst Tracker before building it.
 
 **Depends on:** Catalyst Tracker acquiring real Q1 (demand) evidence per the `/office-hours` diagnostic — not before.
+
+### [TODO-4] Related Prior Coverage — killed, do not rebuild without new evidence
+
+**What:** Was pitched as: when a new article comes in about a ticker, auto-surface links to past digest coverage of the same ticker/story. Diagnosed via `/office-hours` on 2026-07-04 and killed — not built.
+
+**Why:** Zero demand evidence. Q1 (Demand Reality) got pushed twice and both times came back "no specific incident, ever" — weaker than Price Watch (which at least had a recurring habit) and far weaker than Thesis Evolution (a dated incident). It also overlaps with `/coverage TICKER [days]` (already shipped, see `docs/thesis-evolution-design.md`), which already answers "have I seen this before" on demand — the only thing this pitch would add is making that push instead of pull, for a problem with zero recorded occurrences.
+
+**Pros:** N/A — not being built.
+
+**Cons:** N/A — not being built.
+
+**Context:** Last of the 3 Phase XI items diagnosed one-at-a-time per the founder's explicit sequencing rule (see Price Watch and Source Leaderboard diagnostics from the same session). Source Leaderboard was found already shipped (`/sources quality`); Price Watch cleared the bar and got a design doc (`docs/price-watch-design.md`); this one didn't clear the bar and was killed, same call as Catalyst Tracker ([TODO-3]).
+
+**Depends on:** Nothing — revisit only if a real, specific incident of this confusion actually happens (matching the Thesis Evolution precedent, which started from exactly that kind of incident).

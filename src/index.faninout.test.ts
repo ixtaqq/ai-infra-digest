@@ -12,6 +12,13 @@ const h = vi.hoisted(() => ({
   sendDigestMessage: vi.fn(),
   sendDigestMessageToUser: vi.fn(),
   fetchStockPrices: vi.fn(),
+  isConfigured: vi.fn(),
+  queryRows: vi.fn(),
+  getAllPriceWatches: vi.fn(),
+  deletePriceWatchesByIds: vi.fn(),
+  claimUserDelivery: vi.fn(),
+  logUserDelivery: vi.fn(),
+  getAllActiveUsers: vi.fn(),
 }));
 
 vi.mock("./config", () => ({
@@ -51,9 +58,18 @@ vi.mock("./sender/telegram", () => ({
   startInteractiveBot: vi.fn(),
   registerCommand: vi.fn(),
 }));
-// Supabase reports "not configured" so persistence/alert branches are skipped.
+// Supabase reports "not configured" by default so persistence/alert branches
+// are skipped — flipped to true in the price-watch tests below, which need it.
 vi.mock("./utils/supabase", () => ({
-  supabase: { isConfigured: () => false, queryRows: vi.fn(async () => []) },
+  supabase: {
+    isConfigured: h.isConfigured,
+    queryRows: h.queryRows,
+    getAllPriceWatches: h.getAllPriceWatches,
+    deletePriceWatchesByIds: h.deletePriceWatchesByIds,
+    claimUserDelivery: h.claimUserDelivery,
+    logUserDelivery: h.logUserDelivery,
+    getAllActiveUsers: h.getAllActiveUsers,
+  },
 }));
 // Prevent filesystem cache from skipping the mocked processArticles call.
 vi.mock("./utils/ai-cache", () => ({ getCached: vi.fn(() => null), setCached: vi.fn() }));
@@ -81,6 +97,13 @@ beforeEach(() => {
   h.fetchStockPrices.mockReset().mockResolvedValue(new Map());
   h.sendDigestMessage.mockReset().mockResolvedValue({ success: true, messageId: 1 });
   h.sendDigestMessageToUser.mockReset().mockResolvedValue({ success: true, messageId: 2 });
+  h.isConfigured.mockReset().mockReturnValue(false);
+  h.queryRows.mockReset().mockResolvedValue([]);
+  h.getAllPriceWatches.mockReset().mockResolvedValue([]);
+  h.deletePriceWatchesByIds.mockReset().mockResolvedValue(true);
+  h.claimUserDelivery.mockReset().mockResolvedValue(true);
+  h.logUserDelivery.mockReset().mockResolvedValue(true);
+  h.getAllActiveUsers.mockReset().mockResolvedValue([]);
 });
 
 describe("digest fan-out", () => {
@@ -103,5 +126,119 @@ describe("digest fan-out", () => {
     expect(h.sendDigestMessageToUser).toHaveBeenCalledTimes(3);
     expect(h.sendDigestMessageToUser).toHaveBeenCalledWith(101, "DIGEST_MSG");
     expect(h.sendDigestMessageToUser).toHaveBeenCalledWith(103, "DIGEST_MSG");
+  });
+});
+
+describe("price watch check-and-notify", () => {
+  it("sends one combined notification and deletes the watch once triggered", async () => {
+    h.isConfigured.mockReturnValue(true);
+    h.getAllPriceWatches.mockResolvedValue([
+      { id: 1, chat_id: 101, ticker: "NVDA", threshold: 130, direction: "above" },
+    ]);
+    h.fetchStockPrices.mockResolvedValue(
+      new Map([["NVDA", { ticker: "NVDA", price: 135, change: 5, changePercent: 3.8, previousClose: 130 }]])
+    );
+
+    const generated = await generateDigest();
+    await deliverDigest(generated!, 101);
+
+    // One send for the digest itself, one for the combined watch notification.
+    expect(h.sendDigestMessageToUser).toHaveBeenCalledTimes(2);
+    const watchCall = h.sendDigestMessageToUser.mock.calls.find(
+      (c) => typeof c[1] === "string" && c[1].includes("Price Watch")
+    );
+    expect(watchCall).toBeDefined();
+    expect(watchCall![1]).toContain("NVDA");
+    expect(h.deletePriceWatchesByIds).toHaveBeenCalledWith([1]);
+  });
+
+  it("does not notify or delete when the watch hasn't triggered", async () => {
+    h.isConfigured.mockReturnValue(true);
+    h.getAllPriceWatches.mockResolvedValue([
+      { id: 1, chat_id: 101, ticker: "NVDA", threshold: 130, direction: "above" },
+    ]);
+    h.fetchStockPrices.mockResolvedValue(
+      new Map([["NVDA", { ticker: "NVDA", price: 125, change: -5, changePercent: -3.8, previousClose: 130 }]])
+    );
+
+    const generated = await generateDigest();
+    await deliverDigest(generated!, 101);
+
+    expect(h.sendDigestMessageToUser).toHaveBeenCalledTimes(1); // just the digest
+    expect(h.deletePriceWatchesByIds).not.toHaveBeenCalled();
+  });
+
+  it("combines multiple triggered watches for the same user into a single message", async () => {
+    h.isConfigured.mockReturnValue(true);
+    h.getAllPriceWatches.mockResolvedValue([
+      { id: 1, chat_id: 101, ticker: "NVDA", threshold: 130, direction: "above" },
+      { id: 2, chat_id: 101, ticker: "TSLA", threshold: 200, direction: "below" },
+    ]);
+    h.fetchStockPrices.mockResolvedValue(
+      new Map([
+        ["NVDA", { ticker: "NVDA", price: 135, change: 5, changePercent: 3.8, previousClose: 130 }],
+        ["TSLA", { ticker: "TSLA", price: 190, change: -10, changePercent: -5, previousClose: 200 }],
+      ])
+    );
+
+    const generated = await generateDigest();
+    await deliverDigest(generated!, 101);
+
+    expect(h.sendDigestMessageToUser).toHaveBeenCalledTimes(2); // digest + ONE combined watch message
+    expect(h.deletePriceWatchesByIds).toHaveBeenCalledWith([1, 2]);
+  });
+
+  it("skips watch checking entirely for the legacy default-chat path (no targetChatId)", async () => {
+    h.isConfigured.mockReturnValue(true);
+    h.getAllPriceWatches.mockResolvedValue([
+      { id: 1, chat_id: 101, ticker: "NVDA", threshold: 130, direction: "above" },
+    ]);
+    h.fetchStockPrices.mockResolvedValue(
+      new Map([["NVDA", { ticker: "NVDA", price: 135, change: 5, changePercent: 3.8, previousClose: 130 }]])
+    );
+
+    const generated = await generateDigest();
+    await deliverDigest(generated!); // no targetChatId
+
+    expect(h.sendDigestMessageToUser).not.toHaveBeenCalled();
+    expect(h.deletePriceWatchesByIds).not.toHaveBeenCalled();
+  });
+
+  it("does not delete the watch when the notification send fails", async () => {
+    h.isConfigured.mockReturnValue(true);
+    h.getAllPriceWatches.mockResolvedValue([
+      { id: 1, chat_id: 101, ticker: "NVDA", threshold: 130, direction: "above" },
+    ]);
+    h.fetchStockPrices.mockResolvedValue(
+      new Map([["NVDA", { ticker: "NVDA", price: 135, change: 5, changePercent: 3.8, previousClose: 130 }]])
+    );
+    h.sendDigestMessageToUser
+      .mockResolvedValueOnce({ success: true, messageId: 1 }) // the digest send
+      .mockResolvedValueOnce({ success: false, error: "boom" }); // the watch notification send
+
+    const generated = await generateDigest();
+    await deliverDigest(generated!, 101);
+
+    expect(h.deletePriceWatchesByIds).not.toHaveBeenCalled();
+  });
+
+  it("prepends watched tickers so they survive fetchStockPrices' 25-ticker cap", async () => {
+    h.isConfigured.mockReturnValue(true);
+    h.getAllPriceWatches.mockResolvedValue([
+      { id: 1, chat_id: 101, ticker: "ZZZZ", threshold: 10, direction: "above" },
+    ]);
+    h.processArticles.mockResolvedValueOnce({
+      ...fakeDigest,
+      articles: Array.from({ length: 30 }, (_, i) => ({
+        ...fakeDigest.articles[0],
+        url: `u${i}`,
+        affectedStocks: [`T${i}`],
+      })),
+    });
+
+    await generateDigest();
+
+    const tickersPassed = h.fetchStockPrices.mock.calls[0][0] as string[];
+    expect(tickersPassed[0]).toBe("ZZZZ");
   });
 });

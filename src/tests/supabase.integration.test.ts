@@ -225,6 +225,85 @@ describe("Supabase Integration", () => {
     });
   });
 
+  describe("getAllPriceWatches", () => {
+    it("should return parsed rows on success", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [
+          { id: 1, chat_id: 12345, ticker: "NVDA", threshold: 130, direction: "above" },
+        ],
+      });
+
+      const { supabase } = await import("../utils/supabase");
+      const watches = await supabase.getAllPriceWatches();
+      expect(watches).toHaveLength(1);
+      expect(watches[0].ticker).toBe("NVDA");
+    });
+
+    it("should return [] on HTTP error", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 500 });
+      const { supabase } = await import("../utils/supabase");
+      const watches = await supabase.getAllPriceWatches();
+      expect(watches).toEqual([]);
+    });
+  });
+
+  describe("upsertPriceWatch", () => {
+    it("should POST with on_conflict=chat_id,ticker", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 201 });
+
+      const { supabase } = await import("../utils/supabase");
+      const result = await supabase.upsertPriceWatch({
+        chat_id: 12345,
+        ticker: "NVDA",
+        threshold: 130,
+        direction: "above",
+      });
+
+      expect(result).toBe(true);
+      const callUrl = mockFetch.mock.calls[0][0] as string;
+      expect(callUrl).toContain("on_conflict=chat_id,ticker");
+      const callHeaders = mockFetch.mock.calls[0][1]?.headers || {};
+      expect(callHeaders["Prefer"]).toContain("resolution=merge-duplicates");
+    });
+  });
+
+  describe("deletePriceWatch", () => {
+    it("should DELETE filtered by chat_id and ticker", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200 });
+
+      const { supabase } = await import("../utils/supabase");
+      const result = await supabase.deletePriceWatch(12345, "NVDA");
+
+      expect(result).toBe(true);
+      const callUrl = mockFetch.mock.calls[0][0] as string;
+      expect(callUrl).toContain("chat_id=eq.12345");
+      expect(callUrl).toContain("ticker=eq.NVDA");
+      const callMethod = mockFetch.mock.calls[0][1]?.method;
+      expect(callMethod).toBe("DELETE");
+    });
+  });
+
+  describe("deletePriceWatchesByIds", () => {
+    it("should return true without a fetch call for an empty id list", async () => {
+      const { supabase } = await import("../utils/supabase");
+      const result = await supabase.deletePriceWatchesByIds([]);
+      expect(result).toBe(true);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("should DELETE with an id=in.(...) filter", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200 });
+
+      const { supabase } = await import("../utils/supabase");
+      const result = await supabase.deletePriceWatchesByIds([1, 2, 3]);
+
+      expect(result).toBe(true);
+      const callUrl = mockFetch.mock.calls[0][0] as string;
+      expect(callUrl).toContain("id=in.(1,2,3)");
+    });
+  });
+
   describe("healthCheck", () => {
     it("should return true when Supabase is responsive", async () => {
       mockFetch.mockResolvedValueOnce({ ok: true });

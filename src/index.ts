@@ -42,6 +42,8 @@ import { generateEmbeddings } from "./processor/embeddings";
 import { embedSeeds, passesSemanticGate } from "./processor/relevance";
 import { todayInTimezone } from "./utils/helpers";
 import { escapeHtml } from "./utils/escape";
+import { inferDirection, isTriggered } from "./utils/price-watch";
+import type { PriceWatch } from "./utils/price-watch";
 import type { Article, FeedResult } from "./collector/rss";
 import type { SECFinancialExtract } from "./processor/sec";
 import type { EarningsAnalysis } from "./processor/earnings";
@@ -67,6 +69,8 @@ export interface GeneratedDigest {
   whatChanged?: string;
   /** Full bull/bear/context thesis for the top article (v9.2). */
   deepDive?: DeepDiveResult;
+  /** All active price watches across every user, fetched once (v12). Filtered per-chat_id in deliverDigest(). */
+  activeWatches: PriceWatch[];
 }
 
 /**
@@ -314,8 +318,15 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
     }
 
     // ─── Step 2c: Fetch Stock Prices ────────────
+    // Fetched once here (not per-user) — price-watch checks in deliverDigest()
+    // filter this same list by chat_id instead of re-querying Supabase per user.
+    const activeWatches = supabase.isConfigured() ? await supabase.getAllPriceWatches() : [];
+    // Watched tickers go FIRST: fetchStockPrices() caps the list at 25 entries
+    // (see utils/stocks.ts), so a watched ticker appended after a busy article
+    // day would be silently truncated and its watch would never fire.
     const allTickers = [
       ...new Set([
+        ...activeWatches.map((w) => w.ticker),
         ...digest.articles.flatMap((a) => a.affectedStocks),
         ...digest.topStocks.map((s) => s.ticker),
       ]),
@@ -416,6 +427,7 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
       stockPrices,
       whatChanged,
       deepDive,
+      activeWatches,
     };
 
   } catch (error) {
@@ -665,6 +677,34 @@ export async function deliverDigest(
     }
   } else {
     sendResult = await sendDigestMessage(messageToSend);
+  }
+
+  // ─── Price Watch check-and-notify (v12) ──────────────────────────────────
+  // Independent of the digest send above — a failed digest delivery shouldn't
+  // suppress an already-triggered price watch for this user. Skipped entirely
+  // for the legacy default-chat path (no targetChatId ⇒ no chat_id to key on).
+  if (targetChatId) {
+    const myWatches = generated.activeWatches.filter((w) => w.chat_id === targetChatId);
+    const triggered = myWatches.filter((w) => {
+      const price = stockPrices.get(w.ticker)?.price;
+      return price !== undefined && isTriggered(w, price);
+    });
+
+    if (triggered.length > 0) {
+      const lines = ["🔔 <b>Price Watch</b>", ""];
+      for (const w of triggered) {
+        const price = stockPrices.get(w.ticker)!.price;
+        const arrow = w.direction === "above" ? "crossed above" : "dropped below";
+        lines.push(`<b>${escapeHtml(w.ticker)}</b> ${arrow} $${w.threshold} (now $${price.toFixed(2)})`);
+      }
+      // Send first, delete after — a failed delete just means a safe duplicate
+      // notification next run; deleting before a confirmed send could lose the
+      // notification entirely.
+      const watchResult = await sendDigestMessageToUser(targetChatId, lines.join("\n"));
+      if (watchResult.success && supabase.isConfigured()) {
+        await supabase.deletePriceWatchesByIds(triggered.map((w) => w.id));
+      }
+    }
   }
 
   // Fire Slack + email in parallel (optional channels, failures are non-fatal)
@@ -1257,6 +1297,86 @@ export function registerDigestCommands(): void {
       `• <code>/alert on</code> — Enable alerts\n` +
       `• <code>/alert off</code> — Disable alerts\n` +
       `• <code>/alert threshold 9</code> — Set minimum impact score`
+    );
+  });
+
+  // ─── /watch command — one-shot price threshold pings (v12) ──
+  registerCommand("watch", async (ctx) => {
+    if (!supabase.isConfigured()) {
+      return "Supabase not configured. Price watches require a database.";
+    }
+
+    const parts = ctx.text.split(/\s+/).slice(1);
+    const first = parts[0]?.toUpperCase();
+
+    const usage =
+      `<b>Price Watch</b>\n\n` +
+      `<b>Commands:</b>\n` +
+      `• <code>/watch NVDA 130</code> — Notify once NVDA crosses $130\n` +
+      `• <code>/watch NVDA off</code> — Clear a watch\n` +
+      `• <code>/watch list</code> — Show active watches`;
+
+    if (!first || first === "LIST") {
+      const watches = await supabase.queryRows<PriceWatch>(
+        "price_watches",
+        `chat_id=eq.${ctx.chatId}&select=*&order=created_at.desc`
+      );
+      if (!watches.length) return `No active price watches.\n\n${usage}`;
+      const lines = ["🔔 <b>Active Price Watches</b>", ""];
+      for (const w of watches) {
+        const arrow = w.direction === "above" ? "≥" : "≤";
+        lines.push(`<b>${escapeHtml(w.ticker)}</b> ${arrow} $${w.threshold}`);
+      }
+      return { text: lines.join("\n") };
+    }
+
+    const ticker = first;
+    const second = parts[1]?.toLowerCase();
+
+    if (second === "off") {
+      const ok = await supabase.deletePriceWatch(ctx.chatId, ticker);
+      return ok
+        ? `🔕 Cleared the watch on <b>${escapeHtml(ticker)}</b>.`
+        : `Could not clear the watch on ${escapeHtml(ticker)}.`;
+    }
+
+    if (!second) {
+      return `Give me a price or "off".\n\n${usage}`;
+    }
+
+    const threshold = parseFloat(second);
+    if (isNaN(threshold) || threshold <= 0) {
+      return `Price must be a positive number.\n\n${usage}`;
+    }
+
+    // Synchronous price lookup to infer direction — timeboxed so a slow/hanging
+    // Yahoo Finance response can't hang this interactive command indefinitely.
+    // Does not touch fetchStockPrices()'s shared batch-path behavior.
+    const TIMEOUT_MS = 8000;
+    const timeout = new Promise<Map<string, import("./utils/stocks").StockPrice>>((resolve) =>
+      setTimeout(() => resolve(new Map()), TIMEOUT_MS)
+    );
+    const prices = await Promise.race([fetchStockPrices([ticker]), timeout]);
+    const currentPrice = prices.get(ticker)?.price;
+
+    if (currentPrice === undefined) {
+      return `Could not fetch a price for <b>${escapeHtml(ticker)}</b> — check the symbol and try again.`;
+    }
+
+    const direction = inferDirection(threshold, currentPrice);
+    const ok = await supabase.upsertPriceWatch({
+      chat_id: ctx.chatId,
+      ticker,
+      threshold,
+      direction,
+    });
+
+    if (!ok) return "Could not save the watch.";
+
+    const arrow = direction === "above" ? "rises to" : "drops to";
+    return (
+      `🔔 Watching <b>${escapeHtml(ticker)}</b> — you'll be notified once it ${arrow} $${threshold} ` +
+      `(currently $${currentPrice.toFixed(2)}).`
     );
   });
 

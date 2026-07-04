@@ -1,5 +1,6 @@
 import { config } from "../config";
 import { logger } from "./logger";
+import type { PriceWatch } from "./price-watch";
 
 // ─── Types ────────────────────────────────────────────
 export interface DigestRunData {
@@ -635,6 +636,57 @@ export const supabase = {
       logger.warn(`Supabase getEarningsTranscript: ${(error as Error).message}`);
       return null;
     }
+  },
+
+  // ─── Price Watches (v12) ──────────────────────────────
+
+  /** All active price watches, across every user — fetched once per generateDigest() run. */
+  async getAllPriceWatches(): Promise<PriceWatch[]> {
+    const cfg = getConfig();
+    if (!cfg) return [];
+    try {
+      const response = await fetch(`${cfg.url}/rest/v1/price_watches?select=*`, {
+        headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` },
+      });
+      if (!response.ok) {
+        logger.warn(`Supabase getAllPriceWatches: ${response.status}`);
+        return [];
+      }
+      return (await response.json()) as PriceWatch[];
+    } catch (error) {
+      logger.warn(`Supabase getAllPriceWatches: ${(error as Error).message}`);
+      return [];
+    }
+  },
+
+  /**
+   * Set or replace a watch. `on_conflict=chat_id,ticker` upserts — re-setting a
+   * watch on a ticker the user already watches updates it in place instead of
+   * creating a duplicate row.
+   */
+  async upsertPriceWatch(watch: {
+    chat_id: number;
+    ticker: string;
+    threshold: number;
+    direction: "above" | "below";
+  }): Promise<boolean> {
+    return supabaseFetch("POST", "price_watches", watch, "on_conflict=chat_id,ticker");
+  },
+
+  /** Clears a single user's watch on one ticker (the `/watch TICKER off` command). */
+  async deletePriceWatch(chatId: number, ticker: string): Promise<boolean> {
+    return supabaseFetch(
+      "DELETE",
+      "price_watches",
+      undefined,
+      `chat_id=eq.${chatId}&ticker=eq.${encodeURIComponent(ticker)}`
+    );
+  },
+
+  /** Batch-clears watches by id, after their triggered notification has been sent. */
+  async deletePriceWatchesByIds(ids: number[]): Promise<boolean> {
+    if (!ids.length) return true;
+    return supabaseFetch("DELETE", "price_watches", undefined, `id=in.(${ids.join(",")})`);
   },
 
   // Quick helper to check if the database is reachable

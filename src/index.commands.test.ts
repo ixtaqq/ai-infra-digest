@@ -9,6 +9,9 @@ import type { CommandContext, CommandHandler } from "./sender/telegram";
 
 const h = vi.hoisted(() => ({
   queryRowsMock: vi.fn(),
+  fetchStockPricesMock: vi.fn(),
+  upsertPriceWatchMock: vi.fn(),
+  deletePriceWatchMock: vi.fn(),
   handlers: new Map<string, CommandHandler>(),
 }));
 
@@ -25,7 +28,7 @@ vi.mock("./collector/sec", () => ({ collectSECFilings: vi.fn(async () => ({ newF
 vi.mock("./processor/sec", () => ({ analyzeSECFilings: vi.fn(async () => ({ extracts: [] })) }));
 vi.mock("./collector/earnings", () => ({ collectEarningsTranscripts: vi.fn(async () => ({ transcripts: [] })) }));
 vi.mock("./processor/earnings", () => ({ analyzeEarningsTranscripts: vi.fn(async () => ({ analyses: [], totalTokens: 0 })) }));
-vi.mock("./utils/stocks", () => ({ fetchStockPrices: vi.fn() }));
+vi.mock("./utils/stocks", () => ({ fetchStockPrices: h.fetchStockPricesMock }));
 vi.mock("./formatter/telegram", () => ({ formatDigestTelegram: vi.fn(() => "DIGEST_MSG") }));
 vi.mock("./utils/dedup", () => ({ deduplicateArticles: (a: unknown[]) => a, buildCorroborationMap: vi.fn(() => new Map()) }));
 vi.mock("./utils/metrics", () => ({ emitFeedFetch: vi.fn(), emitStockFetch: vi.fn(), emitDigestDelivery: vi.fn(), emitError: vi.fn() }));
@@ -43,7 +46,12 @@ vi.mock("./sender/telegram", () => ({
 }));
 
 vi.mock("./utils/supabase", () => ({
-  supabase: { isConfigured: () => true, queryRows: h.queryRowsMock },
+  supabase: {
+    isConfigured: () => true,
+    queryRows: h.queryRowsMock,
+    upsertPriceWatch: h.upsertPriceWatchMock,
+    deletePriceWatch: h.deletePriceWatchMock,
+  },
 }));
 
 import { registerDigestCommands } from "./index";
@@ -54,6 +62,9 @@ function ctx(text: string): CommandContext {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  h.fetchStockPricesMock.mockResolvedValue(new Map());
+  h.upsertPriceWatchMock.mockResolvedValue(true);
+  h.deletePriceWatchMock.mockResolvedValue(true);
   h.handlers.clear();
   registerDigestCommands();
 });
@@ -152,5 +163,91 @@ describe("/thesis command", () => {
     const text = typeof result === "string" ? result : result.text;
     expect(text).toContain("Top Thesis Snapshots");
     expect(h.queryRowsMock).toHaveBeenCalledWith("ticker_theses", expect.stringContaining("order=confidence.desc"));
+  });
+});
+
+describe("/watch command", () => {
+  it("shows usage when no active watches exist", async () => {
+    h.queryRowsMock.mockResolvedValueOnce([]);
+    const result = await h.handlers.get("watch")!(ctx("/watch"));
+    const text = typeof result === "string" ? result : result.text;
+    expect(text).toContain("No active price watches");
+    expect(text).toContain("Commands");
+  });
+
+  it("lists active watches for /watch list", async () => {
+    h.queryRowsMock.mockResolvedValueOnce([
+      { id: 1, chat_id: 1, ticker: "NVDA", threshold: 130, direction: "above" },
+      { id: 2, chat_id: 1, ticker: "TSLA", threshold: 200, direction: "below" },
+    ]);
+    const result = await h.handlers.get("watch")!(ctx("/watch list"));
+    const text = typeof result === "string" ? result : result.text;
+    expect(text).toContain("NVDA");
+    expect(text).toContain("TSLA");
+    expect(h.queryRowsMock).toHaveBeenCalledWith("price_watches", expect.stringContaining("chat_id=eq.1"));
+  });
+
+  it("sets a watch with direction 'above' when the threshold is above the current price", async () => {
+    h.fetchStockPricesMock.mockResolvedValueOnce(new Map([["NVDA", { ticker: "NVDA", price: 120, change: 0, changePercent: 0, previousClose: 120 }]]));
+    const result = await h.handlers.get("watch")!(ctx("/watch NVDA 130"));
+    const text = typeof result === "string" ? result : result.text;
+    expect(text).toContain("NVDA");
+    expect(text).toContain("130");
+    expect(h.upsertPriceWatchMock).toHaveBeenCalledWith({ chat_id: 1, ticker: "NVDA", threshold: 130, direction: "above" });
+  });
+
+  it("sets a watch with direction 'below' when the threshold is below the current price", async () => {
+    h.fetchStockPricesMock.mockResolvedValueOnce(new Map([["TSLA", { ticker: "TSLA", price: 220, change: 0, changePercent: 0, previousClose: 220 }]]));
+    await h.handlers.get("watch")!(ctx("/watch TSLA 200"));
+    expect(h.upsertPriceWatchMock).toHaveBeenCalledWith({ chat_id: 1, ticker: "TSLA", threshold: 200, direction: "below" });
+  });
+
+  it("fails closed when the current price can't be fetched, without storing a watch", async () => {
+    h.fetchStockPricesMock.mockResolvedValueOnce(new Map());
+    const result = await h.handlers.get("watch")!(ctx("/watch ZZZZ 130"));
+    const text = typeof result === "string" ? result : result.text;
+    expect(text).toContain("Could not fetch a price");
+    expect(h.upsertPriceWatchMock).not.toHaveBeenCalled();
+  });
+
+  it.each(["abc", "-5", "0"])("rejects an invalid price '%s' without calling Supabase", async (badPrice) => {
+    const result = await h.handlers.get("watch")!(ctx(`/watch NVDA ${badPrice}`));
+    const text = typeof result === "string" ? result : result.text;
+    expect(text).toContain("positive number");
+    expect(h.upsertPriceWatchMock).not.toHaveBeenCalled();
+    expect(h.fetchStockPricesMock).not.toHaveBeenCalled();
+  });
+
+  it("shows a usage error when a ticker is given with no price or 'off'", async () => {
+    const result = await h.handlers.get("watch")!(ctx("/watch NVDA"));
+    const text = typeof result === "string" ? result : result.text;
+    expect(text).toContain("price");
+  });
+
+  it("clears a watch with /watch TICKER off", async () => {
+    const result = await h.handlers.get("watch")!(ctx("/watch NVDA off"));
+    const text = typeof result === "string" ? result : result.text;
+    expect(text).toContain("Cleared");
+    expect(h.deletePriceWatchMock).toHaveBeenCalledWith(1, "NVDA");
+  });
+
+  it("re-setting an existing watch upserts with the new threshold instead of duplicating", async () => {
+    h.fetchStockPricesMock.mockResolvedValue(new Map([["NVDA", { ticker: "NVDA", price: 140, change: 0, changePercent: 0, previousClose: 140 }]]));
+    await h.handlers.get("watch")!(ctx("/watch NVDA 130"));
+    await h.handlers.get("watch")!(ctx("/watch NVDA 150"));
+    expect(h.upsertPriceWatchMock).toHaveBeenCalledTimes(2);
+    // price is 140 both times: threshold 130 < 140 → "below"; threshold 150 >= 140 → "above"
+    expect(h.upsertPriceWatchMock).toHaveBeenLastCalledWith({ chat_id: 1, ticker: "NVDA", threshold: 150, direction: "above" });
+  });
+
+  it("shows a not-configured message when Supabase is unavailable", async () => {
+    vi.doMock("./utils/supabase", () => ({ supabase: { isConfigured: () => false } }));
+    vi.resetModules();
+    const { registerDigestCommands: register2 } = await import("./index");
+    h.handlers.clear();
+    register2();
+    const result = await h.handlers.get("watch")!(ctx("/watch NVDA 130"));
+    const text = typeof result === "string" ? result : result.text;
+    expect(text).toContain("not configured");
   });
 });
