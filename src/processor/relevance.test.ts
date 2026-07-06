@@ -42,7 +42,11 @@ describe("embedSeeds", () => {
     expect(result[0]).toEqual([0.1, 0.2, 0.3]);
   });
 
-  it("returns empty array on HTTP error", async () => {
+  // withRetry does ~5s of real backoff sleeps before giving up on persistent 429,
+  // which sits exactly at vitest's 5s default timeout — flaky under full-suite
+  // parallel load. The retry-then-give-up behavior is what's under test, so keep
+  // the real sleeps and give the test headroom instead.
+  it("returns empty array on HTTP error", { timeout: 15_000 }, async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 429 }));
     const { embedSeeds } = await import("./relevance");
     const result = await embedSeeds();

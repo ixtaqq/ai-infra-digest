@@ -96,11 +96,15 @@ function initCommands() {
       `I analyze AI infrastructure news and deliver insights.\n\n` +
       `<b>Commands:</b>\n` +
       `• /start — Welcome & intro\n` +
-      `• /digest — Generate and send the latest digest now\n` +
-      `• /sources — Show all 68 tracked RSS feeds\n` +
+      `• /digest — Show recent stored articles (<code>/digest watchlist</code> or <code>/digest sector=Chips_&_GPUs</code> to filter)\n` +
+      `• /sources — Show all 68 tracked RSS feeds (<code>/sources quality</code> for trust scores)\n` +
       `• /last — Show the most recent digest summary\n` +
       `• /trending — See what's trending in AI infra\n` +
-      `• /thesis <code>NVDA</code> — Weekly bull/bear thesis snapshot for a ticker\n` +
+      `• /trends <code>NVDA 30d</code> — Sparkline + WoW delta for a ticker or sector\n` +
+      `• /sec <code>NVDA</code> — Latest SEC filing highlights for a ticker\n` +
+      `• /coverage <code>NVDA 14</code> — Recent coverage history for a ticker\n` +
+      `• /thesis <code>NVDA</code> — Bull/bear thesis timeline for a ticker\n` +
+      `• /watch <code>NVDA 130</code> — One-shot price ping (<code>off</code> to clear, <code>list</code> to view)\n` +
       `• /feedback N — Rate today's digest (1-5)\n` +
       `• /settings — View your user preferences\n` +
       `• /watchlist <code>NVDA,AMD,AVGO</code> — Set your ticker watchlist\n` +
@@ -119,8 +123,10 @@ function initCommands() {
     });
   });
 
-  // Handle /digest — route to registered handler
-  pollingBot.onText(/^\/digest(@\w+)?$/, async (msg) => {
+  // Handle /digest — route to registered handler. Args pass through in msg.text
+  // (the handler parses "watchlist" / "sector=X" itself); kept bespoke rather than
+  // using the generic dispatcher below only for the "Generating..." pre-message.
+  pollingBot.onText(/^\/digest(@\w+)?(\s+.*)?$/, async (msg) => {
     const chatId = msg.chat.id;
     const handler = handlers.get("digest");
     if (handler) {
@@ -146,110 +152,6 @@ function initCommands() {
       }
     } else {
       await pollingBot.sendMessage(chatId, "⚠️ Digest command not available right now.");
-    }
-  });
-
-  // Handle /sources quality — route to registered handler
-  pollingBot.onText(/^\/sources quality(@\w+)?$/, async (msg) => {
-    const chatId = msg.chat.id;
-    const handler = handlers.get("sources quality");
-    if (handler) {
-      try {
-        const result = await handler({
-          chatId,
-          username: msg.from?.username,
-          firstName: msg.from?.first_name,
-          text: msg.text || "",
-        });
-        const reply = typeof result === "string" ? { text: result } : result;
-        await pollingBot.sendMessage(chatId, reply.text, {
-          parse_mode: (reply.parseMode || "HTML") as "HTML",
-          link_preview_options: { is_disabled: true },
-        });
-      } catch (error) {
-        await pollingBot.sendMessage(chatId, `❌ Failed: ${(error as Error).message}`, { parse_mode: "HTML" });
-      }
-    }
-  });
-
-  // Handle /sources — route to registered handler
-  pollingBot.onText(/^\/sources(@\w+)?$/, async (msg) => {
-    const chatId = msg.chat.id;
-    const handler = handlers.get("sources");
-    if (handler) {
-      try {
-        const result = await handler({
-          chatId,
-          username: msg.from?.username,
-          firstName: msg.from?.first_name,
-          text: msg.text || "",
-        });
-        const reply = typeof result === "string" ? { text: result } : result;
-        await pollingBot.sendMessage(chatId, reply.text, {
-          parse_mode: (reply.parseMode || "HTML") as "HTML",
-          link_preview_options: { is_disabled: true },
-        });
-      } catch (error) {
-        await pollingBot.sendMessage(
-          chatId,
-          `❌ Failed: ${(error as Error).message}`,
-          { parse_mode: "HTML" }
-        );
-      }
-    }
-  });
-
-  // Handle /last — route to registered handler
-  pollingBot.onText(/^\/last(@\w+)?$/, async (msg) => {
-    const chatId = msg.chat.id;
-    const handler = handlers.get("last");
-    if (handler) {
-      try {
-        const result = await handler({
-          chatId,
-          username: msg.from?.username,
-          firstName: msg.from?.first_name,
-          text: msg.text || "",
-        });
-        const reply = typeof result === "string" ? { text: result } : result;
-        await pollingBot.sendMessage(chatId, reply.text, {
-          parse_mode: (reply.parseMode || "HTML") as "HTML",
-          link_preview_options: { is_disabled: true },
-        });
-      } catch (error) {
-        await pollingBot.sendMessage(
-          chatId,
-          `❌ Failed: ${(error as Error).message}`,
-          { parse_mode: "HTML" }
-        );
-      }
-    }
-  });
-
-  // Handle /trending — route to registered handler
-  pollingBot.onText(/^\/trending(@\w+)?$/, async (msg) => {
-    const chatId = msg.chat.id;
-    const handler = handlers.get("trending");
-    if (handler) {
-      try {
-        const result = await handler({
-          chatId,
-          username: msg.from?.username,
-          firstName: msg.from?.first_name,
-          text: msg.text || "",
-        });
-        const reply = typeof result === "string" ? { text: result } : result;
-        await pollingBot.sendMessage(chatId, reply.text, {
-          parse_mode: (reply.parseMode || "HTML") as "HTML",
-          link_preview_options: { is_disabled: true },
-        });
-      } catch (error) {
-        await pollingBot.sendMessage(
-          chatId,
-          `❌ Failed: ${(error as Error).message}`,
-          { parse_mode: "HTML" }
-        );
-      }
     }
   });
 
@@ -446,16 +348,56 @@ function initCommands() {
     }
   });
 
-  // Handle any unrecognized command
-  pollingBot.onText(/^\//, async (msg) => {
+  // ─── Generic command dispatcher ──────────────────────
+  // Routes every registerCommand()-registered handler without a hand-written
+  // onText block per command. Before this existed, only commands with explicit
+  // blocks above were reachable — /sec, /trends, /thesis, /alert, /coverage and
+  // /watch were registered but silently undispatchable from the live bot.
+  //
+  // Commands with bespoke onText handlers above are skipped here so they don't
+  // get double-handled (node-telegram-bot-api fires every matching onText).
+  const BESPOKE_COMMANDS = new Set(["start", "help", "digest", "settings", "watchlist", "feedback"]);
+
+  pollingBot.onText(/^\/(\S+)([\s\S]*)$/, async (msg, match) => {
     const chatId = msg.chat.id;
-    const text = msg.text?.toLowerCase() || "";
-    const knownCommands = ["/start", "/help", "/digest", "/sources", "/last", "/settings", "/watchlist", "/alert", "/trending", "/feedback"];
-    const isKnown = knownCommands.some((cmd) => text.startsWith(cmd));
-    if (!isKnown) {
+    const rawCmd = (match?.[1] || "").replace(/@\w+$/, "").toLowerCase();
+    if (!rawCmd || BESPOKE_COMMANDS.has(rawCmd)) return;
+
+    // Longest-prefix match so multi-word registrations ("sources quality")
+    // win over their one-word parent ("sources").
+    const firstArg = (match?.[2] || "").trim().split(/\s+/)[0]?.toLowerCase();
+    const key =
+      firstArg && handlers.has(`${rawCmd} ${firstArg}`)
+        ? `${rawCmd} ${firstArg}`
+        : handlers.has(rawCmd)
+          ? rawCmd
+          : null;
+
+    if (!key) {
       await pollingBot.sendMessage(
         chatId,
         `❓ Unknown command. Try /help for available commands.`,
+        { parse_mode: "HTML" }
+      );
+      return;
+    }
+
+    try {
+      const result = await handlers.get(key)!({
+        chatId,
+        username: msg.from?.username,
+        firstName: msg.from?.first_name,
+        text: msg.text || "",
+      });
+      const reply = typeof result === "string" ? { text: result } : result;
+      await pollingBot.sendMessage(chatId, reply.text, {
+        parse_mode: (reply.parseMode || "HTML") as "HTML",
+        link_preview_options: { is_disabled: true },
+      });
+    } catch (error) {
+      await pollingBot.sendMessage(
+        chatId,
+        `❌ Failed: ${(error as Error).message}`,
         { parse_mode: "HTML" }
       );
     }
