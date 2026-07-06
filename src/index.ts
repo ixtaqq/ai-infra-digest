@@ -262,6 +262,19 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
       // v8.1: rebuild corroboration map with semantic similarity now that embeddings exist
       corroborationMap = buildCorroborationMap(articlesToProcess, embeddingsStage.value);
       logger.info("Corroboration map rebuilt with semantic (cosine) similarity");
+
+      // Loud degradation: configured but produced zero vectors ⇒ Phase VIII is
+      // silently off (almost always an OpenAI quota/429). Emit a structured error
+      // so it shows up in metrics/daily summary instead of only stdout.
+      if (config.ai.embeddingApiKey && digest.articles.length > 0 && embeddingsStage.value.size === 0) {
+        emitError(
+          "ai",
+          "warn",
+          `Embeddings degraded: 0/${digest.articles.length} vectors generated for run ${runDate}`,
+          429,
+          "OPENAI_EMBEDDING_API_KEY likely out of quota/rate-limited. Semantic dedup + relevance gate are disabled this run (fell back to Jaccard). Restore the key's OpenAI quota to re-enable Phase VIII."
+        );
+      }
     }
 
     // ─── Step 2e: Semantic Relevance Gate (v8.2) ─────────────────────────────

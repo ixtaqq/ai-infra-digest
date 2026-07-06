@@ -32,3 +32,19 @@ jobs:
 
       - name: Unit tests (no live credentials required)
         run: npm run test:unit
+
+      # Blocking dependency-vulnerability gate. Fails only on high/critical
+      # advisories (currently 0). Uses the npm CLI directly — no marketplace
+      # action to pin, matching this repo's SHA-pinning convention.
+      - name: Security audit (dependencies)
+        run: npm audit --audit-level=high
+
+      # Static analysis for the prompt-injection / unsanitized-output patterns
+      # that pattern-based SAST catches well. Informational for now
+      # (continue-on-error) so it never blocks on an un-triaged baseline; flip to
+      # blocking (drop continue-on-error, add --error) once findings are reviewed.
+      - name: Static analysis (semgrep)
+        continue-on-error: true
+        run: |
+          pipx install semgrep
+          semgrep scan --config p/security-audit --config p/typescript --severity ERROR

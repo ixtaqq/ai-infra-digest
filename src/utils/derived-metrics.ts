@@ -32,7 +32,8 @@ function mean(values: number[]): number | null {
   return values.reduce((s, v) => s + v, 0) / values.length;
 }
 
-function buildRows(
+// Exported for unit tests — pure aggregation, no I/O.
+export function buildRows(
   digest: DigestResult,
   runDate: string,
   stockPrices: Map<string, StockPrice>

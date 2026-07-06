@@ -66,6 +66,16 @@ export async function generateEmbeddings(
     }
   }
 
-  logger.info(`Embeddings: generated ${result.size}/${articles.length} vectors`);
+  if (result.size === 0 && articles.length > 0) {
+    // Configured (key present) but produced nothing — a fully degraded run, not
+    // the graceful "not configured" skip above. Log at WARN; the caller also
+    // emits a structured error event so this surfaces in metrics, not just stdout.
+    logger.warn(
+      `Embeddings: 0/${articles.length} vectors generated — Phase VIII degraded this run ` +
+        `(likely OpenAI quota/429 on OPENAI_EMBEDDING_API_KEY). Falling back to Jaccard for dedup/corroboration.`
+    );
+  } else {
+    logger.info(`Embeddings: generated ${result.size}/${articles.length} vectors`);
+  }
   return result;
 }

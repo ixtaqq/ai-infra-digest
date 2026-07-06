@@ -12,6 +12,21 @@ import { logger } from "./utils/logger";
 
 type OnboardingStep = "delivery_time" | "watchlist" | "min_score" | "digest_length" | "done";
 
+/** Linear step order; drives the ◀ Back button. Exported for unit tests. */
+export const STEP_ORDER: OnboardingStep[] = [
+  "delivery_time",
+  "watchlist",
+  "min_score",
+  "digest_length",
+  "done",
+];
+
+/** The step to return to when the user taps ◀ Back, or null if already first. */
+export function previousStep(step: OnboardingStep): OnboardingStep | null {
+  const i = STEP_ORDER.indexOf(step);
+  return i > 0 ? STEP_ORDER[i - 1] : null;
+}
+
 interface OnboardingState {
   step: OnboardingStep;
   firstName: string;
@@ -82,6 +97,7 @@ function scoreKeyboard(): InlineKeyboardMarkup {
         { text: "High only (8+)", callback_data: "ob_score_8" },
         { text: "Skip →", callback_data: "ob_score_0" },
       ],
+      [{ text: "◀ Back", callback_data: "ob_back" }],
     ],
   };
 }
@@ -97,6 +113,7 @@ function lengthKeyboard(): InlineKeyboardMarkup {
         { text: "Detailed (full summaries)", callback_data: "ob_len_detailed" },
         { text: "Skip →", callback_data: "ob_len_standard" },
       ],
+      [{ text: "◀ Back", callback_data: "ob_back" }],
     ],
   };
 }
@@ -125,7 +142,12 @@ async function sendWatchlistStep(bot: TelegramBot, chatId: number) {
     {
       parse_mode: "HTML",
       reply_markup: {
-        inline_keyboard: [[{ text: "Skip →", callback_data: "ob_watchlist_skip" }]],
+        inline_keyboard: [
+          [
+            { text: "◀ Back", callback_data: "ob_back" },
+            { text: "Skip →", callback_data: "ob_watchlist_skip" },
+          ],
+        ],
       },
     }
   );
@@ -183,24 +205,51 @@ async function sendConfirmation(bot: TelegramBot, chatId: number, state: Onboard
       `• Digest length: <code>${lengthStr}</code>\n\n` +
       `Your personalised digest will arrive daily at the time above.\n\n` +
       `<i>Change anytime with /settings, /watchlist, or /alert threshold.</i>`,
-    { parse_mode: "HTML" }
+    {
+      parse_mode: "HTML",
+      reply_markup: {
+        inline_keyboard: [[{ text: "🔄 Start over", callback_data: "ob_restart" }]],
+      },
+    }
   );
+}
+
+/** Re-render a given step (used by the ◀ Back button). */
+async function sendStep(bot: TelegramBot, chatId: number, step: OnboardingStep): Promise<void> {
+  const state = sessions.get(chatId);
+  if (!state) return;
+  switch (step) {
+    case "delivery_time":
+      state.step = "delivery_time";
+      await sendTimeStep(bot, chatId, state.firstName);
+      return;
+    case "watchlist":
+      await sendWatchlistStep(bot, chatId);
+      return;
+    case "min_score":
+      await sendScoreStep(bot, chatId);
+      return;
+    case "digest_length":
+      await sendLengthStep(bot, chatId);
+      return;
+    default:
+      return;
+  }
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
-/** Start the onboarding flow for a new /start. */
-export async function startOnboarding(
+/** Begin (or restart) the onboarding flow. */
+async function beginOnboarding(
   bot: TelegramBot,
-  msg: Message
+  chatId: number,
+  firstName: string,
+  username?: string
 ): Promise<void> {
-  const chatId = msg.chat.id;
-  const firstName = msg.from?.first_name || "there";
-
   // Upsert user immediately so they exist even if they abandon onboarding
   await supabase.upsertUserPreferences({
     chat_id: chatId,
-    username: msg.from?.username,
+    username,
     first_name: firstName,
     is_active: true,
   });
@@ -211,11 +260,24 @@ export async function startOnboarding(
     chatId,
     `👋 <b>Welcome to Goldirham Stack!</b>\n\n` +
       `I deliver daily AI infrastructure intelligence — chips, cloud, datacenters, power, and more — every morning.\n\n` +
-      `Let's personalise your digest in <b>4 quick steps</b>. You can skip any step and change everything later with /settings.`,
+      `Let's personalise your digest in <b>4 quick steps</b>. You can go ◀ Back a step anytime, skip any step, and change everything later with /settings.`,
     { parse_mode: "HTML" }
   );
 
   await sendTimeStep(bot, chatId, firstName);
+}
+
+/** Start the onboarding flow for a new /start. */
+export async function startOnboarding(
+  bot: TelegramBot,
+  msg: Message
+): Promise<void> {
+  await beginOnboarding(
+    bot,
+    msg.chat.id,
+    msg.from?.first_name || "there",
+    msg.from?.username
+  );
 }
 
 /** Handle callback queries from onboarding inline keyboards. Returns true if handled. */
@@ -227,6 +289,19 @@ export async function handleOnboardingCallback(
   const chatId = query.message?.chat.id;
   if (!chatId || !data.startsWith("ob_")) return false;
 
+  // Restart is allowed even from an expired session (e.g. the "Start over"
+  // button on the final confirmation, after the session was deleted).
+  if (data === "ob_restart") {
+    await bot.answerCallbackQuery(query.id);
+    await beginOnboarding(
+      bot,
+      chatId,
+      query.from?.first_name || "there",
+      query.from?.username
+    );
+    return true;
+  }
+
   const state = getActiveSession(chatId);
   if (!state) {
     await bot.answerCallbackQuery(query.id, { text: "Session expired — send /start to begin again." });
@@ -234,6 +309,18 @@ export async function handleOnboardingCallback(
   }
 
   await bot.answerCallbackQuery(query.id);
+
+  // ── Back: re-render the previous step ─────────────────────────────────────
+  if (data === "ob_back") {
+    const prev = previousStep(state.step);
+    if (prev) {
+      await sendStep(bot, chatId, prev);
+    } else {
+      // Already on the first step — restart cleanly rather than dead-end.
+      await sendStep(bot, chatId, "delivery_time");
+    }
+    return true;
+  }
 
   // ── Delivery time ─────────────────────────────────────────────────────────
   if (data.startsWith("ob_time_")) {
