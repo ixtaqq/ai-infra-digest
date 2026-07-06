@@ -68,6 +68,8 @@ Digest delivered in parallel to up to three channels after each pipeline run. Sl
 | **Slack** | `SLACK_WEBHOOK_URL` | Incoming webhook; HTML→mrkdwn conversion; chunked at 2 900 chars |
 | **Gmail** | `SMTP_USER` + `SMTP_PASS` + `DIGEST_EMAIL_TO` | nodemailer SMTP via `smtp.gmail.com:587`; App Password required |
 
+> **Gmail setup gotcha:** `SMTP_PASS` must be a **[Google App Password](https://myaccount.google.com/apppasswords)** (16 chars, no spaces) — **not your normal account password**, which Gmail's SMTP will reject with `535-5.7.8 Username and Password not accepted`. App Passwords require 2-Step Verification to be enabled on the account first. This is the most common first-run email failure.
+
 Test Gmail credentials locally without a full pipeline run:
 ```bash
 npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends a test mail
@@ -165,7 +167,7 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 - `price_watches` — one-shot price thresholds (`UNIQUE(chat_id, ticker)` upserts on re-set); service-role-only RLS, no public read (per-user private data, unlike the public-read thesis tables)
 - RLS enabled on all tables; writes scoped `TO service_role` (migration `20260629000000`), public read-only via the dashboard's anon key
 - **Performance indexes** — 16+ indexes including GIN full-text search, partial indexes for SEC filings and active users, time-series indexes on `daily_derived_metrics`, article validation lookup
-- **Automated retention** — `cleanup_old_data()` function prunes articles (90d), pipeline_health (30d), ai_usage (90d), delivery_log (90d)
+- **Automated retention** — `cleanup_old_data()` prunes articles (90d), pipeline_health (30d), ai_usage (90d), delivery_log (90d), capex_tracking (365d). Triggered weekly by the `.github/workflows/data-retention.yml` GitHub Action (see below) — no manual `pg_cron` setup required.
 
 ### 📈 Structured Logging & Metrics
 - **Per-day NDJSON logs** — `logs/YYYY-MM-DD.ndjson`, written to disk and streamed to stdout

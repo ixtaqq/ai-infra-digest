@@ -1867,7 +1867,7 @@ async function computeAndStoreTrending(
 if (require.main === module) {
   registerDigestCommands();
   main().catch((error) => {
-    console.error("Fatal error:", error);
+    logger.error(`Fatal error: ${(error as Error).message}`, { stack: (error as Error).stack });
     process.exit(1);
   });
 }

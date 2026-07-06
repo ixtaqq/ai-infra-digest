@@ -631,35 +631,69 @@
       .header-btn-primary { padding: 4px 12px; font-size: 10px; }
       .plan-name { min-width: 56px; font-size: 11px; }
     }
+
+    /* ─── Accessibility ── */
+    /* Reset native <button> styling so nav items keep the exact <a> look */
+    button.sidebar-link {
+      background: none; border: none; width: 100%;
+      text-align: left; cursor: pointer;
+      font-family: inherit;
+    }
+
+    .skip-link {
+      position: absolute; left: 8px; top: -48px;
+      z-index: 2000;
+      background: var(--gold); color: #0a0b0e;
+      padding: 8px 16px; border-radius: 4px;
+      font-size: 13px; font-weight: 700; text-decoration: none;
+      transition: top 0.15s;
+    }
+    .skip-link:focus { top: 8px; }
+
+    a:focus-visible, button:focus-visible, input:focus-visible {
+      outline: 2px solid var(--gold);
+      outline-offset: 2px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
   </style>
 </head>
 <body>
 
+  <a href="#main-content" class="skip-link">Skip to content</a>
+
   <!-- ─── Sidebar ── -->
   <aside class="sidebar">
     <div class="sidebar-logo">Goldirham</div>
-    <div class="sidebar-sub"><span class="accent">✦</span> Studio · <span class="accent">v8.2</span></div>
+    <div class="sidebar-sub"><span class="accent" aria-hidden="true">✦</span> Studio · <span class="accent">v12</span></div>
 
-    <nav class="sidebar-nav">
-      <a href="#" class="sidebar-link active" onclick="switchSection('overview', this)">
-        <span class="icon">◆</span> <span>Overview</span>
-      </a>
-      <a href="#" class="sidebar-link" onclick="switchSection('pipeline', this)">
-        <span class="icon">◇</span> <span>Pipeline</span>
-      </a>
-      <a href="#" class="sidebar-link" onclick="switchSection('stocks', this)">
-        <span class="icon">◈</span> <span>Stocks</span>
-      </a>
-      <a href="#" class="sidebar-link" onclick="switchSection('sec', this)">
-        <span class="icon">◊</span> <span>SEC Filings</span>
-      </a>
+    <nav class="sidebar-nav" aria-label="Dashboard sections">
+      <button type="button" class="sidebar-link active" onclick="switchSection('overview', this)">
+        <span class="icon" aria-hidden="true">◆</span> <span>Overview</span>
+      </button>
+      <button type="button" class="sidebar-link" onclick="switchSection('pipeline', this)">
+        <span class="icon" aria-hidden="true">◇</span> <span>Pipeline</span>
+      </button>
+      <button type="button" class="sidebar-link" onclick="switchSection('stocks', this)">
+        <span class="icon" aria-hidden="true">◈</span> <span>Stocks</span>
+      </button>
+      <button type="button" class="sidebar-link" onclick="switchSection('sec', this)">
+        <span class="icon" aria-hidden="true">◊</span> <span>SEC Filings</span>
+      </button>
       <div class="sidebar-divider"></div>
-      <a href="#" class="sidebar-link" onclick="switchSection('articles', this)">
-        <span class="icon">◇</span> <span>Articles</span>
-      </a>
-      <a href="#" class="sidebar-link" onclick="switchSection('feedback', this)">
-        <span class="icon">○</span> <span>Feedback</span>
-      </a>
+      <button type="button" class="sidebar-link" onclick="switchSection('articles', this)">
+        <span class="icon" aria-hidden="true">◇</span> <span>Articles</span>
+      </button>
+      <button type="button" class="sidebar-link" onclick="switchSection('feedback', this)">
+        <span class="icon" aria-hidden="true">○</span> <span>Feedback</span>
+      </button>
     </nav>
 
     <div class="sidebar-footer">
@@ -668,7 +702,7 @@
   </aside>
 
   <!-- ─── Main ── -->
-  <div class="main">
+  <div class="main" id="main-content" role="main">
 
     <!-- Header -->
     <header class="header">
@@ -678,13 +712,13 @@
       </div>
       <div class="header-right">
         <div class="header-search">
-          <span class="search-icon">⌕</span>
-          <input type="text" placeholder="Search transactions..." id="globalSearch" onkeydown="if(event.key==='Enter')doGlobalSearch()">
-          <span class="kbd">⌘K</span>
+          <span class="search-icon" aria-hidden="true">⌕</span>
+          <input type="text" aria-label="Search articles" placeholder="Search transactions..." id="globalSearch" onkeydown="if(event.key==='Enter')doGlobalSearch()">
+          <span class="kbd" aria-hidden="true">⌘K</span>
         </div>
-        <button class="header-btn" onclick="document.getElementById('bgGlow').style.opacity = document.getElementById('bgGlow').style.opacity === '0' ? '0.5' : '0'" title="Toggle ambient glow">🌓</button>
-        <button class="header-btn" onclick="showConfig()" title="Settings">⚙</button>
-        <button class="header-btn" onclick="loadDashboard()" title="Refresh">↻</button>
+        <button class="header-btn" aria-label="Toggle ambient glow" onclick="document.getElementById('bgGlow').style.opacity = document.getElementById('bgGlow').style.opacity === '0' ? '0.5' : '0'" title="Toggle ambient glow">🌓</button>
+        <button class="header-btn" aria-label="Settings" onclick="showConfig()" title="Settings">⚙</button>
+        <button class="header-btn" aria-label="Refresh dashboard" onclick="loadDashboard()" title="Refresh">↻</button>
         <button class="header-btn-primary" onclick="window.open('/','_self')">+ New Digest →</button>
       </div>
     </header>
@@ -798,7 +832,7 @@
           <h3>📰 Latest Articles</h3>
           <div class="filter-bar" style="margin-bottom:8px">
             <span class="filter-label">Search</span>
-            <input class="filter-search" id="fullTextSearch" placeholder="Full-text search articles..." style="width:220px" onkeydown="if(event.key==='Enter')doFullTextSearch()">
+            <input class="filter-search" id="fullTextSearch" aria-label="Full-text search articles" placeholder="Full-text search articles..." style="width:220px" onkeydown="if(event.key==='Enter')doFullTextSearch()">
             <button class="filter-pill" onclick="doFullTextSearch()" style="background:var(--gold);color:#080605;border-color:var(--gold);font-weight:600">🔍 Search DB</button>
             <span id="searchStatus" style="font-size:10px;color:var(--text-muted)"></span>
           </div>
@@ -811,7 +845,7 @@
               <button class="filter-pill impact-bearish" data-impact="Bearish" onclick="setFilter('impact','Bearish')">▼ Bearish</button>
               <button class="filter-pill impact-neutral" data-impact="Neutral" onclick="setFilter('impact','Neutral')">▬ Neutral</button>
             </div>
-            <input class="filter-search" id="filterSearch" placeholder="Search articles..." oninput="onSearchChange()">
+            <input class="filter-search" id="filterSearch" aria-label="Filter loaded articles" placeholder="Search articles..." oninput="onSearchChange()">
             <button class="filter-clear" id="filterClear" onclick="clearFilters()" style="display:none">✕ Clear</button>
           </div>
           <table><thead><tr><th>Title</th><th>Category</th><th>Impact</th><th>Score</th><th>Stocks</th><th></th><th></th></tr></thead><tbody id="articlesBody"></tbody></table>
@@ -851,7 +885,7 @@
         Enter your Supabase project credentials to access the dashboard. These are stored locally in your browser and never sent anywhere else.
       </div>
 
-      <label style="display:block;font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:rgba(240,237,232,0.45);margin-bottom:6px">Supabase URL</label>
+      <label for="gateUrl" style="display:block;font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:rgba(240,237,232,0.45);margin-bottom:6px">Supabase URL</label>
       <input id="gateUrl" type="url" placeholder="https://xxxxxxxxxxxx.supabase.co" spellcheck="false" style="
         width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(212,162,76,0.15);
         border-radius:4px;padding:10px 12px;font-size:13px;color:#f0ede8;
@@ -859,7 +893,7 @@
         transition:border-color 0.2s;
       " onfocus="this.style.borderColor='rgba(212,162,76,0.5)'" onblur="this.style.borderColor='rgba(212,162,76,0.15)'" onkeydown="if(event.key==='Enter')document.getElementById('gateKey').focus()">
 
-      <label style="display:block;font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:rgba(240,237,232,0.45);margin-bottom:6px">Supabase Anon Key</label>
+      <label for="gateKey" style="display:block;font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:rgba(240,237,232,0.45);margin-bottom:6px">Supabase Anon Key</label>
       <input id="gateKey" type="password" placeholder="eyJhbGciOiJIUzI1NiIs..." spellcheck="false" style="
         width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(212,162,76,0.15);
         border-radius:4px;padding:10px 12px;font-size:13px;color:#f0ede8;
@@ -1027,9 +1061,9 @@
       panel.innerHTML = `
         <div class="config-form">
           <h2>⚙ Configuration</h2>
-          <label>Supabase URL</label>
+          <label for="cfgUrl">Supabase URL</label>
           <input id="cfgUrl" value="${SUPABASE_URL}" placeholder="https://xxx.supabase.co" spellcheck="false">
-          <label>Anon Public Key</label>
+          <label for="cfgKey">Anon Public Key</label>
           <input id="cfgKey" value="${SUPABASE_ANON_KEY}" placeholder="eyJhbGciOiJ..." spellcheck="false">
           <button onclick="saveConfig()">Save & Reload</button>
           <p class="note">Find these in Supabase Dashboard → Settings → API</p>

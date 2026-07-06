@@ -195,6 +195,6 @@ schedulerMain()
     process.exit(0);
   })
   .catch((error) => {
-    console.error("❌ Scheduler failed:", error);
+    logger.error(`Scheduler failed: ${(error as Error).message}`, { stack: (error as Error).stack });
     process.exit(1);
   });

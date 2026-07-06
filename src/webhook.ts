@@ -169,6 +169,21 @@ async function main(): Promise<void> {
 }
 
 if (require.main === module) {
+  // Global safety net for the long-lived webhook process: a stray rejection or
+  // throw outside a request handler must be logged, not silently crash the
+  // always-on bot. We keep the process alive on an unhandled rejection (the
+  // failed operation is already lost; killing the server would take down every
+  // future update too) but exit on an uncaughtException, whose state is by
+  // definition undefined and unsafe to continue from.
+  process.on("unhandledRejection", (reason) => {
+    const err = reason instanceof Error ? reason : new Error(String(reason));
+    logger.error(`Unhandled promise rejection: ${err.message}`, { stack: err.stack });
+  });
+  process.on("uncaughtException", (err) => {
+    logger.error(`Uncaught exception: ${err.message}`, { stack: err.stack });
+    process.exit(1);
+  });
+
   main().catch((err) => {
     logger.error(`Webhook server failed to start: ${(err as Error).message}`);
     process.exit(1);

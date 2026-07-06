@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 import path from "path";
+import { parsePositiveFloat } from "./utils/helpers";
 
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
@@ -103,8 +104,8 @@ function loadConfig(): Config {
       smtpUser: process.env.SMTP_USER || undefined,
       smtpPass: process.env.SMTP_PASS || undefined,
       digestEmailTo: process.env.DIGEST_EMAIL_TO || undefined,
-      budgetDailyUsd: parseFloat(process.env.AI_BUDGET_DAILY_USD || "0.50"),
-      budgetMonthlyUsd: parseFloat(process.env.AI_BUDGET_MONTHLY_USD || "5.00"),
+      budgetDailyUsd: parsePositiveFloat(process.env.AI_BUDGET_DAILY_USD, 0.5),
+      budgetMonthlyUsd: parsePositiveFloat(process.env.AI_BUDGET_MONTHLY_USD, 5.0),
     },
   };
 }
