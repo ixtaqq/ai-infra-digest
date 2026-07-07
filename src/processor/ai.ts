@@ -68,6 +68,8 @@ export interface ProcessedArticle {
   isRehash?: boolean;
   /** Computed ranking score: impactScore × trust/credibility/corroboration multipliers. */
   effectiveScore?: number;
+  /** How many sources reported this same story this run (v14, from buildCorroborationMap). */
+  corroborationCount?: number;
   /** 1536-dim OpenAI text-embedding-3-small vector (v8.0). */
   embedding?: number[];
   /** One-line note grounding the article in related SEC filings, earnings data, or stock moves (v9.1). */

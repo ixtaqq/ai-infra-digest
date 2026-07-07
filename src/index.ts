@@ -394,6 +394,7 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
       const rawCount = corroborationMap.get(article.url) ?? 1;
       const cb = 1 + (rawCount - 1) * 0.05;                       // +5% per extra source
       const noveltyMultiplier = article.isRehash ? 0.6 : 1.0;
+      article.corroborationCount = rawCount;
       article.effectiveScore = article.impactScore * sm * sc * cm * cb * noveltyMultiplier;
       if (isPRWireSource(article.source)) {
         article.effectiveScore = Math.min(article.effectiveScore, 6);
@@ -809,6 +810,9 @@ export async function persistDigestMetrics(
         is_sec_filing: a.isSECFiling || undefined,
         bear_case: a.bearCase,
         embedding: a.embedding,
+        corroboration_count: a.corroborationCount,
+        grounding_text: a.groundingNote,
+        effective_score: a.effectiveScore,
       }))
     );
     articleIds = new Map(inserted.filter(r => r.url).map(r => [r.url, r.id]));

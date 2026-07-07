@@ -10,6 +10,10 @@
 -- RLS: user_preferences / user_delivery_log lost public read and all write
 -- policies were scoped `TO service_role`. Tables below the "v6–v13 additions"
 -- marker were added by migration and are reproduced here with current RLS.
+-- Note: several columns added to pre-existing tables by earlier migrations
+-- (is_sec_filing, bear_case, embedding, thumbs_up/down, etc.) predate this
+-- note and are NOT reconciled into the base CREATE TABLE statements below —
+-- migrations remain the only fully accurate source for column-level schema.
 -- ============================================================
 
 -- 1. DIGEST RUNS — Track each execution of the daily digest
@@ -417,3 +421,10 @@ CREATE TABLE IF NOT EXISTS command_usage (
 CREATE INDEX IF NOT EXISTS idx_command_usage_command_created ON command_usage(command, created_at DESC);
 ALTER TABLE command_usage ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "service_role_full_access" ON command_usage FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- v14. ARTICLES INTELLIGENCE FIELDS — persist ranking/grounding data computed
+-- in-memory each pipeline run (was ephemeral; see TODOS.md TODO-1)
+ALTER TABLE articles
+  ADD COLUMN IF NOT EXISTS corroboration_count INT,
+  ADD COLUMN IF NOT EXISTS grounding_text TEXT,
+  ADD COLUMN IF NOT EXISTS effective_score DOUBLE PRECISION;

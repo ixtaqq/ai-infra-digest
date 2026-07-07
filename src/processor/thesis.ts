@@ -20,6 +20,8 @@ import { todayInTimezone } from "../utils/helpers";
 
 const TOP_TICKERS = 10;
 const LOOKBACK_DAYS = 30;
+const COVERAGE_LOOKBACK_DAYS = 7;
+const HEADLINES_PER_TICKER = 3;
 
 export interface TickerSnapshot {
   ticker: string;
@@ -30,6 +32,8 @@ export interface TickerSnapshot {
   latestPrice: number | null;
   priceChange30dPct: number | null;
   latestFiling?: string;
+  /** Recent per-article headlines for this ticker — the same source /coverage reads (v14). */
+  recentHeadlines?: string[];
 }
 
 export interface ThesisRow {
@@ -121,7 +125,52 @@ export async function collectTickerSnapshots(): Promise<TickerSnapshot[]> {
     }
   }
 
+  // Ground the narrative in the same per-article coverage /coverage shows
+  // (v14 — see TODOS.md TODO-2), so /thesis's reasoning is traceable back to
+  // visible articles instead of only the daily_derived_metrics aggregates.
+  const coverage = await collectRecentCoverage(tickers);
+  for (const snap of top) {
+    const headlines = coverage.get(snap.ticker);
+    if (headlines?.length) snap.recentHeadlines = headlines;
+  }
+
   return top;
+}
+
+/**
+ * Recent per-article headlines for a set of tickers — same source and window
+ * shape as the `/coverage TICKER` command, batched into one query instead of
+ * one per ticker. Returns up to {@link HEADLINES_PER_TICKER} headlines per
+ * ticker, newest first.
+ */
+export async function collectRecentCoverage(tickers: string[]): Promise<Map<string, string[]>> {
+  const result = new Map<string, string[]>();
+  if (!tickers.length) return result;
+
+  const since = new Date(Date.now() - COVERAGE_LOOKBACK_DAYS * 86400000).toISOString();
+  const tickerList = tickers.map((t) => encodeURIComponent(t)).join(",");
+  const rows = await supabase.queryRows<{
+    title: string;
+    impact: string;
+    affected_stocks: string[];
+    created_at: string;
+  }>(
+    "articles",
+    `affected_stocks=ov.{${tickerList}}&created_at=gte.${encodeURIComponent(since)}` +
+      `&select=title,impact,affected_stocks,created_at&order=created_at.desc&limit=200`
+  );
+
+  for (const row of rows) {
+    for (const ticker of row.affected_stocks) {
+      if (!tickers.includes(ticker)) continue;
+      const list = result.get(ticker) ?? [];
+      if (list.length >= HEADLINES_PER_TICKER) continue;
+      const emoji = row.impact === "Bullish" ? "🟢" : row.impact === "Bearish" ? "🔴" : "⚪";
+      list.push(`${emoji} ${row.title}`);
+      result.set(ticker, list);
+    }
+  }
+  return result;
 }
 
 function buildPrompt(snapshots: TickerSnapshot[]): string {
@@ -134,13 +183,19 @@ function buildPrompt(snapshots: TickerSnapshot[]): string {
       ];
       if (s.latestPrice != null) lines.push(`   Price: $${s.latestPrice}${s.priceChange30dPct != null ? ` (${s.priceChange30dPct >= 0 ? "+" : ""}${s.priceChange30dPct}% 30d)` : ""}`);
       if (s.latestFiling) lines.push(`   Latest SEC filing: ${s.latestFiling}`);
+      if (s.recentHeadlines?.length) {
+        lines.push(`   Recent coverage:`);
+        for (const h of s.recentHeadlines) lines.push(`     - ${h}`);
+      }
       return lines.join("\n");
     })
     .join("\n\n");
 
   return (
     `You are an institutional equity research analyst covering AI infrastructure. ` +
-    `For each ticker below, write a concise investment thesis snapshot based ONLY on the provided 30-day data:\n` +
+    `For each ticker below, write a concise investment thesis snapshot based ONLY on the provided 30-day data. ` +
+    `Where "Recent coverage" headlines are given, ground your bull/bear case in them specifically ` +
+    `(reference what's actually being reported) rather than speaking only in aggregate stats:\n` +
     `- bullCase: 2-3 sentence bull thesis\n` +
     `- bearCase: 2-3 sentence bear thesis\n` +
     `- confidence: 1-10 (how well the data supports a directional view; sparse/mixed data = low)\n` +

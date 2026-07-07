@@ -118,6 +118,53 @@ describe("Supabase Integration", () => {
       expect(result).toEqual([]);
       expect(mockFetch).not.toHaveBeenCalled();
     });
+
+    it("should include is_sec_filing and the v14 intelligence fields in the POST body", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: async () => [{ id: 1, url: "https://example.com/a" }],
+      });
+
+      const { supabase } = await import("../utils/supabase");
+      await supabase.insertArticles(1, [
+        {
+          title: "A",
+          url: "https://example.com/a",
+          is_sec_filing: true,
+          corroboration_count: 3,
+          grounding_text: "📊 NVDA: 8-K Jun-20 (score 9/10)",
+          effective_score: 8.42,
+        },
+      ]);
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1]?.body as string);
+      expect(body[0]).toMatchObject({
+        is_sec_filing: true,
+        corroboration_count: 3,
+        grounding_text: "📊 NVDA: 8-K Jun-20 (score 9/10)",
+        effective_score: 8.42,
+      });
+    });
+
+    it("should default is_sec_filing and the v14 fields to null when not provided", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: async () => [{ id: 1, url: "https://example.com/b" }],
+      });
+
+      const { supabase } = await import("../utils/supabase");
+      await supabase.insertArticles(1, [{ title: "B", url: "https://example.com/b" }]);
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1]?.body as string);
+      expect(body[0]).toMatchObject({
+        is_sec_filing: null,
+        corroboration_count: null,
+        grounding_text: null,
+        effective_score: null,
+      });
+    });
   });
 
   describe("updateSectorActivity", () => {

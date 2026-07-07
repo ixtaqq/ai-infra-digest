@@ -30,6 +30,12 @@ export interface ArticleData {
   is_sec_filing?: boolean;
   bear_case?: string;
   embedding?: number[];
+  /** How many sources reported this same story this run (v14). */
+  corroboration_count?: number;
+  /** One-line note grounding the article in related SEC/earnings/stock data (v14, from groundingNote). */
+  grounding_text?: string;
+  /** Computed ranking score at insert time — impactScore × trust/credibility/corroboration multipliers (v14). */
+  effective_score?: number;
 }
 
 export interface SectorActivityData {
@@ -238,8 +244,12 @@ export const supabase = {
       affected_stocks: a.affected_stocks || [],
       summary: a.summary || null,
       reason: a.reason || null,
+      is_sec_filing: a.is_sec_filing ?? null,
       bear_case: a.bear_case || null,
       embedding: a.embedding ?? null,
+      corroboration_count: a.corroboration_count ?? null,
+      grounding_text: a.grounding_text || null,
+      effective_score: a.effective_score ?? null,
     }));
 
     const inserted: { id: number; url: string }[] = [];
