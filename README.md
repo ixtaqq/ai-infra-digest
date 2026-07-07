@@ -156,15 +156,16 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 - **Fan-out safe** — validation follow-up sent independently to each user in the scheduler loop after the single `persistDigestMetrics()` call; never blocks digest delivery
 
 ### 🗄️ Database (Supabase)
-- **18 tables**: `digest_runs`, `articles`, `sector_activity`, `stock_mentions`, `pipeline_health`, `capex_tracking`, `ai_usage`, `daily_metrics`, `stock_prices`, `user_preferences`, `user_delivery_log`, `sec_filings`, `earnings_transcripts`, `daily_derived_metrics`, `article_validations`, `ticker_theses`, `ticker_thesis_history`, `price_watches`
+- **19 tables**: `digest_runs`, `articles`, `sector_activity`, `stock_mentions`, `pipeline_health`, `capex_tracking`, `ai_usage`, `daily_metrics`, `stock_prices`, `user_preferences`, `user_delivery_log`, `sec_filings`, `earnings_transcripts`, `daily_derived_metrics`, `article_validations`, `ticker_theses`, `ticker_thesis_history`, `price_watches`, `command_usage`
 - Managed with **Supabase CLI** — migrations in `supabase/migrations/`
 - `digest_runs` tracks both models (`ai_model` + `ai_fast_model`)
-- `articles` has `is_sec_filing` boolean, `thumbs_up` / `thumbs_down` aggregate validation counters, `bear_case TEXT` (skeptical counter-argument for high-impact articles), `embedding vector(1536)` (Phase VIII — OpenAI text-embedding-3-small)
+- `articles` has `is_sec_filing` boolean, `thumbs_up` / `thumbs_down` aggregate validation counters, `bear_case TEXT` (skeptical counter-argument for high-impact articles), `embedding vector(1536)` (Phase VIII — OpenAI text-embedding-3-small), and `corroboration_count` / `grounding_text` / `effective_score` (v14 — persists ranking/grounding data that used to be computed in-memory each run and discarded afterward)
 - `user_preferences` has `digest_length` column (`brief` | `standard` | `detailed`)
 - `daily_derived_metrics` has `entity_type`, `entity`, mention counts, sentiment, impact scores, price data
 - `article_validations` — per-user vote log; `UNIQUE(article_id, chat_id)` prevents double-voting
 - `ticker_theses` — latest-only bull/bear snapshot per ticker (`UNIQUE(ticker)`); `ticker_thesis_history` — every weekly snapshot kept (`UNIQUE(ticker, week_of)`), powers the `/thesis TICKER` timeline and dashboard history card
 - `price_watches` — one-shot price thresholds (`UNIQUE(chat_id, ticker)` upserts on re-set); service-role-only RLS, no public read (per-user private data, unlike the public-read thesis tables)
+- `command_usage` — append-only bot-command invocation log (v13); service-role-only RLS, answers "does this feature actually get used?" with data instead of guesses
 - RLS enabled on all tables; writes scoped `TO service_role` (migration `20260629000000`), public read-only via the dashboard's anon key
 - **Performance indexes** — 16+ indexes including GIN full-text search, partial indexes for SEC filings and active users, time-series indexes on `daily_derived_metrics`, article validation lookup
 - **Automated retention** — `cleanup_old_data()` prunes articles (90d), pipeline_health (30d), ai_usage (90d), delivery_log (90d), capex_tracking (365d). Triggered weekly by the `.github/workflows/data-retention.yml` GitHub Action (see below) — no manual `pg_cron` setup required.
@@ -186,7 +187,7 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 - **Structured error events** — AI 429, Yahoo Finance failures, Supabase errors all emit `ErrorEvent` with recovery suggestions
 
 ### 🧪 Testing & CI
-- **205 tests** with **Vitest**:
+- **283 tests** with **Vitest**:
   - Deduplication + cosine similarity: 9 unit tests (`cosineSimilarity` — identical, orthogonal, mismatched length, zero vectors; `deduplicateArticles` — 5 cases, now async)
   - Keyword matching: 13 unit tests
   - Stock price fetching: 3 unit tests
@@ -203,16 +204,19 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
   - **Earnings analysis** (`processor/earnings.test.ts`): 5 tests — numeric coercion, guidance delta computation, graceful degradation on unparseable output
   - **Earnings collection** (`collector/earnings.test.ts`): 9 tests — including a regression guard for the 429 retry-cap fix (no more unbounded recursion)
   - **SEC EDGAR collection** (`collector/sec.test.ts`): 10 tests — filing age/form-type filtering, `getTopFilings` scoring
-  - **Thesis snapshots** (`processor/thesis.test.ts`): 8 tests — response parsing/validation, end-to-end generation, history-insert independent-failure behavior
+  - **Thesis snapshots** (`processor/thesis.test.ts`): 14 tests — response parsing/validation, end-to-end generation, history-insert independent-failure behavior, `collectRecentCoverage()` batched-query grouping/capping (v14), and an end-to-end assertion that real headline text reaches the AI prompt
   - **Embeddings** (`processor/embeddings.test.ts`): 4 tests — batch mapping, 429 circuit breaker, non-429 continue-to-next-batch
   - **Price watch** (`utils/price-watch.test.ts`): 6 tests — direction inference (above/below/tie-break), trigger boundary conditions
-  - **Command handlers** (`index.commands.test.ts`): 17 tests — `/coverage`, `/thesis` (incl. history fallback), `/watch` (set/off/list, both directions, invalid input, upsert-not-duplicate, failed price lookup)
+  - **Command handlers** (`index.commands.test.ts`): 20 tests — `/coverage`, `/thesis` (incl. history fallback), `/watch` (set/off/list, both directions, invalid input, upsert-not-duplicate, failed price lookup)
   - **Digest fan-out + price watch delivery** (`index.faninout.test.ts`): 7 tests — generate-once/deliver-many regression, triggered/untriggered watches, combined multi-watch notification, send-failure-blocks-delete, watched-ticker-survives-25-cap ordering
-  - Supabase integration: 20 tests (requires live credentials) — includes `price_watches` CRUD
+  - **Command routing seam** (`sender/telegram.routing.test.ts`): 25 tests (v12.1/v13) — drives the *real* `initCommands()` against a fake bot and asserts every `registerCommand()`-registered name is actually dispatchable through an `onText` route (this is the seam that let 6+ commands sit unreachable for months — handler-level tests alone never exercised it), plus longest-prefix matching, `@botname` stripping, and command-usage-logging behavior (logs the resolved key, skips unknown commands, still dispatches when durable logging rejects)
+  - **Command usage metrics** (`utils/metrics.test.ts`): 2 tests (v13) — `emitCommandUsage()` NDJSON event shape, multi-word command keys preserved verbatim
+  - Supabase integration: 25 tests (requires live credentials) — includes `price_watches` and `command_usage` CRUD, plus the v14 article-intelligence-fields insert path
   - Telegram integration: 9 tests (requires live credentials)
   - Stocks integration: 8 tests (requires live credentials)
-- **167 unit tests** run offline; integration tests require live credentials — use `npm run test:unit` for offline CI
-- **CI workflow** — `.github/workflows/ci.yml` runs `npm run lint` (`tsc --noEmit`) then `npm run test:unit` on every push/PR to main; all 5 workflows now declare explicit `permissions: contents: read` and run on Node 22
+- **241 unit tests** run offline; integration tests require live credentials — use `npm run test:unit` for offline CI
+- **CI workflow** — `.github/workflows/ci.yml` runs `npm run lint` (`tsc --noEmit`) then `npm run test:unit` on every push/PR to main; all 5 original workflows declare explicit `permissions: contents: read` and run on Node 22
+- **CodeQL** (v13) — `.github/workflows/codeql.yml` runs static security analysis (`javascript-typescript`, `security-extended` query pack) on every push/PR plus a weekly full scan; `github/codeql-action` steps SHA-pinned like every other action in this repo
 - **TypeScript strict mode** — entire project compiles cleanly with zero errors (`tsc --noEmit`)
 - **Full audit** — see [`AUDIT.md`](AUDIT.md) for the complete findings report (30 items across security/bugs/performance/architecture/tests/deps) and remediation checklist
 
@@ -347,7 +351,7 @@ cp .env.example .env
 npm run dev          # Run pipeline once (polling mode)
 npm run scheduler    # Run per-user delivery check
 npm run webhook      # Start webhook server (tsx, local dev)
-npm run test:unit    # Run 167 unit tests (offline, no credentials needed)
+npm run test:unit    # Run 241 unit tests (offline, no credentials needed)
 npm test             # Run all tests (integration tests need live credentials)
 
 # Backfill historical derived metrics (run once after first pipeline runs)
@@ -397,6 +401,8 @@ npm run db:pull      # Sync remote schema to local
 | `20260703000000_v10_ticker_theses.sql` | `ticker_theses` table (bull/bear thesis snapshots, `UNIQUE(ticker)`) + RLS (public read, service write) |
 | `20260704000000_v11_ticker_thesis_history.sql` | `ticker_thesis_history` table (`UNIQUE(ticker, week_of)`) — every weekly snapshot kept, not just the latest; public read + service write |
 | `20260704010000_v12_price_watches.sql` | `price_watches` table (`UNIQUE(chat_id, ticker)`) — one-shot price threshold pings; service-role-only RLS (private per-user data) |
+| `20260704020000_v13_command_usage.sql` | `command_usage` table — append-only bot-command invocation log; service-role-only RLS |
+| `20260707000000_v14_articles_intelligence_fields.sql` | `corroboration_count`, `grounding_text`, `effective_score` columns on `articles` — persist ranking/grounding data that was computed in-memory every run and discarded afterward |
 
 ---
 
@@ -420,7 +426,11 @@ npm run db:pull      # Sync remote schema to local
 
 ### CI
 
-`.github/workflows/ci.yml` — runs on every push and PR to `main`. Executes `tsc --noEmit` (type gate) then unit tests (167 tests, no credentials needed, fast).
+`.github/workflows/ci.yml` — runs on every push and PR to `main`. Executes `tsc --noEmit` (type gate) then unit tests (241 tests, no credentials needed, fast).
+
+### CodeQL
+
+`.github/workflows/codeql.yml` — runs on every push/PR to `main` plus a weekly full scan (Monday 5 AM UTC). Static security analysis over `javascript-typescript` with the `security-extended` query pack; results surface in the repo's Security tab. Added in v13 as the one AUDIT.md meta-recommendation that hadn't been implemented yet.
 
 ### Required Secrets
 
@@ -461,6 +471,7 @@ ai-infra-digest/
 ├── AUDIT.md                                  # Full codebase audit — findings, root causes, roadmap, checklist
 ├── .github/workflows/
 │   ├── ci.yml                                # Push/PR: lint + unit tests
+│   ├── codeql.yml                            # v13 — push/PR + weekly: CodeQL security analysis
 │   ├── daily-digest.yml                      # 8 AM MYT cron
 │   ├── scheduled-delivery.yml               # Every 30 min, per-user fan-out
 │   ├── data-retention.yml                    # Weekly: calls cleanup_old_data() RPC
@@ -500,16 +511,17 @@ ai-infra-digest/
 │   │   ├── bear-cases.ts                     # Devil's Advocate — batched AI bear case generation for high-impact articles
 │   │   ├── embeddings.ts                     # v8.0 — generateEmbeddings() via OpenAI text-embedding-3-small (20-article batches)
 │   │   ├── relevance.ts                      # v8.2 — 20 seed sentences + embedSeeds() (disk-cached) + passesSemanticGate()
-│   │   ├── thesis.ts                         # v10.1 — weekly bull/bear thesis generation + history insert
+│   │   ├── thesis.ts                         # v10.1 — weekly bull/bear thesis generation + history insert; v14 — collectRecentCoverage() grounds the prompt in /coverage's article data
 │   │   ├── sec.ts                            # SEC two-pass extraction
 │   │   └── earnings.ts                       # Earnings two-pass analysis + guidance delta
 │   ├── sender/
-│   │   ├── telegram.ts                       # Bot API, command handlers, sendValidationFollowUp, va_* callback
+│   │   ├── telegram.ts                       # Bot API; generic command dispatcher (v12.1) routes every registerCommand()-registered handler; sendValidationFollowUp, va_* callback
+│   │   ├── telegram.routing.test.ts          # v12.1/v13 — proves every registered command is actually dispatchable + usage-logging behavior
 │   │   ├── slack.ts                          # Slack Incoming Webhook — HTML→mrkdwn, chunked delivery
 │   │   └── email.ts                          # Gmail SMTP via nodemailer — HTML email template
 │   ├── webhook.test.ts                       # Webhook router unit tests
 │   ├── tests/
-│   │   ├── supabase.integration.test.ts      # Live-credential Supabase CRUD tests, incl. price_watches
+│   │   ├── supabase.integration.test.ts      # Live-credential Supabase CRUD tests, incl. price_watches + command_usage
 │   │   ├── telegram.integration.test.ts      # Live-credential Telegram send tests
 │   │   └── stocks.integration.test.ts        # Live-credential Yahoo Finance tests
 │   └── utils/
@@ -525,11 +537,12 @@ ai-infra-digest/
 │       ├── trust-scores.ts                   # Vote-learned source/sector multipliers from article_validations (1h TTL cache)
 │       ├── price-watch.ts                    # v12 — pure inferDirection()/isTriggered() helpers for one-shot price watches
 │       ├── logger.ts                         # Structured timestamped logger
-│       ├── metrics.ts                        # NDJSON event logging (async file writes)
+│       ├── metrics.ts                        # NDJSON event logging (async file writes); emitCommandUsage() (v13)
+│       ├── metrics.test.ts                   # v13 — emitCommandUsage() event-shape tests
 │       ├── retry.ts                          # withRetry<T> + tryStage<T> utilities
 │       ├── stocks.ts                         # Yahoo Finance price fetcher
-│       └── supabase.ts                       # Supabase REST CRUD (18 tables); insertArticles returns {id,url}[]; claimUserDelivery() for atomic idempotency; price_watches CRUD
-├── supabase-schema.sql                       # Full schema reference (15 tables + RLS)
+│       └── supabase.ts                       # Supabase REST CRUD (19 tables); insertArticles returns {id,url}[] + persists v14 intelligence fields; claimUserDelivery() for atomic idempotency; price_watches + command_usage CRUD
+├── supabase-schema.sql                       # Schema reference snapshot (19 tables + RLS) — migrations/ is canonical, see header note
 ├── vitest.config.ts
 ├── package.json
 └── tsconfig.json
@@ -663,6 +676,20 @@ Each roadmap candidate ran through the same demand-first diagnostic before any c
 - **✅ Shipped — v12, Price Watch**: `/watch TICKER PRICE` — one-shot, informational-only threshold ping (not the "instant trading alert" originally pitched — the actual evidence only supported an ambient awareness check). Checked once per existing digest generation cycle, no new polling infrastructure. New `price_watches` table; watched tickers are unioned into the daily stock-price fetch ahead of article tickers so a watch never silently fails to fire on a quiet news day.
 - **✅ Already shipped, no new work — Source Leaderboard**: turned out `/sources quality` already ranks every source by vote-learned trust multiplier with color-coded tiers — the roadmap item was redundant with an existing command.
 - **❌ Killed — Related Prior Coverage**: diagnosed and cut for lack of demand evidence (pushed twice on Q1, both times came back "hasn't actually happened") — logged in `TODOS.md` (`TODO-4`) so it isn't silently re-proposed without new evidence.
+
+### Phase XII · Production Hardening ✅ Shipped
+- **v12.1 — Command routing fix**: `registerCommand()` only ever stored handlers in a Map — actual dispatch needed a hand-written `onText` block per command, and those existed for just 6. `/alert`, `/sec`, `/trends`, `/thesis`, `/coverage`, and `/watch` (plus `/digest watchlist` / `/digest sector=X`) were registered, documented, and fully tested at the handler level — but **silently unreachable from the live bot**, going back as far as v2.0. Verified via `git log -S` that dispatch for them never existed in any commit. Replaced with one generic dispatcher (longest-prefix match, `@botname` stripping, unknown-command check derived from the registry itself); new `telegram.routing.test.ts` drives the *real* `initCommands()` against a fake bot so this class of gap can't silently recur.
+- **v13 — Command usage logging**: every bot command now writes a durable `command_usage` row (plus the existing NDJSON metrics) — fire-and-forget on both legs, never affects the command that triggered it. Directly answers "does this feature actually get used?" instead of guessing — including the open question from Price Watch's own design doc.
+- **v13 — CodeQL**: static security analysis added to CI (`security-extended` query pack), the one AUDIT.md meta-recommendation that hadn't shipped yet.
+- **v13 — Schema drift fix**: `supabase-schema.sql` was documenting 13 tables against an actual 18 — refreshed with the 6 missing tables and a header note that `supabase/migrations/` is the canonical source going forward.
+- Deployed the webhook server live (Render) and verified end-to-end: `/health` 200, Telegram's `getWebhookInfo` showing the URL registered with zero pending/failed updates, and a full command smoke test (`/watch`, `/coverage`, `/thesis`, `/trends`, `/alert`, `/digest watchlist`) all responding with real data.
+
+### Phase XIII · Intelligence Connections ✅ Shipped
+Two `TODOS.md` items connecting existing features instead of adding new surface:
+- **v14 — Persist article intelligence fields** (`TODO-1`): `corroboration_count`, `grounding_text`, and `effective_score` were computed fresh every pipeline run and discarded afterward — now persisted to `articles`, unlocking historical confidence-trend analysis without recomputation. Found and fixed a real bug in the same code path: `is_sec_filing` was declared, passed by the caller, and silently dropped before ever reaching the `INSERT` — the 🏛️ SEC badge flag had never actually been written to the database.
+- **v14 — Ground the weekly thesis in coverage data** (`TODO-2`): `/thesis`'s AI narrative and `/coverage`'s per-article feed used to pull from unrelated data with no connection between them. `generateTheses()` now includes each ticker's recent headlines (one batched query, not one per ticker) and is explicitly instructed to ground its bull/bear case in them — verified by asserting the actual headline text reaches the AI request body, not just that the data was fetched.
+
+**Phase XIV** — four items (Public API + Stripe monetization, Slack/Email personalization, Catalyst Tracker, Related Prior Coverage rebuild, `node-telegram-bot-api`→grammY migration) remain deliberately unscheduled pending fresh demand evidence — see `TODOS.md` for why each was parked rather than built.
 
 ---
 

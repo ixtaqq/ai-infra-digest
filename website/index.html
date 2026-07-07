@@ -470,6 +470,14 @@
       border-left: 1px solid var(--border);
       border-top: 1px solid var(--border);
     }
+    .roadmap-grid > *:nth-child(10) {
+      border-left: none;
+      border-top: 1px solid var(--border);
+    }
+    .roadmap-grid > *:nth-child(11) {
+      border-left: 1px solid var(--border);
+      border-top: 1px solid var(--border);
+    }
 
     .phase-card {
       padding: 24px 22px;
@@ -838,7 +846,7 @@
           <div class="stat-label">SEC Companies</div>
         </div>
         <div class="stat-item animate delay-2">
-          <div class="stat-number"><span class="green">16</span></div>
+          <div class="stat-number"><span class="green">19</span></div>
           <div class="stat-label">Database Tables</div>
         </div>
       </div>
@@ -860,7 +868,7 @@
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:14</span> 🔢 Embeddings: 28/28 vectors generated · semantic corroboration map rebuilt</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:15</span> 🎯 Semantic gate: 3 off-topic articles dropped (cosine &lt; 0.55 vs 20 AI-infra seeds)</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:15</span> 📊 Market Pulse: NVDA mentions +32% WoW · Datacenters +18% WoW</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:16</span> Digest delivered to Telegram/Slack/Gmail + 16 tables updated in Supabase</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:16</span> Digest delivered to Telegram/Slack/Gmail + 19 tables updated in Supabase</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:00</span> NVIDIA files 8-K — $26B capex</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:02</span> Article analysis complete — 142 articles processed</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:04</span> Earnings transcripts fetched — 5 calls analyzed</span>
@@ -873,7 +881,7 @@
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:14</span> 🔢 Embeddings: 28/28 vectors generated · semantic corroboration map rebuilt</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:15</span> 🎯 Semantic gate: 3 off-topic articles dropped (cosine &lt; 0.55 vs 20 AI-infra seeds)</span>
       <span class="ticker-item"><span class="dot"></span> <span class="ts">08:15</span> 📊 Market Pulse: NVDA mentions +32% WoW · Datacenters +18% WoW</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:16</span> Digest delivered to Telegram/Slack/Gmail + 16 tables updated in Supabase</span>
+      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:16</span> Digest delivered to Telegram/Slack/Gmail + 19 tables updated in Supabase</span>
     </div>
   </div>
 
@@ -1172,6 +1180,35 @@
             </ul>
           </div>
 
+          <div class="phase-card status-live delay-1">
+            <div class="phase-top">
+              <span class="phase-num">Phase XII</span>
+              <span class="badge badge-live">Shipped</span>
+            </div>
+            <div class="phase-title-text">Production Hardening.</div>
+            <ul class="feature-list">
+              <li>🔧 Fixed a real production bug — 6+ commands (<code>/alert</code>, <code>/sec</code>, <code>/trends</code>, <code>/thesis</code>, <code>/coverage</code>, <code>/watch</code>) were registered, documented, and unit-tested, but silently unreachable from the live bot since v2.0</li>
+              <li>One generic command dispatcher replaces the hand-written per-command routing; a new routing-seam test drives the real bot so this class of gap can't recur</li>
+              <li>📈 Durable command usage logging — answers "does this feature actually get used?" with data, not guesses</li>
+              <li>🛡️ CodeQL static security analysis added to CI; <code>supabase-schema.sql</code> drift fixed (was 13 tables documented vs. 18 actual)</li>
+              <li>Deployed the webhook live on Render and verified end-to-end via a real Telegram smoke test</li>
+            </ul>
+          </div>
+
+          <div class="phase-card status-live delay-2">
+            <div class="phase-top">
+              <span class="phase-num">Phase XIII</span>
+              <span class="badge badge-live">Shipped</span>
+            </div>
+            <div class="phase-title-text">Intelligence Connections.</div>
+            <ul class="feature-list">
+              <li>Persisted <code>corroboration_count</code>, <code>grounding_text</code>, <code>effective_score</code> to <code>articles</code> — was computed fresh every run and discarded, now enables historical confidence-trend analysis</li>
+              <li>Found and fixed a second real bug in the same code path: <code>is_sec_filing</code> was silently dropped before ever reaching the database insert</li>
+              <li>🧭 <code>/thesis</code>'s weekly AI narrative now grounded in the same per-article coverage <code>/coverage</code> shows, instead of aggregate stats alone</li>
+              <li>Four more roadmap candidates deliberately parked pending real demand evidence, not built speculatively</li>
+            </ul>
+          </div>
+
         </div>
       </div>
     </div>
@@ -1199,9 +1236,9 @@
         <div><span class="comment"># Or test with sample data</span></div>
         <div><span class="prompt">$</span> <span class="cmd">npm run test-digest</span></div>
         <div>&nbsp;</div>
-        <div><span class="comment"># 84 unit tests, no credentials needed</span></div>
+        <div><span class="comment"># 241 unit tests, no credentials needed</span></div>
         <div><span class="prompt">$</span> <span class="cmd">npm run test:unit</span></div>
-        <div><span class="output">  ✓ 84 unit tests passing</span></div>
+        <div><span class="output">  ✓ 241 unit tests passing</span></div>
       </div>
     </div>
   </section>
