@@ -23,21 +23,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
-      # NOTE: github/codeql-action is pinned by major version tag here rather than
-      # a commit SHA (the rest of this repo SHA-pins). Resolve @v3 to the current
-      # release SHA and replace the three tags below to match the SHA-pinning
-      # convention — left as tags only because the exact SHA needs a live lookup.
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@411c4c9a36b3fca4d674f06b6396b2c6d23522c6 # v3.36.3
         with:
           languages: javascript-typescript
           # Security-focused query pack in addition to the default suite.
           queries: security-extended
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
+        uses: github/codeql-action/autobuild@411c4c9a36b3fca4d674f06b6396b2c6d23522c6 # v3.36.3
 
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@411c4c9a36b3fca4d674f06b6396b2c6d23522c6 # v3.36.3
         with:
           category: "/language:javascript-typescript"
