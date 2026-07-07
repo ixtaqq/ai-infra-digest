@@ -62,6 +62,12 @@ export interface ErrorEvent extends MetricsEvent {
   recovery_action?: string;
 }
 
+export interface CommandUsageEvent extends MetricsEvent {
+  event: "command_usage";
+  command: string;
+  chat_id: number;
+}
+
 // ─── Log Directory Setup ──────────────────────────────
 
 const LOG_DIR = path.join(process.cwd(), "logs");
@@ -189,6 +195,15 @@ export function emitDigestDelivery(
     tokens_used: tokensUsed,
     ...(error ? { error } : {}),
   } as DigestDeliveryEvent);
+}
+
+export function emitCommandUsage(command: string, chatId: number): void {
+  writeEvent({
+    timestamp: new Date().toISOString(),
+    event: "command_usage",
+    command,
+    chat_id: chatId,
+  } as CommandUsageEvent);
 }
 
 export function emitError(

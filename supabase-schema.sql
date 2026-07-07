@@ -2,6 +2,15 @@
 -- AI Infrastructure Dashboard - Supabase Schema
 -- Run this in the Supabase SQL Editor to set up your database
 -- ============================================================
+--
+-- ⚠️ CANONICAL SOURCE: supabase/migrations/ (applied via `npm run db:push`).
+-- This file is a convenience snapshot for a one-shot bootstrap and can drift
+-- from the incremental migrations. Where they disagree, the migrations win —
+-- in particular, later migrations (20260625100000, 20260629000000) TIGHTENED
+-- RLS: user_preferences / user_delivery_log lost public read and all write
+-- policies were scoped `TO service_role`. Tables below the "v6–v13 additions"
+-- marker were added by migration and are reproduced here with current RLS.
+-- ============================================================
 
 -- 1. DIGEST RUNS — Track each execution of the daily digest
 CREATE TABLE digest_runs (
@@ -311,3 +320,100 @@ CREATE POLICY "service_role_write" ON ai_usage FOR ALL TO service_role USING (tr
 CREATE POLICY "service_role_write" ON daily_metrics FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "service_role_write" ON stock_prices FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "service_role_full_access" ON user_preferences FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- ============================================================
+-- v6–v13 additions (reproduced from supabase/migrations/ — canonical there)
+-- ============================================================
+
+-- v6. DAILY DERIVED METRICS — materialized per-ticker/per-sector time series
+CREATE TABLE IF NOT EXISTS daily_derived_metrics (
+  id           BIGSERIAL PRIMARY KEY,
+  date         DATE        NOT NULL,
+  entity_type  TEXT        NOT NULL CHECK (entity_type IN ('ticker', 'sector')),
+  entity       TEXT        NOT NULL,
+  mention_count     INT           DEFAULT 0,
+  avg_sentiment     NUMERIC(5,2),
+  avg_impact_score  NUMERIC(5,2),
+  bullish_count     INT           DEFAULT 0,
+  bearish_count     INT           DEFAULT 0,
+  price_close       NUMERIC(10,2),
+  price_change_pct  NUMERIC(6,2),
+  calculated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(date, entity_type, entity)
+);
+CREATE INDEX IF NOT EXISTS idx_ddm_entity_date ON daily_derived_metrics(entity_type, entity, date DESC);
+CREATE INDEX IF NOT EXISTS idx_ddm_date ON daily_derived_metrics(date DESC);
+ALTER TABLE daily_derived_metrics ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "public_read" ON daily_derived_metrics FOR SELECT TO anon USING (true);
+CREATE POLICY "service_role_write" ON daily_derived_metrics FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- v7. ARTICLE VALIDATIONS — per-user 👍/👎 vote log (thumbs_up/down live on articles)
+CREATE TABLE IF NOT EXISTS article_validations (
+  id         BIGSERIAL PRIMARY KEY,
+  article_id BIGINT NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+  chat_id    BIGINT NOT NULL,
+  rating     TEXT   NOT NULL CHECK (rating IN ('up', 'down')),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(article_id, chat_id)
+);
+CREATE INDEX IF NOT EXISTS idx_av_article ON article_validations(article_id);
+ALTER TABLE article_validations ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "public_read" ON article_validations FOR SELECT TO anon USING (true);
+CREATE POLICY "service_role_write" ON article_validations FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- v10. TICKER THESES — latest-only bull/bear snapshot per ticker
+CREATE TABLE IF NOT EXISTS ticker_theses (
+  id BIGSERIAL PRIMARY KEY,
+  ticker TEXT NOT NULL UNIQUE,
+  bull_case TEXT NOT NULL,
+  bear_case TEXT NOT NULL,
+  confidence INT CHECK (confidence BETWEEN 1 AND 10),
+  key_drivers JSONB DEFAULT '[]'::jsonb,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_ticker_theses_updated ON ticker_theses(updated_at DESC);
+ALTER TABLE ticker_theses ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "public_read" ON ticker_theses FOR SELECT TO anon USING (true);
+CREATE POLICY "service_role_write" ON ticker_theses FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- v11. TICKER THESIS HISTORY — every weekly snapshot kept (timeline source)
+CREATE TABLE IF NOT EXISTS ticker_thesis_history (
+  id BIGSERIAL PRIMARY KEY,
+  ticker TEXT NOT NULL,
+  bull_case TEXT NOT NULL,
+  bear_case TEXT NOT NULL,
+  confidence INT CHECK (confidence BETWEEN 1 AND 10),
+  key_drivers JSONB DEFAULT '[]'::jsonb,
+  week_of DATE NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(ticker, week_of)
+);
+CREATE INDEX IF NOT EXISTS idx_ticker_thesis_history_ticker_week ON ticker_thesis_history(ticker, week_of DESC);
+ALTER TABLE ticker_thesis_history ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "public_read" ON ticker_thesis_history FOR SELECT TO anon USING (true);
+CREATE POLICY "service_role_write" ON ticker_thesis_history FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- v12. PRICE WATCHES — one-shot per-user price thresholds (private, service-role only)
+CREATE TABLE IF NOT EXISTS price_watches (
+  id BIGSERIAL PRIMARY KEY,
+  chat_id BIGINT NOT NULL,
+  ticker TEXT NOT NULL,
+  threshold DOUBLE PRECISION NOT NULL,
+  direction TEXT NOT NULL CHECK (direction IN ('above', 'below')),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(chat_id, ticker)
+);
+CREATE INDEX IF NOT EXISTS idx_price_watches_chat_ticker ON price_watches(chat_id, ticker);
+ALTER TABLE price_watches ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_full_access" ON price_watches FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- v13. COMMAND USAGE — append-only bot-command invocation log (private, service-role only)
+CREATE TABLE IF NOT EXISTS command_usage (
+  id BIGSERIAL PRIMARY KEY,
+  command TEXT NOT NULL,
+  chat_id BIGINT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_command_usage_command_created ON command_usage(command, created_at DESC);
+ALTER TABLE command_usage ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_full_access" ON command_usage FOR ALL TO service_role USING (true) WITH CHECK (true);

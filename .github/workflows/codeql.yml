@@ -1,0 +1,43 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly full scan (Monday 5:00 AM UTC) catches advisories in code that
+    # hasn't changed since the last push.
+    - cron: "0 5 * * 1"
+
+permissions:
+  contents: read
+  security-events: write # required for CodeQL to upload results to the Security tab
+
+jobs:
+  analyze:
+    name: Analyze (javascript-typescript)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      # NOTE: github/codeql-action is pinned by major version tag here rather than
+      # a commit SHA (the rest of this repo SHA-pins). Resolve @v3 to the current
+      # release SHA and replace the three tags below to match the SHA-pinning
+      # convention — left as tags only because the exact SHA needs a live lookup.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          # Security-focused query pack in addition to the default suite.
+          queries: security-extended
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"

@@ -1,6 +1,7 @@
 import TelegramBot, { type Update, type Message, type InlineKeyboardButton } from "node-telegram-bot-api";
 import { config } from "../config";
 import { logger } from "../utils/logger";
+import { emitCommandUsage } from "../utils/metrics";
 import { startOnboarding, handleOnboardingCallback, handleOnboardingText } from "../onboarding";
 
 let bot: TelegramBot | null = null;
@@ -64,6 +65,24 @@ export function registerCommand(
   handlers.set(command, handler);
 }
 
+/**
+ * Record that a user invoked a bot command (v13). Fire-and-forget on both legs:
+ * NDJSON metrics (local/ephemeral) + a durable Supabase row. Never throws — a
+ * usage-logging failure must never affect the command the user actually ran.
+ */
+function logCommandUse(command: string, chatId: number): void {
+  try {
+    emitCommandUsage(command, chatId);
+  } catch {
+    /* non-critical */
+  }
+  import("../utils/supabase")
+    .then(({ supabase }) => supabase.logCommandUsage(command, chatId))
+    .catch(() => {
+      /* non-critical — durable log is best-effort */
+    });
+}
+
 function initCommands() {
   if (commandHandlersRegistered) return;
   commandHandlersRegistered = true;
@@ -72,6 +91,7 @@ function initCommands() {
 
   // Handle /start — launches interactive onboarding flow
   pollingBot.onText(/^\/start(@\w+)?$/, async (msg) => {
+    logCommandUse("start", msg.chat.id);
     await startOnboarding(pollingBot, msg);
   });
 
@@ -91,6 +111,7 @@ function initCommands() {
   // Handle /help
   pollingBot.onText(/^\/help(@\w+)?$/, async (msg) => {
     const chatId = msg.chat.id;
+    logCommandUse("help", chatId);
     const text =
       `🤖 <b>AI Infra Digest — Help</b>\n\n` +
       `I analyze AI infrastructure news and deliver insights.\n\n` +
@@ -128,6 +149,7 @@ function initCommands() {
   // using the generic dispatcher below only for the "Generating..." pre-message.
   pollingBot.onText(/^\/digest(@\w+)?(\s+.*)?$/, async (msg) => {
     const chatId = msg.chat.id;
+    logCommandUse("digest", chatId);
     const handler = handlers.get("digest");
     if (handler) {
       await pollingBot.sendMessage(chatId, "⏳ Generating your digest...");
@@ -158,6 +180,7 @@ function initCommands() {
   // Handle /feedback — route to registered handler with inline keyboard
   pollingBot.onText(/^\/feedback(@\w+)?(\s+.*)?$/, async (msg, match) => {
     const chatId = msg.chat.id;
+    logCommandUse("feedback", chatId);
     const handler = handlers.get("feedback");
     if (handler) {
       try {
@@ -285,6 +308,7 @@ function initCommands() {
   // Handle /settings
   pollingBot.onText(/^\/settings(@\w+)?$/, async (msg) => {
     const chatId = msg.chat.id;
+    logCommandUse("settings", chatId);
     const { supabase } = await import("../utils/supabase");
     const prefs = await supabase.getUserPreferences(chatId);
     if (prefs) {
@@ -315,6 +339,7 @@ function initCommands() {
   // Handle /watchlist
   pollingBot.onText(/^\/watchlist(@\w+)?\s*(.*)/, async (msg, match) => {
     const chatId = msg.chat.id;
+    logCommandUse("watchlist", chatId);
     const tickersStr = match?.[2]?.trim();
     if (!tickersStr) {
       await pollingBot.sendMessage(
@@ -381,6 +406,9 @@ function initCommands() {
       );
       return;
     }
+
+    // Log the resolved key so "sources quality" is counted distinctly from "sources".
+    logCommandUse(key, chatId);
 
     try {
       const result = await handlers.get(key)!({

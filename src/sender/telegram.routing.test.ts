@@ -19,6 +19,8 @@ type OnTextCb = (msg: unknown, match: RegExpExecArray | null) => Promise<void> |
 const h = vi.hoisted(() => ({
   onTextRegs: [] as { regexp: RegExp; cb: OnTextCb }[],
   sendMessage: vi.fn(async (..._args: unknown[]) => ({ message_id: 1 })),
+  emitCommandUsage: vi.fn(),
+  logCommandUsage: vi.fn(async () => true),
 }));
 
 vi.mock("node-telegram-bot-api", () => ({
@@ -52,12 +54,17 @@ vi.mock("../onboarding", () => ({
   handleOnboardingCallback: vi.fn(async () => false),
   handleOnboardingText: vi.fn(),
 }));
-// telegram.ts imports supabase dynamically (settings/watchlist/validation paths)
+vi.mock("../utils/metrics", () => ({
+  emitCommandUsage: h.emitCommandUsage,
+}));
+// telegram.ts imports supabase dynamically (settings/watchlist/validation +
+// the v13 command-usage log).
 vi.mock("../utils/supabase", () => ({
   supabase: {
     isConfigured: () => false,
     getUserPreferences: vi.fn(async () => null),
     upsertUserPreferences: vi.fn(async () => true),
+    logCommandUsage: h.logCommandUsage,
   },
 }));
 
@@ -107,6 +114,13 @@ async function simulate(text: string) {
   }
 }
 
+/**
+ * The durable-log leg of logCommandUse() runs via a fire-and-forget
+ * `import(...).then(...)` microtask, so it resolves AFTER simulate() returns.
+ * Flush the microtask queue before asserting on the durable Supabase call.
+ */
+const flushMicrotasks = () => new Promise((r) => setTimeout(r, 0));
+
 beforeAll(() => {
   for (const name of PRODUCTION_COMMANDS) {
     const spy = vi.fn(async () => `${name.toUpperCase()}_REPLY`);
@@ -119,6 +133,8 @@ beforeAll(() => {
 
 beforeEach(() => {
   h.sendMessage.mockClear();
+  h.emitCommandUsage.mockClear();
+  h.logCommandUsage.mockClear();
   for (const spy of spies.values()) spy.mockClear();
 });
 
@@ -185,5 +201,43 @@ describe("command routing seam", () => {
     await simulate("/sec NVDA");
     const sent = h.sendMessage.mock.calls.map((c) => String(c[1]));
     expect(sent.some((t) => t.includes("boom"))).toBe(true);
+  });
+});
+
+describe("command usage logging (v13)", () => {
+  it("logs usage (metrics + durable) for a generic-dispatched command", async () => {
+    await simulate("/watch NVDA 130");
+    expect(h.emitCommandUsage).toHaveBeenCalledWith("watch", 42);
+    await flushMicrotasks();
+    expect(h.logCommandUsage).toHaveBeenCalledWith("watch", 42);
+  });
+
+  it("logs the resolved key for multi-word commands, not the parent", async () => {
+    await simulate("/sources quality");
+    expect(h.emitCommandUsage).toHaveBeenCalledWith("sources quality", 42);
+    expect(h.emitCommandUsage).not.toHaveBeenCalledWith("sources", 42);
+  });
+
+  it("logs usage for bespoke-routed commands too (digest / feedback)", async () => {
+    await simulate("/digest watchlist");
+    expect(h.emitCommandUsage).toHaveBeenCalledWith("digest", 42);
+    h.emitCommandUsage.mockClear();
+    await simulate("/feedback 5");
+    expect(h.emitCommandUsage).toHaveBeenCalledWith("feedback", 42);
+  });
+
+  it("does NOT log usage for unknown commands", async () => {
+    await simulate("/definitelynotacommand");
+    await flushMicrotasks();
+    expect(h.emitCommandUsage).not.toHaveBeenCalled();
+    expect(h.logCommandUsage).not.toHaveBeenCalled();
+  });
+
+  it("still dispatches the command when durable logging rejects (fire-and-forget)", async () => {
+    h.logCommandUsage.mockRejectedValueOnce(new Error("supabase down"));
+    await simulate("/sec NVDA");
+    await flushMicrotasks();
+    // The handler must still have run despite the logging failure.
+    expect(spies.get("sec")!).toHaveBeenCalledTimes(1);
   });
 });

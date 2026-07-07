@@ -689,6 +689,18 @@ export const supabase = {
     return supabaseFetch("DELETE", "price_watches", undefined, `id=in.(${ids.join(",")})`);
   },
 
+  // ─── Command Usage (v13) ──────────────────────────────
+
+  /**
+   * Append one command-invocation row. Fire-and-forget durable usage log —
+   * survives across ephemeral runner filesystems (unlike the NDJSON logs) so
+   * feature-adoption questions can be answered with real data. Never throws;
+   * a logging failure must never break the command the user actually ran.
+   */
+  async logCommandUsage(command: string, chatId: number): Promise<boolean> {
+    return supabaseFetch("POST", "command_usage", { command, chat_id: chatId });
+  },
+
   // Quick helper to check if the database is reachable
   async healthCheck(): Promise<boolean> {
     const cfg = getConfig();

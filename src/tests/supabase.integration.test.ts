@@ -304,6 +304,30 @@ describe("Supabase Integration", () => {
     });
   });
 
+  describe("logCommandUsage", () => {
+    it("should POST an append-only row to command_usage", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 201 });
+
+      const { supabase } = await import("../utils/supabase");
+      const result = await supabase.logCommandUsage("watch", 12345);
+
+      expect(result).toBe(true);
+      const callUrl = mockFetch.mock.calls[0][0] as string;
+      expect(callUrl).toContain("command_usage");
+      const callMethod = mockFetch.mock.calls[0][1]?.method;
+      expect(callMethod).toBe("POST");
+      const body = JSON.parse(mockFetch.mock.calls[0][1]?.body as string);
+      expect(body).toMatchObject({ command: "watch", chat_id: 12345 });
+    });
+
+    it("should return false (not throw) on HTTP error", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 500 });
+      const { supabase } = await import("../utils/supabase");
+      const result = await supabase.logCommandUsage("sec", 1);
+      expect(result).toBe(false);
+    });
+  });
+
   describe("healthCheck", () => {
     it("should return true when Supabase is responsive", async () => {
       mockFetch.mockResolvedValueOnce({ ok: true });
