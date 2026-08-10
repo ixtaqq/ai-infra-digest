@@ -11,6 +11,7 @@ on:
     - cron: "0 5 * * 1"
 
 permissions:
+  actions: read # required by CodeQL analysis to inspect the current workflow run
   contents: read
   security-events: write # required for CodeQL to upload results to the Security tab
 
