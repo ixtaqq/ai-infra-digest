@@ -1,6 +1,7 @@
 import { config } from "../config";
 import { logger } from "./logger";
 import type { PriceWatch } from "./price-watch";
+import type { RankingExplanation } from "./ranking";
 
 // ─── Types ────────────────────────────────────────────
 export interface DigestRunData {
@@ -15,6 +16,8 @@ export interface DigestRunData {
   total_tokens_used: number;
   duration_seconds: number;
   error_message?: string;
+  capabilities?: Record<string, { state: string; detail: string }>;
+  degraded_stages?: string[];
 }
 
 export interface ArticleData {
@@ -36,6 +39,8 @@ export interface ArticleData {
   grounding_text?: string;
   /** Computed ranking score at insert time — impactScore × trust/credibility/corroboration multipliers (v14). */
   effective_score?: number;
+  /** Versioned, auditable breakdown of the score components (v16). */
+  ranking_explanation?: RankingExplanation;
 }
 
 export interface SectorActivityData {
@@ -85,6 +90,10 @@ export interface UserPreferencesData {
   min_impact_score?: number;
   alerts_enabled?: boolean;
   alerts_min_score?: number;
+  /** Optional recipient for a personalized email copy. */
+  delivery_email?: string | null;
+  /** Optional private Slack Incoming Webhook for a personalized copy. */
+  slack_webhook_url?: string | null;
   is_active?: boolean;
   /** Controls article summary verbosity in the personalised digest */
   digest_length?: "brief" | "standard" | "detailed";
@@ -250,6 +259,7 @@ export const supabase = {
       corroboration_count: a.corroboration_count ?? null,
       grounding_text: a.grounding_text || null,
       effective_score: a.effective_score ?? null,
+      ranking_explanation: a.ranking_explanation ?? null,
     }));
 
     const inserted: { id: number; url: string }[] = [];

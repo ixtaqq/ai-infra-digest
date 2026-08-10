@@ -31,6 +31,8 @@ CREATE TABLE digest_runs (
   total_tokens_used INT DEFAULT 0,
   duration_seconds NUMERIC(10,1) DEFAULT 0,
   error_message TEXT,
+  capabilities JSONB NOT NULL DEFAULT '{}'::jsonb,
+  degraded_stages TEXT[] NOT NULL DEFAULT '{}',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -230,6 +232,8 @@ CREATE TABLE user_preferences (
   min_impact_score INT DEFAULT 0 CHECK (min_impact_score >= 0 AND min_impact_score <= 10),
   alerts_enabled BOOLEAN DEFAULT FALSE,
   alerts_min_score INT DEFAULT 8 CHECK (alerts_min_score >= 1 AND alerts_min_score <= 10),
+  delivery_email TEXT,
+  slack_webhook_url TEXT,
   is_active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -309,7 +313,8 @@ CREATE POLICY "Allow public read access" ON capex_tracking FOR SELECT USING (tru
 CREATE POLICY "Allow public read access" ON ai_usage FOR SELECT USING (true);
 CREATE POLICY "Allow public read access" ON daily_metrics FOR SELECT USING (true);
 CREATE POLICY "Allow public read access" ON stock_prices FOR SELECT USING (true);
-CREATE POLICY "Allow public read access" ON user_preferences FOR SELECT USING (true);
+-- user_preferences is intentionally private; it may contain delivery email
+-- addresses and Slack webhook URLs. Service-role access is declared below.
 
 -- Allow service_role full access (for pipeline writes)
 -- NOTE: scoped TO service_role explicitly (see migration 20260629000000) — omitting
@@ -324,6 +329,8 @@ CREATE POLICY "service_role_write" ON ai_usage FOR ALL TO service_role USING (tr
 CREATE POLICY "service_role_write" ON daily_metrics FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "service_role_write" ON stock_prices FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "service_role_full_access" ON user_preferences FOR ALL TO service_role USING (true) WITH CHECK (true);
+REVOKE ALL ON TABLE user_preferences FROM anon, authenticated;
+GRANT ALL ON TABLE user_preferences TO service_role;
 
 -- ============================================================
 -- v6–v13 additions (reproduced from supabase/migrations/ — canonical there)
@@ -348,7 +355,7 @@ CREATE TABLE IF NOT EXISTS daily_derived_metrics (
 CREATE INDEX IF NOT EXISTS idx_ddm_entity_date ON daily_derived_metrics(entity_type, entity, date DESC);
 CREATE INDEX IF NOT EXISTS idx_ddm_date ON daily_derived_metrics(date DESC);
 ALTER TABLE daily_derived_metrics ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "public_read" ON daily_derived_metrics FOR SELECT TO anon USING (true);
+CREATE POLICY "public_read" ON daily_derived_metrics FOR SELECT TO anon, authenticated USING (true);
 CREATE POLICY "service_role_write" ON daily_derived_metrics FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 -- v7. ARTICLE VALIDATIONS — per-user 👍/👎 vote log (thumbs_up/down live on articles)
@@ -362,8 +369,9 @@ CREATE TABLE IF NOT EXISTS article_validations (
 );
 CREATE INDEX IF NOT EXISTS idx_av_article ON article_validations(article_id);
 ALTER TABLE article_validations ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "public_read" ON article_validations FOR SELECT TO anon USING (true);
 CREATE POLICY "service_role_write" ON article_validations FOR ALL TO service_role USING (true) WITH CHECK (true);
+REVOKE ALL ON TABLE article_validations FROM anon, authenticated;
+GRANT ALL ON TABLE article_validations TO service_role;
 
 -- v10. TICKER THESES — latest-only bull/bear snapshot per ticker
 CREATE TABLE IF NOT EXISTS ticker_theses (
@@ -428,3 +436,53 @@ ALTER TABLE articles
   ADD COLUMN IF NOT EXISTS corroboration_count INT,
   ADD COLUMN IF NOT EXISTS grounding_text TEXT,
   ADD COLUMN IF NOT EXISTS effective_score DOUBLE PRECISION;
+
+-- v16. RANKING EXPLANATIONS + VALIDATION QUALITY
+ALTER TABLE articles
+  ADD COLUMN IF NOT EXISTS ranking_explanation JSONB;
+
+CREATE OR REPLACE VIEW ranking_quality_daily
+WITH (security_invoker = true) AS
+SELECT
+  created_at::date AS date,
+  COUNT(*) FILTER (WHERE COALESCE(thumbs_up, 0) + COALESCE(thumbs_down, 0) > 0) AS voted_articles,
+  COALESCE(SUM(thumbs_up), 0) AS thumbs_up,
+  COALESCE(SUM(thumbs_down), 0) AS thumbs_down,
+  CASE
+    WHEN COALESCE(SUM(thumbs_up), 0) + COALESCE(SUM(thumbs_down), 0) = 0 THEN NULL
+    ELSE ROUND(COALESCE(SUM(thumbs_up), 0)::numeric / (COALESCE(SUM(thumbs_up), 0) + COALESCE(SUM(thumbs_down), 0)), 4)
+  END AS approval_rate,
+  ROUND(AVG(effective_score) FILTER (WHERE COALESCE(thumbs_up, 0) + COALESCE(thumbs_down, 0) > 0)::numeric, 3) AS avg_voted_effective_score
+FROM articles
+GROUP BY created_at::date
+HAVING COUNT(*) FILTER (WHERE COALESCE(thumbs_up, 0) + COALESCE(thumbs_down, 0) > 0) > 0;
+
+REVOKE ALL ON TABLE ranking_quality_daily FROM anon, authenticated;
+GRANT SELECT ON TABLE ranking_quality_daily TO anon, authenticated;
+
+-- v17.2. FINAL PRIVATE/PUBLIC ACCESS CLEANUP
+DROP POLICY IF EXISTS "Allow service full access" ON user_delivery_log;
+DROP POLICY IF EXISTS "Allow public read access" ON earnings_transcripts;
+DROP POLICY IF EXISTS "Allow service full access" ON earnings_transcripts;
+DROP POLICY IF EXISTS "Allow service full access" ON sec_filings;
+REVOKE ALL ON TABLE user_delivery_log FROM anon, authenticated;
+REVOKE ALL ON TABLE earnings_transcripts FROM anon, authenticated;
+ALTER FUNCTION public.cleanup_old_data() SET search_path = public, pg_temp;
+
+-- v17.3. PUBLIC DELIVERY AGGREGATES (no chat IDs or destination details)
+CREATE TABLE IF NOT EXISTS delivery_metrics_daily (
+  run_date DATE PRIMARY KEY,
+  total_deliveries INT NOT NULL DEFAULT 0 CHECK (total_deliveries >= 0),
+  successful_deliveries INT NOT NULL DEFAULT 0 CHECK (successful_deliveries >= 0),
+  failed_deliveries INT NOT NULL DEFAULT 0 CHECK (failed_deliveries >= 0),
+  unique_users INT NOT NULL DEFAULT 0 CHECK (unique_users >= 0),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE delivery_metrics_daily ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "public_read" ON delivery_metrics_daily
+  FOR SELECT TO anon, authenticated USING (true);
+CREATE POLICY "service_role_write" ON delivery_metrics_daily
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+REVOKE ALL ON TABLE delivery_metrics_daily FROM anon, authenticated;
+GRANT SELECT ON TABLE delivery_metrics_daily TO anon, authenticated;
+GRANT ALL ON TABLE delivery_metrics_daily TO service_role;

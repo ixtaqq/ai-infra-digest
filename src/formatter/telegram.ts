@@ -2,6 +2,7 @@ import type { DigestResult, NewsCategory } from "../processor/ai";
 import type { StockPrice } from "../utils/stocks";
 import type { SECFinancialExtract } from "../processor/sec";
 import { escapeHtml } from "../utils/escape";
+import { formatRankingSummary } from "../utils/ranking";
 
 function formatDate(): string {
   const now = new Date();
@@ -56,6 +57,7 @@ export interface FormatOptions {
   personalizationNote?: string;
   whatChanged?: string;
   deepDive?: DeepDiveResult;
+  digestLength?: "brief" | "standard" | "detailed";
 }
 
 export function formatDigestTelegram(
@@ -64,6 +66,7 @@ export function formatDigestTelegram(
 ): string {
   const lines: string[] = [];
   const prices = options?.stockPrices;
+  const digestLength = options?.digestLength ?? "standard";
 
   // ─── Header ───────────────────────────────────────
   lines.push("🚀 <b>AI Infra Morning Digest</b>");
@@ -136,6 +139,15 @@ export function formatDigestTelegram(
         `   <i>${article.impact}</i> (${article.impactScore}/10) ` +
         `| Stocks: ${article.affectedStocks.slice(0, 3).join(", ") || "N/A"}`
       );
+      if (article.summary) {
+        lines.push(`   ${escapeHtml(article.summary)}`);
+      }
+      if (digestLength === "detailed" && article.reason) {
+        lines.push(`   💡 <i>${escapeHtml(article.reason)}</i>`);
+      }
+      if (digestLength === "detailed" && article.rankingExplanation) {
+        lines.push(`   📐 <i>${escapeHtml(formatRankingSummary(article.rankingExplanation))}</i>`);
+      }
       if (article.url) {
         lines.push(`   <a href="${article.url}">Read</a>`);
       }
@@ -157,6 +169,13 @@ export function formatDigestTelegram(
       const emoji = impactEmoji(article.impactScore);
       lines.push(`${i + 1}. ${emoji} <b>${escapeHtml(article.title)}</b>`);
       lines.push(`   <i>${article.impact}</i> (${article.impactScore}/10)`);
+      if (article.summary) lines.push(`   ${escapeHtml(article.summary)}`);
+      if (digestLength === "detailed" && article.reason) {
+        lines.push(`   💡 <i>${escapeHtml(article.reason)}</i>`);
+      }
+      if (digestLength === "detailed" && article.rankingExplanation) {
+        lines.push(`   📐 <i>${escapeHtml(formatRankingSummary(article.rankingExplanation))}</i>`);
+      }
       if (article.url) lines.push(`   <a href="${article.url}">Read</a>`);
       lines.push("");
     });

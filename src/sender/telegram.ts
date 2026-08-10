@@ -3,6 +3,7 @@ import { config } from "../config";
 import { logger } from "../utils/logger";
 import { emitCommandUsage } from "../utils/metrics";
 import { startOnboarding, handleOnboardingCallback, handleOnboardingText } from "../onboarding";
+import { escapeHtml } from "../utils/escape";
 
 let bot: TelegramBot | null = null;
 let commandHandlersRegistered = false;
@@ -127,6 +128,7 @@ function initCommands() {
       `• /thesis <code>NVDA</code> — Bull/bear thesis timeline for a ticker\n` +
       `• /watch <code>NVDA 130</code> — One-shot price ping (<code>off</code> to clear, <code>list</code> to view)\n` +
       `• /feedback N — Rate today's digest (1-5)\n` +
+      `• /delivery — Configure personalized email or Slack copies\n` +
       `• /settings — View your user preferences\n` +
       `• /watchlist <code>NVDA,AMD,AVGO</code> — Set your ticker watchlist\n` +
       `• /alert — Manage high-impact alerts\n` +
@@ -318,14 +320,19 @@ function initCommands() {
       const cats = prefs.categories_enabled?.length
         ? prefs.categories_enabled.join(", ")
         : "All";
+      const deliveryCopies = [
+        prefs.delivery_email ? "Email" : null,
+        prefs.slack_webhook_url ? "Slack" : null,
+      ].filter(Boolean).join(", ") || "None";
       const text =
         `⚙️ <b>Your Settings</b>\n\n` +
         `• Watchlist: <code>${watchlist}</code>\n` +
         `• Categories: ${cats}\n` +
         `• Min impact score: ${prefs.min_impact_score ?? 0}/10\n` +
         `• Preferred time: ${prefs.preferred_time || "08:00"} ${prefs.timezone || "Asia/Kuala_Lumpur"}\n` +
+        `• Delivery copies: ${escapeHtml(deliveryCopies)}\n` +
         `• Active: ${prefs.is_active ? "✅" : "❌"}\n\n` +
-        `<i>Use /watchlist NVDA,AMD,AVGO to update your watchlist</i>`;
+        `<i>Use /watchlist NVDA,AMD,AVGO or /delivery to update preferences</i>`;
       await pollingBot.sendMessage(chatId, text, { parse_mode: "HTML" });
     } else {
       await pollingBot.sendMessage(

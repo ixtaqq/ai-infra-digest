@@ -37,6 +37,17 @@ jobs:
           AI_PROVIDER: ${{ vars.AI_PROVIDER || 'groq' }}
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
           AI_MODEL: ${{ vars.AI_MODEL || 'llama-3.3-70b-versatile' }}
+          AI_FAST_MODEL: ${{ vars.AI_FAST_MODEL || 'llama-3.1-8b-instant' }}
+          AI_BASE_URL: ${{ vars.AI_BASE_URL }}
+          AI_FALLBACK_PROVIDER: ${{ vars.AI_FALLBACK_PROVIDER }}
+          AI_FALLBACK_API_KEY: ${{ secrets.AI_FALLBACK_API_KEY }}
+          AI_FALLBACK_MODEL: ${{ vars.AI_FALLBACK_MODEL }}
+          AI_FALLBACK_FAST_MODEL: ${{ vars.AI_FALLBACK_FAST_MODEL }}
+          AI_FALLBACK_BASE_URL: ${{ vars.AI_FALLBACK_BASE_URL }}
+          OPENAI_EMBEDDING_API_KEY: ${{ secrets.OPENAI_EMBEDDING_API_KEY }}
+          ROIC_AI_API_KEY: ${{ secrets.ROIC_AI_API_KEY }}
+          AI_BUDGET_DAILY_USD: ${{ vars.AI_BUDGET_DAILY_USD || '0.50' }}
+          AI_BUDGET_MONTHLY_USD: ${{ vars.AI_BUDGET_MONTHLY_USD || '5.00' }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}

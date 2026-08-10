@@ -9,6 +9,8 @@
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "test-digest": "tsx scripts/test-digest.ts",
+    "preflight": "tsx scripts/preflight.ts",
+    "preflight:network": "tsx scripts/preflight.ts --network",
     "retention-cleanup": "tsx scripts/run-retention-cleanup.ts",
     "scheduler": "tsx src/scheduler.ts",
     "webhook": "tsx src/webhook.ts",

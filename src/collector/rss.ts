@@ -303,32 +303,32 @@ export interface FeedResult {
 export const DEAD_FEED_THRESHOLD = 3;
 
 // ─── Fetch with status tracking ────────────────────────
-async function fetchFeedWithStatus(
+export async function fetchFeedWithStatus(
   feed: { url: string; name: string },
   maxArticles: number
 ): Promise<FeedResult> {
   const startTime = Date.now();
 
   // Try conditional GET first — may return 304 (cached)
-  const httpResult = await conditionalFetch(feed.url);
-  if (httpResult.status === 304) {
-    logger.info(`Cached content unchanged for ${feed.name} (304)`);
-    return {
-      name: feed.name,
-      url: feed.url,
-      status: "success",
-      articlesFetched: 0,
-      articles: [],
-      response_time_ms: Date.now() - startTime,
-    };
-  }
-
   // Retry loop with exponential backoff
   const maxRetries = 2;
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
+      const httpResult = await conditionalFetch(feed.url);
+      if (httpResult.status === 304) {
+        logger.info(`Cached content unchanged for ${feed.name} (304)`);
+        return {
+          name: feed.name,
+          url: feed.url,
+          status: "success",
+          articlesFetched: 0,
+          articles: [],
+          response_time_ms: Date.now() - startTime,
+        };
+      }
+
       const result = await parserFor(feed.url).parseURL(feed.url);
     const articles: Article[] = [];
 
@@ -434,9 +434,24 @@ export async function collectArticles(
     allFeeds = allFeeds.filter((f) => !combinedSkip.has(f.name));
     logger.info(`Skipping ${combinedSkip.size} feeds: ${[...combinedSkip].slice(0, 10).join(", ")}${combinedSkip.size > 10 ? ` +${combinedSkip.size - 10} more` : ""}`);
   }
-  const feedResults = await Promise.all(
+  const settledFeedResults = await Promise.allSettled(
     allFeeds.map((feed) => fetchFeedWithStatus(feed, config.app.maxArticlesPerSource))
   );
+  const feedResults = settledFeedResults.map((result, index): FeedResult => {
+    if (result.status === "fulfilled") return result.value;
+    const feed = allFeeds[index];
+    const error = result.reason instanceof Error ? result.reason.message : String(result.reason);
+    logger.warn(`Unexpected feed failure for ${feed.name}: ${error}`);
+    return {
+      name: feed.name,
+      url: feed.url,
+      status: "failed",
+      articlesFetched: 0,
+      articles: [],
+      error,
+      response_time_ms: 0,
+    };
+  });
 
   let articles = feedResults.flatMap((r) => r.articles);
 
