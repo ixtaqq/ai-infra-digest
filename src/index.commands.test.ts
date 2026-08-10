@@ -12,6 +12,8 @@ const h = vi.hoisted(() => ({
   fetchStockPricesMock: vi.fn(),
   upsertPriceWatchMock: vi.fn(),
   deletePriceWatchMock: vi.fn(),
+  getUserPreferencesMock: vi.fn(),
+  upsertUserPreferencesMock: vi.fn(),
   handlers: new Map<string, CommandHandler>(),
 }));
 
@@ -51,6 +53,8 @@ vi.mock("./utils/supabase", () => ({
     queryRows: h.queryRowsMock,
     upsertPriceWatch: h.upsertPriceWatchMock,
     deletePriceWatch: h.deletePriceWatchMock,
+    getUserPreferences: h.getUserPreferencesMock,
+    upsertUserPreferences: h.upsertUserPreferencesMock,
   },
 }));
 
@@ -65,6 +69,8 @@ beforeEach(() => {
   h.fetchStockPricesMock.mockResolvedValue(new Map());
   h.upsertPriceWatchMock.mockResolvedValue(true);
   h.deletePriceWatchMock.mockResolvedValue(true);
+  h.getUserPreferencesMock.mockResolvedValue(null);
+  h.upsertUserPreferencesMock.mockResolvedValue(true);
   h.handlers.clear();
   registerDigestCommands();
 });
@@ -163,6 +169,33 @@ describe("/thesis command", () => {
     const text = typeof result === "string" ? result : result.text;
     expect(text).toContain("Top Thesis Snapshots");
     expect(h.queryRowsMock).toHaveBeenCalledWith("ticker_theses", expect.stringContaining("order=confidence.desc"));
+  });
+});
+
+describe("/delivery command", () => {
+  it("shows configured copies without exposing the Slack webhook", async () => {
+    h.getUserPreferencesMock.mockResolvedValueOnce({
+      chat_id: 1,
+      delivery_email: "analyst@example.com",
+      slack_webhook_url: "https://hooks.slack.com/services/T/B/secret",
+    });
+
+    const result = await h.handlers.get("delivery")!(ctx("/delivery"));
+    const text = typeof result === "string" ? result : result.text;
+
+    expect(text).toContain("a***@example.com");
+    expect(text).toContain("Slack: Configured");
+    expect(text).not.toContain("secret");
+  });
+
+  it("rejects non-Slack webhook hosts", async () => {
+    const result = await h.handlers.get("delivery")!(
+      ctx("/delivery slack https://example.com/services/T/B/secret")
+    );
+    const text = typeof result === "string" ? result : result.text;
+
+    expect(text).toContain("hooks.slack.com");
+    expect(h.upsertUserPreferencesMock).not.toHaveBeenCalled();
   });
 });
 

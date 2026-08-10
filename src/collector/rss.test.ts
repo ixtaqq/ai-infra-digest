@@ -1,4 +1,16 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
+
+vi.mock("fs", () => ({
+  existsSync: vi.fn(() => false),
+  mkdirSync: vi.fn(),
+  readFileSync: vi.fn(),
+  writeFileSync: vi.fn(),
+}));
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe("matchesKeywords", () => {
   it("should match direct AI keyword in title", async () => {
@@ -65,5 +77,27 @@ describe("matchesKeywords", () => {
   it("should match ticker in content", async () => {
     const { matchesKeywords } = await import("./rss");
     expect(matchesKeywords("Market Update", "$AMZN expected to increase cloud capex")).toBe(true);
+  });
+});
+
+describe("fetchFeedWithStatus", () => {
+  it("returns a failed result when the conditional request throws", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error("network down"));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(Math, "random").mockReturnValue(0);
+
+    const { fetchFeedWithStatus } = await import("./rss");
+    const result = await fetchFeedWithStatus(
+      { name: "Broken feed", url: "https://example.com/broken.xml" },
+      5
+    );
+
+    expect(result).toMatchObject({
+      name: "Broken feed",
+      status: "failed",
+      articlesFetched: 0,
+      error: "network down",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });

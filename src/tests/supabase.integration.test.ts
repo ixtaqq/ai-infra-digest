@@ -119,7 +119,7 @@ describe("Supabase Integration", () => {
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    it("should include is_sec_filing and the v14 intelligence fields in the POST body", async () => {
+    it("should include article intelligence fields in the POST body", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 201,
@@ -135,6 +135,17 @@ describe("Supabase Integration", () => {
           corroboration_count: 3,
           grounding_text: "📊 NVDA: 8-K Jun-20 (score 9/10)",
           effective_score: 8.42,
+          ranking_explanation: {
+            version: 1,
+            baseImpactScore: 8,
+            relevanceScore: 9,
+            multipliers: { sourceTrust: 1, sourceCredibility: 1, sectorTrust: 1, corroboration: 1.1, novelty: 1 },
+            corroborationCount: 3,
+            uncappedScore: 8.8,
+            finalScore: 8.8,
+            cap: null,
+            reasons: ["corroborated by 3 sources"],
+          },
         },
       ]);
 
@@ -144,10 +155,11 @@ describe("Supabase Integration", () => {
         corroboration_count: 3,
         grounding_text: "📊 NVDA: 8-K Jun-20 (score 9/10)",
         effective_score: 8.42,
+        ranking_explanation: expect.objectContaining({ version: 1, finalScore: 8.8 }),
       });
     });
 
-    it("should default is_sec_filing and the v14 fields to null when not provided", async () => {
+    it("should default optional intelligence fields to null when not provided", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 201,
@@ -163,6 +175,7 @@ describe("Supabase Integration", () => {
         corroboration_count: null,
         grounding_text: null,
         effective_score: null,
+        ranking_explanation: null,
       });
     });
   });

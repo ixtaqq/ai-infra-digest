@@ -79,6 +79,82 @@ describe("formatDigestTelegram", () => {
     expect(result).toContain("Chips");
   });
 
+  it("renders summaries for standard digests and rationale only for detailed digests", async () => {
+    const { formatDigestTelegram } = await import("./telegram");
+    const article: ProcessedArticle = {
+      title: "NVIDIA Launches New AI Chip",
+      url: "https://example.com/nvidia",
+      source: "NVIDIA",
+      summary: "A useful article summary.",
+      impact: "Bullish",
+      impactScore: 8,
+      affectedStocks: ["NVDA"],
+      reason: "Demand should improve margins.",
+      category: "Chips & GPUs",
+    };
+    const categories = emptyCategories();
+    categories["Chips & GPUs"] = [article];
+    const digest = {
+      articles: [article],
+      topStocks: [],
+      marketOutlook: "Bullish on AI.",
+      summary: "NVIDIA announced a new chip.",
+      categories,
+      usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 },
+      batchesRun: 0,
+    };
+
+    const standard = formatDigestTelegram(digest, { digestLength: "standard" });
+    const detailed = formatDigestTelegram(digest, { digestLength: "detailed" });
+
+    expect(standard).toContain("A useful article summary.");
+    expect(standard).not.toContain("Demand should improve margins.");
+    expect(detailed).toContain("A useful article summary.");
+    expect(detailed).toContain("Demand should improve margins.");
+  });
+
+  it("shows the ranking explanation only in detailed digests", async () => {
+    const { formatDigestTelegram } = await import("./telegram");
+    const article: ProcessedArticle = {
+      title: "Corroborated GPU demand",
+      url: "https://example.com/ranked",
+      source: "Reuters",
+      summary: "Several sources report stronger demand.",
+      impact: "Bullish",
+      impactScore: 8,
+      affectedStocks: ["NVDA"],
+      reason: "Demand is broadening.",
+      category: "Chips & GPUs",
+      effectiveScore: 9.2,
+      rankingExplanation: {
+        version: 1,
+        baseImpactScore: 8,
+        relevanceScore: 9,
+        multipliers: { sourceTrust: 1, sourceCredibility: 1.1, sectorTrust: 1, corroboration: 1.05, novelty: 1 },
+        corroborationCount: 2,
+        uncappedScore: 9.24,
+        finalScore: 9.24,
+        cap: null,
+        reasons: ["established editorial source", "corroborated by 2 sources"],
+      },
+    };
+    const categories = emptyCategories();
+    categories["Chips & GPUs"] = [article];
+    const digest = {
+      articles: [article],
+      topStocks: [],
+      marketOutlook: "Constructive.",
+      summary: "Demand improved.",
+      categories,
+      usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 },
+      batchesRun: 1,
+    };
+
+    expect(formatDigestTelegram(digest, { digestLength: "standard" })).not.toContain("Ranked 9.2");
+    expect(formatDigestTelegram(digest, { digestLength: "detailed" })).toContain("Ranked 9.2");
+    expect(formatDigestTelegram(digest, { digestLength: "detailed" })).toContain("corroborated by 2 sources");
+  });
+
   it("should include stock prices when provided", async () => {
     const { formatDigestTelegram } = await import("./telegram");
     const stockPrices = new Map();

@@ -27,9 +27,12 @@ export function htmlToEmailHtml(telegramHtml: string): string {
 </html>`;
 }
 
-export async function sendEmailDigest(htmlText: string): Promise<boolean> {
-  const { smtpUser, smtpPass, digestEmailTo } = config.app;
-  if (!smtpUser || !smtpPass || !digestEmailTo) return false;
+export async function sendEmailDigest(
+  htmlText: string,
+  recipient = config.app.digestEmailTo
+): Promise<boolean> {
+  const { smtpUser, smtpPass } = config.app;
+  if (!smtpUser || !smtpPass || !recipient) return false;
 
   const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
@@ -49,11 +52,11 @@ export async function sendEmailDigest(htmlText: string): Promise<boolean> {
   try {
     await transporter.sendMail({
       from: `"AI Infra Digest" <${smtpUser}>`,
-      to: digestEmailTo,
+      to: recipient,
       subject: `AI Infrastructure Digest — ${date}`,
       html: htmlToEmailHtml(htmlText),
     });
-    logger.info(`Email: digest delivered to ${digestEmailTo}`);
+    logger.info("Email: digest delivered");
     return true;
   } catch (error) {
     logger.warn(`Email delivery failed: ${(error as Error).message}`);

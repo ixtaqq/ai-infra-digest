@@ -96,6 +96,9 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 | `/coverage NVDA 14` | Recent per-article coverage history for a ticker (default: 14 days) |
 | `/thesis NVDA` | Bull/bear thesis for a ticker — last 6 weekly snapshots with confidence deltas (no arg: top 5 by confidence) |
 | `/feedback 5` | Rate today's digest (1–5) with optional comment |
+| `/delivery` | Configure opt-in personalized email or Slack copies |
+| `/delivery email you@example.com` | Send the same personalized digest to email after Telegram succeeds |
+| `/delivery slack WEBHOOK_URL` | Send the same personalized digest to a private Slack Incoming Webhook |
 | `/settings` | View your user preferences |
 | `/watchlist NVDA,AMD,AVGO` | Set your ticker watchlist |
 | `/alert on` | Enable instant high-impact alerts (score 8+) |
@@ -113,6 +116,7 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
   - `watchlist` — floats watchlist-ticker articles and stocks to the top; adds a `🎯 Filtered for you` note in the header
   - `digest_length` — `brief` trims summaries to one line; `standard` (default) sends full bullets; `detailed` includes analyst rationale
 - **Custom delivery times** — each user sets `preferred_time` via `/start` onboarding or `/settings`
+- **Optional delivery copies** — `/delivery` adds email or Slack copies using the same filters and digest length; Telegram stays primary so retry/idempotency behavior remains deterministic
 - **Timezone-aware** — delivery triggers at the user's local time; the run date itself is computed in the configured timezone (not UTC), so digests, delta comparisons, and delivery logs never drift a day off during part of the day
 - **Idempotent** — delivery is claimed atomically per `(chat_id, run_date)` in `user_delivery_log` immediately before sending (not just checked-then-logged-after), closing the race where two overlapping cron runs could both pass a stale "already delivered?" check
 - **GitHub Actions cron** — runs every 30 minutes, checks all active users, delivers only to those at their preferred time
@@ -166,7 +170,7 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 - `ticker_theses` — latest-only bull/bear snapshot per ticker (`UNIQUE(ticker)`); `ticker_thesis_history` — every weekly snapshot kept (`UNIQUE(ticker, week_of)`), powers the `/thesis TICKER` timeline and dashboard history card
 - `price_watches` — one-shot price thresholds (`UNIQUE(chat_id, ticker)` upserts on re-set); service-role-only RLS, no public read (per-user private data, unlike the public-read thesis tables)
 - `command_usage` — append-only bot-command invocation log (v13); service-role-only RLS, answers "does this feature actually get used?" with data instead of guesses
-- RLS enabled on all tables; writes scoped `TO service_role` (migration `20260629000000`), public read-only via the dashboard's anon key
+- RLS enabled on all tables; writes scoped `TO service_role` (migration `20260629000000`), public dashboard reads limited to non-private analytics tables, and `user_preferences` remains service-role-only
 - **Performance indexes** — 16+ indexes including GIN full-text search, partial indexes for SEC filings and active users, time-series indexes on `daily_derived_metrics`, article validation lookup
 - **Automated retention** — `cleanup_old_data()` prunes articles (90d), pipeline_health (30d), ai_usage (90d), delivery_log (90d), capex_tracking (365d). Triggered weekly by the `.github/workflows/data-retention.yml` GitHub Action (see below) — no manual `pg_cron` setup required.
 
@@ -191,7 +195,7 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
   - Deduplication + cosine similarity: 9 unit tests (`cosineSimilarity` — identical, orthogonal, mismatched length, zero vectors; `deduplicateArticles` — 5 cases, now async)
   - Keyword matching: 13 unit tests
   - Stock price fetching: 3 unit tests
-  - Telegram formatter: 5 unit tests
+  - Telegram formatter: 6 unit tests
   - Webhook router: 7 unit tests
   - Fan-out regression: 1 test — proves `collectArticles` called once for N deliveries
   - Source credibility: 6 unit tests (`getSourceCredibility`, `isPRWireSource`)
@@ -207,14 +211,14 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
   - **Thesis snapshots** (`processor/thesis.test.ts`): 14 tests — response parsing/validation, end-to-end generation, history-insert independent-failure behavior, `collectRecentCoverage()` batched-query grouping/capping (v14), and an end-to-end assertion that real headline text reaches the AI prompt
   - **Embeddings** (`processor/embeddings.test.ts`): 4 tests — batch mapping, 429 circuit breaker, non-429 continue-to-next-batch
   - **Price watch** (`utils/price-watch.test.ts`): 6 tests — direction inference (above/below/tie-break), trigger boundary conditions
-  - **Command handlers** (`index.commands.test.ts`): 20 tests — `/coverage`, `/thesis` (incl. history fallback), `/watch` (set/off/list, both directions, invalid input, upsert-not-duplicate, failed price lookup)
-  - **Digest fan-out + price watch delivery** (`index.faninout.test.ts`): 7 tests — generate-once/deliver-many regression, triggered/untriggered watches, combined multi-watch notification, send-failure-blocks-delete, watched-ticker-survives-25-cap ordering
+  - **Command handlers** (`index.commands.test.ts`): 22 tests — `/coverage`, `/thesis`, `/watch`, and private delivery-destination behavior
+  - **Digest fan-out + price watch delivery** (`index.faninout.test.ts`): 8 tests — generate-once/deliver-many regression, personalized channel copies, triggered/untriggered watches, combined notifications, and ticker-cap ordering
   - **Command routing seam** (`sender/telegram.routing.test.ts`): 25 tests (v12.1/v13) — drives the *real* `initCommands()` against a fake bot and asserts every `registerCommand()`-registered name is actually dispatchable through an `onText` route (this is the seam that let 6+ commands sit unreachable for months — handler-level tests alone never exercised it), plus longest-prefix matching, `@botname` stripping, and command-usage-logging behavior (logs the resolved key, skips unknown commands, still dispatches when durable logging rejects)
   - **Command usage metrics** (`utils/metrics.test.ts`): 2 tests (v13) — `emitCommandUsage()` NDJSON event shape, multi-word command keys preserved verbatim
   - Supabase integration: 25 tests (requires live credentials) — includes `price_watches` and `command_usage` CRUD, plus the v14 article-intelligence-fields insert path
   - Telegram integration: 9 tests (requires live credentials)
   - Stocks integration: 8 tests (requires live credentials)
-- **241 unit tests** run offline; integration tests require live credentials — use `npm run test:unit` for offline CI
+- **261 unit tests** run offline; integration tests require live credentials — use `npm run test:unit` for offline CI
 - **CI workflow** — `.github/workflows/ci.yml` runs `npm run lint` (`tsc --noEmit`) then `npm run test:unit` on every push/PR to main; all 5 original workflows declare explicit `permissions: contents: read` and run on Node 22
 - **CodeQL** (v13) — `.github/workflows/codeql.yml` runs static security analysis (`javascript-typescript`, `security-extended` query pack) on every push/PR plus a weekly full scan; `github/codeql-action` steps SHA-pinned like every other action in this repo
 - **TypeScript strict mode** — entire project compiles cleanly with zero errors (`tsc --noEmit`)
@@ -351,7 +355,9 @@ cp .env.example .env
 npm run dev          # Run pipeline once (polling mode)
 npm run scheduler    # Run per-user delivery check
 npm run webhook      # Start webhook server (tsx, local dev)
-npm run test:unit    # Run 241 unit tests (offline, no credentials needed)
+npm run preflight    # Validate local configuration without network calls
+npm run preflight:network # Read-only authentication checks; sends nothing
+npm run test:unit    # Run 261 unit tests (offline, no credentials needed)
 npm test             # Run all tests (integration tests need live credentials)
 
 # Backfill historical derived metrics (run once after first pipeline runs)
@@ -403,6 +409,12 @@ npm run db:pull      # Sync remote schema to local
 | `20260704010000_v12_price_watches.sql` | `price_watches` table (`UNIQUE(chat_id, ticker)`) — one-shot price threshold pings; service-role-only RLS (private per-user data) |
 | `20260704020000_v13_command_usage.sql` | `command_usage` table — append-only bot-command invocation log; service-role-only RLS |
 | `20260707000000_v14_articles_intelligence_fields.sql` | `corroboration_count`, `grounding_text`, `effective_score` columns on `articles` — persist ranking/grounding data that was computed in-memory every run and discarded afterward |
+| `20260810000000_v141_capability_status.sql` | `capabilities` JSONB + `degraded_stages` on `digest_runs` — records which optional stages were enabled or degraded without storing credentials |
+| `20260810010000_v16_ranking_explanations.sql` | `ranking_explanation` JSONB on articles + daily validation-quality view |
+| `20260810020000_v17_personal_delivery_channels.sql` | Private per-user email + Slack destinations for personalized copies |
+| `20260810030000_v171_private_delivery_hardening.sql` | Removes stale PUBLIC policy/grants from private delivery settings; makes ranking view SELECT-only |
+| `20260810040000_v172_rls_policy_cleanup.sql` | Removes remaining stale PUBLIC write policies, protects validation chat IDs, and fixes retention-function search path |
+| `20260810082355_v173_delivery_metrics_public.sql` | Public daily delivery aggregates maintained from the private delivery log; exposes no chat IDs or destination details |
 
 ---
 
@@ -426,7 +438,7 @@ npm run db:pull      # Sync remote schema to local
 
 ### CI
 
-`.github/workflows/ci.yml` — runs on every push and PR to `main`. Executes `tsc --noEmit` (type gate) then unit tests (241 tests, no credentials needed, fast).
+`.github/workflows/ci.yml` — runs on every push and PR to `main`. Executes `tsc --noEmit` (type gate) then unit tests (261 tests, no credentials needed, fast).
 
 ### CodeQL
 
@@ -446,6 +458,14 @@ npm run db:pull      # Sync remote schema to local
 | `SMTP_PASS` | Gmail App Password — 16 chars, no spaces (optional) |
 | `DIGEST_EMAIL_TO` | Recipient email address (optional) |
 | `WEBHOOK_SECRET` | Webhook validation secret (required for Render/Railway) |
+| `OPENAI_EMBEDDING_API_KEY` | Embedding API key (optional) |
+| `ROIC_AI_API_KEY` | Earnings transcript API key (optional) |
+| `AI_FALLBACK_API_KEY` | Secondary AI provider key (optional) |
+
+Repository variables configure optional model names, custom base URLs, fallback
+provider selection, and `AI_BUDGET_DAILY_USD` / `AI_BUDGET_MONTHLY_USD`. Both
+digest workflows pass the same AI, embeddings, earnings, fallback, and budget
+configuration so hosted runs do not silently lose locally enabled stages.
 
 ---
 
@@ -485,6 +505,7 @@ ai-infra-digest/
 ├── scripts/
 │   ├── test-digest.ts                        # Manual pipeline test
 │   ├── test-email.ts                         # Standalone Gmail SMTP credential tester (verify auth before a full run)
+│   ├── preflight.ts                          # Local config audit + optional read-only credential checks
 │   ├── backfill-derived-metrics.ts           # Backfill daily_derived_metrics from historical data
 │   ├── run-retention-cleanup.ts              # Calls cleanup_old_data() RPC — used by data-retention.yml
 │   └── migration-v3.sql                      # Reference: applied via Supabase CLI
@@ -492,9 +513,24 @@ ai-infra-digest/
 │   ├── config.toml                           # Supabase CLI project config
 │   └── migrations/                           # Numbered migration files
 ├── src/
-│   ├── index.ts                              # generateDigest, deliverDigest, applyUserFilter, persistDigestMetrics, all Telegram command handlers
+│   ├── index.ts                              # Thin process entry point; wires commands and pipeline execution
 │   ├── index.commands.test.ts                # /coverage, /thesis, /watch command handler tests
 │   ├── index.faninout.test.ts                # Fan-out regression (generate once, deliver N times) + price watch delivery tests
+│   ├── commands/
+│   │   ├── register.ts                       # Single command-registration entry point
+│   │   ├── core.ts                           # /digest, /sources, /last
+│   │   ├── preferences.ts                    # /alert, /watch, /delivery, /feedback
+│   │   ├── trends.ts                         # /trending, /trends, /sources quality
+│   │   └── research.ts                       # /sec, /coverage, /thesis
+│   ├── delivery/
+│   │   ├── deliver.ts                        # Telegram/Slack/email fan-out and price-watch delivery
+│   │   └── personalization.ts                # Per-user filtering and digest-length shaping
+│   ├── pipeline/
+│   │   ├── run.ts                            # Generate once, then deliver to the default recipient
+│   │   ├── generate.ts                       # Collection, enrichment, ranking, and digest assembly
+│   │   ├── persist.ts                        # Database writes, metrics, trends, and budget alerts
+│   │   ├── trending.ts                       # Shared trending-item contract
+│   │   └── types.ts                          # GeneratedDigest boundary type
 │   ├── scheduler.ts                          # Per-user cron runner (fan-out); isTimeMatch with ±2 min tolerance
 │   ├── scheduler.test.ts                     # isTimeMatch unit tests (3)
 │   ├── onboarding.ts                         # 4-step interactive onboarding state machine
@@ -534,6 +570,7 @@ ai-infra-digest/
 │       ├── helpers.ts                        # sleep() + todayInTimezone() (v10.2 — timezone-correct run-date helper)
 │       ├── source-credibility.ts             # Static source-name → credibility multiplier + isPRWireSource() PR wire detection
 │       ├── novelty.ts                        # 48h rehash detection — flags isRehash via Jaccard similarity against recent DB articles
+│       ├── ranking.ts                        # v16 auditable score calculation + concise ranking reasons
 │       ├── trust-scores.ts                   # Vote-learned source/sector multipliers from article_validations (1h TTL cache)
 │       ├── price-watch.ts                    # v12 — pure inferDirection()/isTriggered() helpers for one-shot price watches
 │       ├── logger.ts                         # Structured timestamped logger
@@ -689,7 +726,27 @@ Two `TODOS.md` items connecting existing features instead of adding new surface:
 - **v14 — Persist article intelligence fields** (`TODO-1`): `corroboration_count`, `grounding_text`, and `effective_score` were computed fresh every pipeline run and discarded afterward — now persisted to `articles`, unlocking historical confidence-trend analysis without recomputation. Found and fixed a real bug in the same code path: `is_sec_filing` was declared, passed by the caller, and silently dropped before ever reaching the `INSERT` — the 🏛️ SEC badge flag had never actually been written to the database.
 - **v14 — Ground the weekly thesis in coverage data** (`TODO-2`): `/thesis`'s AI narrative and `/coverage`'s per-article feed used to pull from unrelated data with no connection between them. `generateTheses()` now includes each ticker's recent headlines (one batched query, not one per ticker) and is explicitly instructed to ground its bull/bear case in them — verified by asserting the actual headline text reaches the AI request body, not just that the data was fetched.
 
-**Phase XIV** — four items (Public API + Stripe monetization, Slack/Email personalization, Catalyst Tracker, Related Prior Coverage rebuild, `node-telegram-bot-api`→grammY migration) remain deliberately unscheduled pending fresh demand evidence — see `TODOS.md` for why each was parked rather than built.
+### Phase XIV · Correctness + Operational Clarity 🚧 Implemented locally
+- **v14.1 — Correctness First**: conditional RSS failures are isolated per feed; historical failure streaks stop at the newest success; brief/standard/detailed Telegram output now renders the intended amount of article detail; successful and failed runs persist the configured AI provider instead of hard-coding Groq.
+- **v14.2 — Operational Parity**: local and hosted digest runs receive the same optional embedding, earnings, fallback, and budget configuration; every run logs and persists a credential-free capability report with degraded stages; `npm run preflight` validates local configuration and `npm run preflight:network` performs read-only authentication checks without sending a digest, email, or model request.
+
+### Phase XV · Modular Core 🚧 Implemented locally
+- **v15.0 — Pipeline boundaries**: the former all-in-one `src/index.ts` is now a thin entry point over focused generation, persistence, delivery, personalization, and orchestration modules. The public exports used by the scheduler and test suite remain stable.
+- **v15.1 — Command domains**: Telegram handlers are grouped into core, preference, trend, and research modules behind one `registerDigestCommands()` entry point. The real command dispatcher regression suite verifies that every registered command remains reachable.
+
+### Phase XVI · Measurable Signal Quality 🚧 Implemented locally
+- **v16.0 — Ranking explanations**: every article now carries a versioned breakdown of its impact/relevance inputs, source and sector trust, editorial credibility, corroboration, novelty penalty, PR-wire cap, final score, and concise human-readable reasons. Detailed Telegram digests expose the useful reasons without dumping raw internals.
+- **v16.1 — Ranking validation loop**: explanations persist in `articles.ranking_explanation`; the dashboard shows them in expanded article rows and adds a daily ranking-quality view that tracks approval rate and average effective score for reader-validated articles.
+- **v16.2 — Ranking-order correctness**: category lists are re-sorted after effective scores are calculated, so the visible sector sections now use the same trust-weighted order as validation prompts and persistence.
+
+### Phase XVII · Personal Delivery Parity 🚧 Implemented locally
+- **v17.0 — Personalized channel copies**: users can opt into email or Slack copies with `/delivery`; each copy is generated from the same per-user watchlist, sector, score, and digest-length result as Telegram.
+- **v17.1 — Safe delivery semantics**: Telegram remains the primary claimed delivery. External copies send only after it succeeds, remain non-fatal, and are recorded in delivery details, preventing a failed copy from causing a duplicate Telegram retry.
+- **v17.2 — Private destinations**: email addresses and Slack webhook URLs live only in the service-role-protected `user_preferences` table. Slack input is restricted to HTTPS Incoming Webhook hosts, and `/settings` never echoes a webhook URL.
+
+Catalyst Tracker and a `node-telegram-bot-api`→grammY migration remain
+unscheduled pending usage or maintenance evidence. Related Prior Coverage
+remains rejected; see `TODOS.md`.
 
 ---
 

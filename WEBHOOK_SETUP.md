@@ -31,7 +31,7 @@ deps — uses Node's `http`). It:
 |---|---|---|---|
 | `WEBHOOK_URL` | for auto-register | — | Public base URL, e.g. `https://my-bot.onrender.com` |
 | `WEBHOOK_PATH` | ❌ | `/telegram/webhook` | Path that receives updates |
-| `WEBHOOK_SECRET` | recommended | — | Shared secret; rejects requests without it |
+| `WEBHOOK_SECRET` | ✅ | — | Required to start the webhook server; rejects requests without it |
 | `PORT` | ❌ | `3000` | Most hosts inject this automatically |
 
 Plus the usual `TELEGRAM_BOT_TOKEN` (and `AI_API_KEY` / `SUPABASE_*` if commands
@@ -99,13 +99,14 @@ import { switchToPolling } from "./src/sender/telegram";
 await switchToPolling();
 ```
 
-## Secret Token (Optional but Recommended)
+## Secret Token (Required)
 
-Set a secret token to verify that requests come from Telegram:
+The webhook server refuses to start without a secret token. Use the same value
+when registering the webhook with Telegram:
 
 ```ts
 await setupWebhook("https://example.com/webhook", {
-  secretToken: process.env.TELEGRAM_WEBHOOK_SECRET,
+  secretToken: process.env.WEBHOOK_SECRET,
 });
 ```
 

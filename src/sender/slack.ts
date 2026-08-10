@@ -33,8 +33,10 @@ export function chunkForSlack(text: string, maxLen = 2900): string[] {
   return chunks;
 }
 
-export async function sendSlackDigest(htmlText: string): Promise<boolean> {
-  const webhookUrl = config.app.slackWebhookUrl;
+export async function sendSlackDigest(
+  htmlText: string,
+  webhookUrl = config.app.slackWebhookUrl
+): Promise<boolean> {
   if (!webhookUrl) return false;
 
   const chunks = chunkForSlack(htmlToSlack(htmlText));

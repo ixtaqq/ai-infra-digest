@@ -806,7 +806,7 @@
 
         <div class="charts-grid">
           <div class="chart-card"><h3>⚡ Digest Run Performance</h3><canvas id="digestPerfChart"></canvas></div>
-          <div class="chart-card"><h3>📬 Delivery Log</h3><div id="deliverySection" style="padding:4px 0"></div></div>
+          <div class="chart-card"><h3>📬 Delivery Performance</h3><div id="deliverySection" style="padding:4px 0"></div></div>
         </div>
 
         <!-- Pipeline Health -->
@@ -817,6 +817,9 @@
 
         <!-- Feedback -->
         <div class="table-card" id="section-feedback"><h3>💬 User Feedback</h3><div id="feedbackSection"></div></div>
+
+        <!-- Ranking Quality -->
+        <div class="table-card"><h3>📐 Ranking Quality <span class="badge" style="font-size:9px;background:var(--bg-hover);padding:2px 6px;border-radius:2px;color:var(--text-muted);font-weight:500;letter-spacing:0;text-transform:none">validated articles</span></h3><div id="rankingQualitySection"></div></div>
 
         <!-- SEC Filings -->
         <div class="table-card" id="secSectionCard"><h3>📜 SEC Filings</h3><div id="secSection"></div></div>
@@ -1208,7 +1211,7 @@
       }, 8000);
 
       try {
-        const [digests, sectors, stocks, articles, feeds, capex, metrics, prices, deliveries, secFilings, theses, thesisHistory] = await Promise.all([
+        const [digests, sectors, stocks, articles, feeds, capex, metrics, prices, deliveries, secFilings, theses, thesisHistory, rankingQuality] = await Promise.all([
           supabaseQuery('digest_runs', { order: 'run_date', limit: 60, rangeColumn: 'run_date', range: rangeDate }).catch(() => []),
           supabaseQuery('sector_activity', { select: 'date,sector,article_count,avg_impact_score', order: 'date', range: rangeDate }).catch(() => []),
           supabaseQuery('stock_mentions', { order: 'mention_count', limit: 10, range: rangeDate }).catch(() => []),
@@ -1217,12 +1220,13 @@
           supabaseQuery('capex_tracking', { order: 'date', limit: 10 }).catch(() => []),
           supabaseQuery('daily_metrics', { order: 'date', limit: 30, range: rangeDate }).catch(() => []),
           supabaseQuery('stock_prices', { order: 'date', limit: 500, range: rangeDate }).catch(() => []),
-          supabaseQuery('user_delivery_log', { order: 'created_at', limit: 100, range: rangeDate, rangeColumn: 'run_date' }).catch(() => []),
+          supabaseQuery('delivery_metrics_daily', { order: 'run_date', limit: 100, range: rangeDate, rangeColumn: 'run_date' }).catch(() => []),
           supabaseQuery('sec_filings', { order: 'filing_date', limit: 50, range: rangeDate, rangeColumn: 'filing_date' }).catch(() => []),
           supabaseQuery('ticker_theses', { order: 'confidence', limit: 10 }).catch(() => []),
           // v11 — up to ~10 tracked tickers × recent weeks; one batched fetch,
           // no per-ticker query loop. Sorted client-side (see renderThesesSection).
           supabaseQuery('ticker_thesis_history', { limit: 100 }).catch(() => []),
+          supabaseQuery('ranking_quality_daily', { order: 'date', limit: 30 }).catch(() => []),
         ]);
 
         clearTimeout(slowTimer);
@@ -1262,6 +1266,7 @@
         renderPipeline(feeds);
         renderTrendingSection(metrics);
         renderFeedbackSection(metrics);
+        renderRankingQuality(rankingQuality);
         renderDeliverySection(deliveries);
         renderSECSection(secFilings);
         renderCapex(capex);
@@ -1714,6 +1719,12 @@
         const summary = escapeHtml(a.summary || '').replace(/\n/g, '<br>');
         const reason = escapeHtml(a.reason || '');
         const bearCase = a.bear_case || '';
+        let ranking = a.ranking_explanation || null;
+        if (typeof ranking === 'string') { try { ranking = JSON.parse(ranking); } catch { ranking = null; } }
+        const rankingReasons = ranking && Array.isArray(ranking.reasons) ? ranking.reasons.map(escapeHtml).join(' · ') : '';
+        const rankingDetail = ranking
+          ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">📐 Ranked <strong style="color:var(--gold)">${Number(ranking.finalScore || a.effective_score || 0).toFixed(1)}</strong> · base ${Number(ranking.baseImpactScore || a.impact_score || 0).toFixed(1)}${rankingReasons ? ` · ${rankingReasons}` : ''}</div>`
+          : '';
         const safeUrl = safeHref(a.url);
         const thumbs = (a.thumbs_up || a.thumbs_down)
           ? `<span style="font-size:10px;color:var(--text-muted);margin-left:8px">👍 ${a.thumbs_up||0} · 👎 ${a.thumbs_down||0}</span>`
@@ -1734,6 +1745,7 @@
           `<div style="padding:12px 14px 14px 28px;background:rgba(212,162,76,0.03);border-top:1px solid var(--border-light);border-bottom:1px solid var(--border-light)">` +
           (summary ? `<div style="font-size:12px;color:var(--text-dim);margin-bottom:8px;line-height:1.6">${summary}</div>` : '') +
           (reason ? `<div style="font-size:11px;color:var(--text-muted);font-style:italic;margin-bottom:8px">&#128161; ${reason}</div>` : '') +
+          rankingDetail +
           (bearCase ? `<div style="font-size:11px;color:#e0b257;font-style:italic;margin-bottom:10px;padding:6px 10px;background:rgba(224,178,87,0.06);border-left:2px solid rgba(224,178,87,0.4);border-radius:2px">⚠️ ${escapeHtml(bearCase)}</div>` : '') +
           `<div style="display:flex;align-items:center;gap:8px">` +
           `<a href="${safeUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-size:11px;color:var(--gold);text-decoration:none">Read full article &#8594;</a>` +
@@ -1922,30 +1934,46 @@
       el.innerHTML = html;
     }
 
+    function renderRankingQuality(rows) {
+      const el = document.getElementById('rankingQualitySection');
+      if (!rows.length) {
+        el.innerHTML = '<p style="color:var(--text-dim);padding:10px 0;font-size:12px">No validated ranking data yet. Reader 👍/👎 votes will populate this view.</p>';
+        return;
+      }
+      const totals = rows.reduce((acc, row) => {
+        acc.up += Number(row.thumbs_up || 0);
+        acc.down += Number(row.thumbs_down || 0);
+        acc.voted += Number(row.voted_articles || 0);
+        return acc;
+      }, { up: 0, down: 0, voted: 0 });
+      const approval = totals.up + totals.down > 0 ? Math.round(totals.up / (totals.up + totals.down) * 100) : 0;
+      let html = `<div style="display:flex;gap:18px;margin-bottom:10px;flex-wrap:wrap"><span style="font-size:12px"><strong style="color:var(--gold)">${approval}%</strong> approval</span><span style="font-size:11px;color:var(--text-dim)">${totals.voted} ranked articles validated</span><span style="font-size:11px;color:var(--text-muted)">👍 ${totals.up} · 👎 ${totals.down}</span></div>`;
+      html += '<table><thead><tr><th>Date</th><th>Voted articles</th><th>Approval</th><th>Avg ranked score</th></tr></thead><tbody>';
+      for (const row of rows.slice(0, 10)) {
+        const rate = row.approval_rate == null ? '—' : `${Math.round(Number(row.approval_rate) * 100)}%`;
+        const score = row.avg_voted_effective_score == null ? '—' : Number(row.avg_voted_effective_score).toFixed(1);
+        html += `<tr><td>${fmtDate(row.date)}</td><td>${Number(row.voted_articles || 0)}</td><td>${rate}</td><td>${score}</td></tr>`;
+      }
+      html += '</tbody></table>';
+      el.innerHTML = html;
+    }
+
     function renderDeliverySection(deliveries) {
       const el = document.getElementById('deliverySection');
-      if (!deliveries.length) { el.innerHTML = '<p style="color:var(--text-dim);padding:10px 0;font-size:12px">No per-user deliveries yet</p>'; return; }
-      const total = deliveries.length;
-      const successful = deliveries.filter(d => d.status === 'success').length;
-      const failed = deliveries.filter(d => d.status === 'failed').length;
-      const uniqueUsers = new Set(deliveries.map(d => d.chat_id)).size;
-      const byDate = {};
-      for (const d of deliveries) {
-        const date = d.run_date || 'unknown';
-        if (!byDate[date]) byDate[date] = { total: 0, success: 0, users: new Set() };
-        byDate[date].total++;
-        if (d.status === 'success') byDate[date].success++;
-        byDate[date].users.add(d.chat_id);
-      }
-      const dates = Object.keys(byDate).sort().reverse().slice(0, 10);
-      let html = `<div style="display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap"><span style="font-size:11px;display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:var(--bullish);display:inline-block"></span>${successful} delivered</span><span style="font-size:11px;display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:var(--danger);display:inline-block"></span>${failed} failed</span><span style="font-size:11px;color:var(--text-dim)">${uniqueUsers} users · ${total} total</span></div>`;
+      if (!deliveries.length) { el.innerHTML = '<p style="color:var(--text-dim);padding:10px 0;font-size:12px">No deliveries in this range</p>'; return; }
+      const successful = deliveries.reduce((sum, d) => sum + Number(d.successful_deliveries || 0), 0);
+      const failed = deliveries.reduce((sum, d) => sum + Number(d.failed_deliveries || 0), 0);
+      const total = deliveries.reduce((sum, d) => sum + Number(d.total_deliveries || 0), 0);
+      const dates = deliveries.slice().sort((a, b) => String(b.run_date).localeCompare(String(a.run_date))).slice(0, 10);
+      let html = `<div style="display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap"><span style="font-size:11px;display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:var(--bullish);display:inline-block"></span>${successful} delivered</span><span style="font-size:11px;display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:var(--danger);display:inline-block"></span>${failed} failed</span><span style="font-size:11px;color:var(--text-dim)">${total} total</span></div>`;
       if (dates.length > 0) {
         html += `<table><thead><tr><th>Date</th><th>Delivered</th><th>Success Rate</th><th>Users</th></tr></thead><tbody>`;
-        for (const date of dates) {
-          const d = byDate[date];
-          const pct = d.total > 0 ? ((d.success / d.total) * 100).toFixed(0) : '0';
+        for (const d of dates) {
+          const rowTotal = Number(d.total_deliveries || 0);
+          const rowSuccess = Number(d.successful_deliveries || 0);
+          const pct = rowTotal > 0 ? ((rowSuccess / rowTotal) * 100).toFixed(0) : '0';
           const pc = parseInt(pct) >= 80 ? 'var(--bullish)' : parseInt(pct) >= 50 ? 'var(--warn)' : 'var(--danger)';
-          html += `<tr><td style="font-weight:500;font-size:11px">${fmtDate(date)}</td><td style="font-size:11px">${d.success}/${d.total}</td><td><span style="color:${pc};font-weight:600;font-size:11px">${pct}%</span></td><td style="font-size:11px">${d.users.size}</td></tr>`;
+          html += `<tr><td style="font-weight:500;font-size:11px">${fmtDate(d.run_date)}</td><td style="font-size:11px">${rowSuccess}/${rowTotal}</td><td><span style="color:${pc};font-weight:600;font-size:11px">${pct}%</span></td><td style="font-size:11px">${Number(d.unique_users || 0)}</td></tr>`;
         }
         html += `</tbody></table>`;
       }
@@ -1959,7 +1987,7 @@
       articlePage++;
       const offset = articlePage * ARTICLES_PAGE_SIZE;
       try {
-        const url = `${SUPABASE_URL}/rest/v1/articles?select=title,url,source,impact,impact_score,category,affected_stocks,summary,bear_case,thumbs_up,thumbs_down,created_at&order=impact_score.desc&limit=${ARTICLES_PAGE_SIZE}&offset=${offset}`;
+        const url = `${SUPABASE_URL}/rest/v1/articles?select=title,url,source,impact,impact_score,effective_score,ranking_explanation,category,affected_stocks,summary,reason,bear_case,thumbs_up,thumbs_down,created_at&order=impact_score.desc&limit=${ARTICLES_PAGE_SIZE}&offset=${offset}`;
         const res = await fetch(url, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const newArticles = await res.json();
@@ -1986,7 +2014,7 @@
       if (!query || query.length < 2) { status.textContent = 'Type at least 2 characters'; status.style.color = 'var(--warn)'; return; }
       status.textContent = '🔍 Searching...'; status.style.color = 'var(--text-dim)';
       try {
-        const searchUrl = `${SUPABASE_URL}/rest/v1/articles?select=title,url,source,impact,impact_score,category,affected_stocks,summary,bear_case,thumbs_up,thumbs_down,created_at&order=impact_score.desc&limit=25`;
+        const searchUrl = `${SUPABASE_URL}/rest/v1/articles?select=title,url,source,impact,impact_score,effective_score,ranking_explanation,category,affected_stocks,summary,reason,bear_case,thumbs_up,thumbs_down,created_at&order=impact_score.desc&limit=25`;
         const res = await fetch(searchUrl, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         let articles = await res.json();

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { DigestResult } from "./processor/ai";
 
 /**
  * Regression guard for issue #1 (the fan-out fix): the expensive pipeline work
@@ -11,6 +12,8 @@ const h = vi.hoisted(() => ({
   processArticles: vi.fn(),
   sendDigestMessage: vi.fn(),
   sendDigestMessageToUser: vi.fn(),
+  sendSlackDigest: vi.fn(),
+  sendEmailDigest: vi.fn(),
   fetchStockPrices: vi.fn(),
   isConfigured: vi.fn(),
   queryRows: vi.fn(),
@@ -19,11 +22,26 @@ const h = vi.hoisted(() => ({
   claimUserDelivery: vi.fn(),
   logUserDelivery: vi.fn(),
   getAllActiveUsers: vi.fn(),
+  createDigestRun: vi.fn(),
+  insertArticles: vi.fn(),
+  insertPipelineHealth: vi.fn(),
+  updateSectorActivity: vi.fn(),
+  updateStockMentions: vi.fn(),
+  insertStockPrices: vi.fn(),
+  updateDailyMetrics: vi.fn(),
 }));
 
 vi.mock("./config", () => ({
   config: {
-    ai: { provider: "groq", apiKey: "x", model: "m", fastModel: "f", baseUrl: "" },
+    ai: {
+      provider: "openrouter",
+      apiKey: "x",
+      model: "m",
+      fastModel: "f",
+      baseUrl: "",
+      embeddingApiKey: "embed-key",
+      embeddingModel: "embed-model",
+    },
     telegram: { botToken: "x", chatId: "1" },
     app: { timezone: "UTC", cacheDir: ".", maxArticlesPerSource: 5, roicAiApiKey: undefined },
   },
@@ -45,6 +63,11 @@ vi.mock("./collector/sec", () => ({
 vi.mock("./processor/sec", () => ({ analyzeSECFilings: vi.fn(async () => ({ extracts: [] })) }));
 vi.mock("./collector/earnings", () => ({ collectEarningsTranscripts: vi.fn(async () => ({ transcripts: [] })) }));
 vi.mock("./processor/earnings", () => ({ analyzeEarningsTranscripts: vi.fn(async () => ({ analyses: [], totalTokens: 0 })) }));
+vi.mock("./processor/embeddings", () => ({ generateEmbeddings: vi.fn(async () => new Map()) }));
+vi.mock("./processor/relevance", () => ({ embedSeeds: vi.fn(async () => []), passesSemanticGate: vi.fn(() => true) }));
+vi.mock("./processor/bear-cases", () => ({ generateBearCases: vi.fn(async () => ({ bearCases: new Map() })) }));
+vi.mock("./utils/novelty", () => ({ flagRehashes: vi.fn(async () => undefined) }));
+vi.mock("./utils/grounding", () => ({ attachGroundingNotes: vi.fn() }));
 vi.mock("./utils/stocks", () => ({ fetchStockPrices: h.fetchStockPrices }));
 vi.mock("./formatter/telegram", () => ({ formatDigestTelegram: vi.fn(() => "DIGEST_MSG") }));
 vi.mock("./utils/dedup", () => ({ deduplicateArticles: (a: unknown[]) => a, buildCorroborationMap: vi.fn(() => new Map()) }));
@@ -69,21 +92,51 @@ vi.mock("./utils/supabase", () => ({
     claimUserDelivery: h.claimUserDelivery,
     logUserDelivery: h.logUserDelivery,
     getAllActiveUsers: h.getAllActiveUsers,
+    createDigestRun: h.createDigestRun,
+    insertArticles: h.insertArticles,
+    insertPipelineHealth: h.insertPipelineHealth,
+    updateSectorActivity: h.updateSectorActivity,
+    updateStockMentions: h.updateStockMentions,
+    insertStockPrices: h.insertStockPrices,
+    updateDailyMetrics: h.updateDailyMetrics,
   },
+}));
+vi.mock("./sender/slack", () => ({ sendSlackDigest: h.sendSlackDigest }));
+vi.mock("./sender/email", () => ({ sendEmailDigest: h.sendEmailDigest }));
+vi.mock("./utils/budget", () => ({
+  getRolling30DaySpend: vi.fn(async () => 0),
+  isMonthlyBudgetExceeded: vi.fn(async () => false),
 }));
 // Prevent filesystem cache from skipping the mocked processArticles call.
 vi.mock("./utils/ai-cache", () => ({ getCached: vi.fn(() => null), setCached: vi.fn() }));
 
-import { generateDigest, deliverDigest } from "./index";
+import { deliverDigest } from "./delivery/deliver";
+import { generateDigest } from "./index";
+import { persistDigestMetrics } from "./pipeline/persist";
 
-const fakeDigest = {
+function emptyCategories(): DigestResult["categories"] {
+  return {
+    "Chips & GPUs": [],
+    "Cloud & Hyperscalers": [],
+    "Datacenters": [],
+    "Networking": [],
+    "Power & Utilities": [],
+    "Cooling Infrastructure": [],
+    "AI Models & Labs": [],
+    "Semiconductor Manufacturing": [],
+    "M&A and Partnerships": [],
+    "Earnings & Guidance": [],
+  };
+}
+
+const fakeDigest: DigestResult = {
   articles: [
     { title: "t", url: "u", source: "s", summary: "x", impact: "Bullish", impactScore: 8, affectedStocks: ["NVDA"], reason: "r", category: "Chips & GPUs" },
   ],
   topStocks: [],
   marketOutlook: "o",
   summary: "s",
-  categories: { "Chips & GPUs": [] },
+  categories: emptyCategories(),
   usage: { totalTokens: 10, promptTokens: 5, completionTokens: 5 },
   batchesRun: 1,
 };
@@ -97,6 +150,8 @@ beforeEach(() => {
   h.fetchStockPrices.mockReset().mockResolvedValue(new Map());
   h.sendDigestMessage.mockReset().mockResolvedValue({ success: true, messageId: 1 });
   h.sendDigestMessageToUser.mockReset().mockResolvedValue({ success: true, messageId: 2 });
+  h.sendSlackDigest.mockReset().mockResolvedValue(true);
+  h.sendEmailDigest.mockReset().mockResolvedValue(true);
   h.isConfigured.mockReset().mockReturnValue(false);
   h.queryRows.mockReset().mockResolvedValue([]);
   h.getAllPriceWatches.mockReset().mockResolvedValue([]);
@@ -104,6 +159,40 @@ beforeEach(() => {
   h.claimUserDelivery.mockReset().mockResolvedValue(true);
   h.logUserDelivery.mockReset().mockResolvedValue(true);
   h.getAllActiveUsers.mockReset().mockResolvedValue([]);
+  h.createDigestRun.mockReset().mockResolvedValue(42);
+  h.insertArticles.mockReset().mockResolvedValue([]);
+  h.insertPipelineHealth.mockReset().mockResolvedValue(true);
+  h.updateSectorActivity.mockReset().mockResolvedValue(true);
+  h.updateStockMentions.mockReset().mockResolvedValue(true);
+  h.insertStockPrices.mockReset().mockResolvedValue(true);
+  h.updateDailyMetrics.mockReset().mockResolvedValue(true);
+});
+
+describe("digest run metrics", () => {
+  it("stores the configured AI provider for successful runs", async () => {
+    const generated = await generateDigest();
+    h.isConfigured.mockReturnValue(true);
+
+    await persistDigestMetrics(generated!, "success");
+
+    expect(h.createDigestRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ai_provider: "openrouter",
+        degraded_stages: ["embeddings"],
+      })
+    );
+  });
+
+  it("stores the configured AI provider for failed runs", async () => {
+    h.isConfigured.mockReturnValue(true);
+    h.collectArticles.mockRejectedValueOnce(new Error("collection failed"));
+
+    await expect(generateDigest()).resolves.toBeNull();
+
+    expect(h.createDigestRun).toHaveBeenCalledWith(
+      expect.objectContaining({ ai_provider: "openrouter", status: "failed" })
+    );
+  });
 });
 
 describe("digest fan-out", () => {
@@ -126,6 +215,34 @@ describe("digest fan-out", () => {
     expect(h.sendDigestMessageToUser).toHaveBeenCalledTimes(3);
     expect(h.sendDigestMessageToUser).toHaveBeenCalledWith(101, "DIGEST_MSG");
     expect(h.sendDigestMessageToUser).toHaveBeenCalledWith(103, "DIGEST_MSG");
+  });
+
+  it("sends personalized Slack and email copies only after Telegram succeeds", async () => {
+    const generated = await generateDigest();
+    await deliverDigest(generated!, 101, {
+      chat_id: 101,
+      digest_length: "brief",
+      delivery_email: "analyst@example.com",
+      slack_webhook_url: "https://hooks.slack.com/services/T/B/secret",
+    });
+
+    expect(h.sendSlackDigest).toHaveBeenCalledWith(
+      "DIGEST_MSG",
+      "https://hooks.slack.com/services/T/B/secret"
+    );
+    expect(h.sendEmailDigest).toHaveBeenCalledWith("DIGEST_MSG", "analyst@example.com");
+
+    h.sendSlackDigest.mockClear();
+    h.sendEmailDigest.mockClear();
+    h.sendDigestMessageToUser.mockResolvedValueOnce({ success: false, error: "telegram down" });
+    await deliverDigest(generated!, 102, {
+      chat_id: 102,
+      delivery_email: "other@example.com",
+      slack_webhook_url: "https://hooks.slack.com/services/T/B/other",
+    });
+
+    expect(h.sendSlackDigest).not.toHaveBeenCalled();
+    expect(h.sendEmailDigest).not.toHaveBeenCalled();
   });
 });
 

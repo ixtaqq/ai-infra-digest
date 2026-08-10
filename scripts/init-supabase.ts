@@ -1,5 +1,5 @@
 /**
- * Supabase connection test & schema setup guide
+ * Supabase connection test and migration setup guide.
  * Run: npx tsx scripts/init-supabase.ts
  */
 import { config } from "../src/config";
@@ -33,13 +33,10 @@ async function main() {
       console.log("   npm run test-digest");
     } else if (response.status === 404) {
       console.log("⚠️  Connection works but tables don't exist yet.");
-      console.log("\n📋 You need to run the SQL schema first:");
-      console.log("   1. Go to: https://supabase.com/dashboard/project/hxldibicsyydkannudha");
-      console.log("   2. Click 'SQL Editor' in the left sidebar");
-      console.log("   3. Paste the contents of supabase-schema.sql");
-      console.log("   4. Click 'Run'");
-      console.log("\n   Or run this SQL directly:");
-      console.log("   npx tsx scripts/init-supabase.ts --run-sql");
+      console.log("\n📋 Apply the canonical Supabase migrations:");
+      console.log("   npm run db:push");
+      console.log("\n   Then verify migration history:");
+      console.log("   npm run db:status");
     } else {
       const text = await response.text();
       console.log(`❌ Error ${response.status}: ${text.slice(0, 200)}`);

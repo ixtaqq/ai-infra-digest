@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { z } from "zod";
+import type { RankingExplanation } from "../utils/ranking";
 import { config } from "../config";
 import { logger } from "../utils/logger";
 import { sleep } from "../utils/helpers";
@@ -68,6 +69,8 @@ export interface ProcessedArticle {
   isRehash?: boolean;
   /** Computed ranking score: impactScore × trust/credibility/corroboration multipliers. */
   effectiveScore?: number;
+  /** Auditable breakdown of every factor used to produce effectiveScore (v16). */
+  rankingExplanation?: RankingExplanation;
   /** How many sources reported this same story this run (v14, from buildCorroborationMap). */
   corroborationCount?: number;
   /** 1536-dim OpenAI text-embedding-3-small vector (v8.0). */
