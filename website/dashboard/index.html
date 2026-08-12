@@ -1323,7 +1323,7 @@
           const pct = (count / max * 100).toFixed(0);
           const color = SECTOR_COLORS[name] || 'var(--gold)';
           return `<div class="plan-row">
-            <span class="plan-name" style="font-size:10px">${name}</span>
+            <span class="plan-name" style="font-size:10px">${escapeHtml(name)}</span>
             <div class="plan-bar-wrap"><div class="plan-bar" style="width:${pct}%;background:linear-gradient(90deg,${color},${color}88)"></div></div>
             <span class="plan-amount" style="font-size:10px">${count}</span>
           </div>`;
@@ -1538,7 +1538,7 @@
           labels: top.map(s => s.ticker),
           datasets: [{
             label: 'Price Change %', data: prices,
-            backgroundColor: prices.map(p => p >= 0 ? 'rgba(34,197,94,0.5)' : 'rgba(239,68,68,0.5)'),
+            backgroundColor: prices.map(p => p >= 0 ? 'rgba(140,255,0,0.45)' : 'rgba(239,68,68,0.5)'),
             borderColor: prices.map(p => p >= 0 ? '#8cff00' : '#ef4444'),
             borderWidth: 1, borderRadius: 3, borderSkipped: false
           }]
@@ -1781,8 +1781,20 @@
       el.innerHTML = sorted.map(s => {
         const active = activeFilters.sector === s;
         const color = SECTOR_COLORS[s] || 'var(--text-dim)';
-        return `<button class="filter-pill ${active ? 'active' : ''}" onclick="setFilter('sector','${s.replace(/'/g, "\\'")}')" style="${active ? `background:${color};border-color:${color};color:#0a0705` : '--filter-color:' + color}">${active ? '✓ ' : ''}${s}</button>`;
+        // sector names come from the DB — carry them on a data attribute
+        // rather than interpolating into an inline handler, and escape the
+        // label so a name can never break out into markup
+        return `<button class="filter-pill ${active ? 'active' : ''}" data-sector="${escapeHtml(s)}" style="${active ? `background:${color};border-color:${color};color:#0a0705` : '--filter-color:' + color}">${active ? '✓ ' : ''}${escapeHtml(s)}</button>`;
       }).join('');
+      // one delegated listener on the container, which is never replaced
+      // (only its innerHTML is), so the 60s refresh can't stack handlers
+      if (!el.dataset.wired) {
+        el.dataset.wired = '1';
+        el.addEventListener('click', e => {
+          const btn = e.target.closest('.filter-pill[data-sector]');
+          if (btn) setFilter('sector', btn.dataset.sector);
+        });
+      }
       const hasFilters = activeFilters.sector || activeFilters.impact || activeFilters.search;
       document.getElementById('filterClear').style.display = hasFilters ? 'inline-block' : 'none';
       const searchInput = document.getElementById('filterSearch');
