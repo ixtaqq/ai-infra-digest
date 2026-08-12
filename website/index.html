@@ -10,1363 +10,1115 @@
   <meta name="theme-color" content="#FF6B2C">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
 
-  <style>
-    /* ══════════════════════════════════════════════════
-       Design System — Cyberpunk
-       ══════════════════════════════════════════════════ */
-    :root {
-      --bg: #050505;
-      --bg-card: rgba(255,255,255,0.03);
-      --bg-hover: rgba(255,255,255,0.06);
-      --bg-glass: rgba(5,5,5,0.8);
-      --text: #f0f0f0;
-      --text-dim: rgba(255,255,255,0.55);
-      --text-muted: rgba(255,255,255,0.3);
-      --accent: #FF6B2C;
-      --accent2: #A3FF12;
-      --border: rgba(255,255,255,0.08);
-      --border-light: rgba(255,255,255,0.04);
-      --radius: 12px;
-      --radius-sm: 6px;
-      --max-width: 1120px;
-      --transition: cubic-bezier(0.4, 0, 0.2, 1);
-    }
+<style>
+/* ══════════════════════════════════════════════════
+   Design System
+   ══════════════════════════════════════════════════ */
+:root{
+  --bg:#0a0705;--panel:#151009;--panel2:#1a130b;
+  --line:rgba(255,255,255,.08);--line2:rgba(255,255,255,.14);
+  --orange:#ff6b2b;--orange2:#ff8c4d;--lime:#8cff00;--lime2:#b6ff5e;
+  --txt:#f4efe9;--mut:#a49a8f;--mut2:#6f675e;
+  --sans:'Space Grotesk',system-ui,-apple-system,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);overflow-x:hidden;line-height:1.6;-webkit-font-smoothing:antialiased}
+::selection{background:var(--orange);color:#0a0705}
+::-webkit-scrollbar{width:10px}::-webkit-scrollbar-track{background:#0a0705}
+::-webkit-scrollbar-thumb{background:#2a2018;border-radius:6px}::-webkit-scrollbar-thumb:hover{background:var(--orange)}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid var(--lime);outline-offset:3px;border-radius:4px}
+section{position:relative;padding:110px 24px;scroll-margin-top:120px}
+.wrap{max-width:1160px;margin:0 auto}
+.skip-link{position:absolute;left:-9999px;top:0;z-index:300;background:var(--orange);color:#160a03;padding:10px 18px;font-weight:700;border-radius:0 0 8px 0}
+.skip-link:focus{left:0}
+.grid-bg{position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);
+  background-size:56px 56px;
+  -webkit-mask-image:radial-gradient(ellipse 90% 80% at 50% 20%,#000 30%,transparent 80%);
+  mask-image:radial-gradient(ellipse 90% 80% at 50% 20%,#000 30%,transparent 80%)}
 
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+@keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+@keyframes rise{from{transform:translateY(115%)}to{transform:translateY(0)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pip{50%{opacity:.25}}
+@keyframes flow{to{background-position:20px 0}}
+@keyframes blink{50%{opacity:0}}
+@keyframes ping{0%{transform:scale(1);opacity:.8}80%,100%{transform:scale(1.8);opacity:0}}
+@keyframes burst{to{transform:translate(var(--tx),var(--ty)) rotate(220deg) scale(.3);opacity:0}}
+@keyframes marquee{to{transform:translateX(-50%)}}
 
-    html { scroll-behavior: smooth; }
+[data-reveal]{opacity:0;transform:translateY(30px);transition:opacity .9s ease var(--d,0s),transform .9s cubic-bezier(.2,.65,.2,1) var(--d,0s)}
+[data-reveal].in{opacity:1;transform:none}
+.mask{display:block;overflow:hidden}
+.mask>span{display:block;transform:translateY(115%);transition:transform 1.1s cubic-bezier(.2,.7,.15,1) var(--d,0s)}
+.in .mask>span{transform:none}
 
-    body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      overflow-x: hidden;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-      line-height: 1.6;
-    }
+.kicker{font-family:var(--mono);font-size:12px;letter-spacing:.25em;color:var(--orange);margin-bottom:16px;display:block}
+h2{font-weight:700;letter-spacing:-.02em;line-height:1.08;font-size:clamp(2rem,4.6vw,3.4rem)}
+h2 .lime{color:var(--lime)}
+.sec-head{margin-bottom:52px}
+.sec-head p{color:var(--mut);max-width:640px;margin-top:16px}
+.sec-head.mid{text-align:center}
+.sec-head.mid p{margin-left:auto;margin-right:auto}
+code{font-family:var(--mono);font-size:.9em;color:var(--orange2);background:rgba(255,107,43,.08);border-radius:4px;padding:1px 5px}
 
-    ::selection { background: rgba(255,107,44,0.3); color: #fff; }
+.btn{display:inline-flex;align-items:center;gap:9px;font-family:var(--sans);font-size:14px;font-weight:500;padding:13px 22px;border:1px solid var(--line2);border-radius:8px;color:var(--txt);background:rgba(255,255,255,.03);cursor:pointer;transition:transform .3s cubic-bezier(.2,.7,.2,1),border-color .3s,box-shadow .3s,background .3s;position:relative;overflow:hidden}
+.btn:hover{transform:translateY(-3px);border-color:var(--orange)}
+.btn-orange{background:var(--orange);border-color:var(--orange);color:#160a03;font-weight:700;box-shadow:0 6px 28px rgba(255,107,43,.35)}
+.btn-orange:hover{box-shadow:0 12px 44px rgba(255,107,43,.55);background:var(--orange2)}
 
-    ::-webkit-scrollbar { width: 4px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 2px; }
+/* ── custom cursor ── */
+#curDot,#curRing{position:fixed;left:0;top:0;pointer-events:none;z-index:999;border-radius:50%;opacity:0}
+#curDot{width:6px;height:6px;background:var(--lime)}
+#curRing{width:34px;height:34px;border:1px solid var(--orange)}
+html.ccur #curDot,html.ccur #curRing{opacity:1}
+html.ccur,html.ccur a,html.ccur button{cursor:none}
+html.ccur input{cursor:text}
 
-    /* ─── Grid Overlay ── */
-    .grid-overlay {
-      position: fixed; inset: 0;
-      background-image:
-        linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
-      background-size: 60px 60px;
-      pointer-events: none; z-index: 0;
-    }
+/* ── nav ── */
+.nav-wrap{position:fixed;top:0;left:0;right:0;z-index:100;padding:16px 20px 0;transition:padding .45s cubic-bezier(.2,.7,.2,1)}
+.nav-wrap.scrolled{padding:12px 16px 0}
+.nav{position:relative;max-width:1280px;margin:0 auto;display:flex;align-items:center;gap:16px;
+  padding:12px 12px 12px 20px;border:1px solid transparent;border-radius:18px;
+  transition:all .5s cubic-bezier(.2,.7,.2,1)}
+.nav-wrap.scrolled .nav{max-width:1040px;border-radius:999px;background:rgba(12,8,5,.78);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+  border-color:var(--line2);padding:8px 8px 8px 20px;
+  box-shadow:0 18px 50px rgba(0,0,0,.55),0 0 34px rgba(255,107,43,.09),inset 0 1px 0 rgba(255,255,255,.06)}
+.logo{display:flex;align-items:center;gap:9px;font-weight:700;font-size:17.5px;letter-spacing:-.01em;flex-shrink:0}
+.logo .spark{color:var(--orange);display:inline-block;animation:spin 7s linear infinite;font-size:15px}
+.logo em{color:var(--orange);font-style:normal}
+.links{position:relative;display:flex;gap:2px;margin:0 auto;font-size:14.5px;font-weight:500}
+.links a{position:relative;z-index:1;padding:8px 16px;border-radius:999px;color:var(--mut);transition:color .3s;white-space:nowrap}
+.links a:hover{color:var(--txt)}
+.links a.active{color:var(--lime)}
+.ind{position:absolute;top:50%;transform:translateY(-50%);height:34px;border-radius:999px;z-index:0;opacity:0;
+  background:rgba(255,107,43,.12);border:1px solid rgba(255,107,43,.4);box-shadow:0 0 18px rgba(255,107,43,.25) inset;
+  transition:left .4s cubic-bezier(.3,.8,.3,1),width .4s cubic-bezier(.3,.8,.3,1),opacity .3s}
+.nav-prog{position:absolute;left:22px;right:22px;bottom:3px;height:2px;border-radius:2px;
+  background:linear-gradient(90deg,var(--orange),var(--lime));transform:scaleX(0);transform-origin:left;opacity:.9;pointer-events:none}
+.nav-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.kchip{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:11.5px;color:var(--mut2);
+  border:1px solid var(--line);border-radius:999px;background:rgba(0,0,0,.3);padding:8px 13px;cursor:pointer;transition:all .3s}
+.kchip:hover{color:var(--txt);border-color:var(--lime)}
+.kchip kbd{font-family:var(--mono);font-size:10px;border:1px solid var(--line2);border-radius:4px;padding:1px 6px;color:var(--mut)}
+.live-chip{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10px;letter-spacing:.18em;color:var(--lime);
+  border:1px solid rgba(140,255,0,.3);background:rgba(140,255,0,.06);border-radius:999px;padding:7px 12px}
+.live-chip i{width:6px;height:6px;border-radius:50%;background:var(--lime);box-shadow:0 0 10px var(--lime);animation:pip 1.4s infinite}
+.nav .cta{padding:10px 18px;font-size:13px;border-radius:999px}
+.burger{display:none;width:42px;height:42px;border:1px solid var(--line2);border-radius:12px;background:transparent;position:relative;flex-shrink:0}
+.burger span{position:absolute;left:11px;right:11px;height:2px;background:var(--txt);transition:.4s;top:16px}
+.burger span:last-child{top:24px}
+.burger.open span:first-child{transform:translateY(4px) rotate(45deg);background:var(--orange)}
+.burger.open span:last-child{transform:translateY(-4px) rotate(-45deg);background:var(--orange)}
 
-    /* ─── Ambient Glows ── */
-    .bg-glow {
-      position: fixed; top: -30%; left: -15%; width: 80%; height: 80%;
-      background: radial-gradient(ellipse, rgba(255,107,44,0.06) 0%, transparent 70%);
-      pointer-events: none; z-index: 0;
-    }
-    .bg-glow-2 {
-      position: fixed; bottom: -25%; right: -10%; width: 60%; height: 60%;
-      background: radial-gradient(ellipse, rgba(163,255,18,0.04) 0%, transparent 70%);
-      pointer-events: none; z-index: 0;
-    }
+/* ── mobile menu ── */
+.mmenu{position:fixed;inset:0;z-index:99;background:rgba(8,5,3,.97);backdrop-filter:blur(20px);
+  display:flex;flex-direction:column;justify-content:center;padding:100px 9vw 44px;
+  clip-path:circle(0px at calc(100% - 60px) 46px);visibility:hidden;
+  transition:clip-path .7s cubic-bezier(.7,0,.2,1),visibility 0s .7s}
+.mmenu.open{clip-path:circle(160% at calc(100% - 60px) 46px);visibility:visible;transition:clip-path .8s cubic-bezier(.7,0,.2,1)}
+.mmenu nav{display:flex;flex-direction:column;gap:6px}
+.mmenu nav a{display:flex;align-items:baseline;gap:16px;font-weight:700;letter-spacing:-.02em;
+  font-size:clamp(1.9rem,8vw,3rem);color:var(--txt);opacity:0;transform:translateY(34px);
+  transition:opacity .5s ease,transform .5s cubic-bezier(.2,.7,.2,1),color .3s}
+.mmenu nav a small{font-family:var(--mono);font-size:11px;color:var(--orange);letter-spacing:.25em}
+.mmenu nav a:hover{color:var(--lime)}
+.mmenu.open nav a{opacity:1;transform:none;transition-delay:calc(.25s + var(--i)*.07s)}
+.mmenu .mfoot{margin-top:auto;display:flex;gap:12px;flex-wrap:wrap;align-items:center;opacity:0;transition:opacity .5s .6s}
+.mmenu.open .mfoot{opacity:1}
+.mmenu .mfoot .live-chip{margin-right:auto}
 
-    /* ─── Navigation ── */
-    .nav {
-      position: sticky; top: 0; z-index: 100;
-      background: var(--bg-glass);
-      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-      border-bottom: 1px solid var(--border);
-    }
-    .nav-inner {
-      max-width: var(--max-width); margin: 0 auto;
-      display: flex; align-items: center; justify-content: space-between;
-      height: 56px; padding: 0 24px;
-    }
-    .nav-logo {
-      font-size: 15px; font-weight: 800; letter-spacing: -0.3px;
-      display: flex; align-items: center; gap: 8px;
-      color: var(--text);
-    }
-    .nav-logo .accent { color: var(--accent); }
-    .nav-links { display: flex; align-items: center; gap: 18px; }
-    .nav-links a {
-      color: var(--text-dim); text-decoration: none;
-      font-size: 12px; font-weight: 500; letter-spacing: 0.3px;
-      transition: color 0.2s;
-    }
-    .nav-links a:hover { color: var(--text); }
-    .nav-cta {
-      background: var(--accent); color: #000 !important;
-      padding: 6px 16px; border-radius: 4px;
-      font-weight: 700 !important; font-size: 11px !important;
-      letter-spacing: 0.5px !important;
-      transition: box-shadow 0.2s, transform 0.2s !important;
-    }
-    .nav-cta:hover { box-shadow: 0 0 20px rgba(255,107,44,0.3); transform: translateY(-1px); }
+/* ── command palette ── */
+.pal{position:fixed;inset:0;z-index:150;background:rgba(5,3,2,.65);backdrop-filter:blur(10px);opacity:0;visibility:hidden;transition:.3s}
+.pal.open{opacity:1;visibility:visible}
+.pal-box{width:min(580px,92vw);margin:14vh auto 0;background:var(--panel);border:1px solid var(--line2);border-radius:14px;
+  box-shadow:0 40px 120px rgba(0,0,0,.8),0 0 60px rgba(255,107,43,.1);overflow:hidden;
+  transform:translateY(16px) scale(.98);transition:transform .35s cubic-bezier(.2,.7,.2,1)}
+.pal.open .pal-box{transform:none}
+.pal-head{display:flex;align-items:center;gap:12px;padding:16px 18px;border-bottom:1px solid var(--line)}
+.pal-head .sic{color:var(--orange);font-size:16px}
+.pal-head input{flex:1;background:none;border:0;outline:0;color:var(--txt);font-family:var(--mono);font-size:14px;caret-color:var(--lime)}
+.pal-head kbd{font-family:var(--mono);font-size:10px;color:var(--mut2);border:1px solid var(--line2);border-radius:4px;padding:2px 7px}
+.pal-list{max-height:320px;overflow-y:auto;padding:8px}
+.pi{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:12px 14px;border-radius:8px;
+  font-size:14px;font-weight:500;color:var(--mut);cursor:pointer;border-left:2px solid transparent;transition:all .15s}
+.pi .phh{font-family:var(--mono);font-size:10px;letter-spacing:.15em;color:var(--mut2)}
+.pi.sel{background:rgba(255,107,43,.1);border-left-color:var(--orange);color:var(--txt)}
+.pi.sel .phh{color:var(--lime)}
+.pal-empty{padding:22px;text-align:center;font-family:var(--mono);font-size:12px;color:var(--mut2)}
+.pal-foot{padding:10px 18px;border-top:1px solid var(--line);font-family:var(--mono);font-size:10px;color:var(--mut2);letter-spacing:.1em}
+.pal-foot b{color:var(--mut)}
 
-    .container { max-width: var(--max-width); margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+/* ── toast ── */
+#toast{position:fixed;bottom:26px;left:50%;transform:translate(-50%,80px);z-index:200;
+  font-family:var(--mono);font-size:12px;color:var(--lime);background:rgba(12,8,5,.92);
+  border:1px solid rgba(140,255,0,.4);border-radius:999px;padding:11px 20px;
+  box-shadow:0 14px 40px rgba(0,0,0,.6),0 0 24px rgba(140,255,0,.15);
+  transition:transform .45s cubic-bezier(.2,.7,.2,1),opacity .3s;opacity:0;pointer-events:none;max-width:92vw;text-align:center}
+#toast.show{transform:translate(-50%,0);opacity:1}
 
-    /* ─── Hero ── */
-    .hero { padding: 100px 0 60px; text-align: center; }
+/* ── hero ── */
+.hero{min-height:100vh;display:flex;justify-content:center;padding:170px 24px 80px;overflow:hidden}
+#rain{position:absolute;inset:0;width:100%;height:100%}
+.hero-glow{position:absolute;width:720px;height:720px;border-radius:50%;filter:blur(90px);opacity:.15;pointer-events:none}
+.glow-a{background:var(--orange);top:-260px;left:-180px}
+.glow-b{background:var(--lime);bottom:-320px;right:-200px}
+.hero-inner{position:relative;z-index:2;text-align:center;max-width:1060px}
+.badge{display:inline-flex;align-items:center;gap:10px;font-family:var(--mono);font-size:11.5px;letter-spacing:.22em;
+  color:var(--orange2);border:1px solid rgba(255,107,43,.35);background:rgba(255,107,43,.08);padding:9px 18px;border-radius:6px;
+  opacity:0;animation:fadeUp .8s ease .15s forwards}
+.badge .pip{width:7px;height:7px;border-radius:50%;background:var(--orange);box-shadow:0 0 10px var(--orange);animation:pip 1.6s ease infinite}
+h1{margin:34px 0 30px;font-weight:700;letter-spacing:-.03em;line-height:1.02;font-size:clamp(2.7rem,8.2vw,6.2rem)}
+h1 .mask>span{animation:rise 1s cubic-bezier(.2,.7,.15,1) forwards}
+h1 .l1>span{animation-delay:.25s;color:var(--orange);text-shadow:0 0 60px rgba(255,107,43,.35)}
+h1 .l2>span{animation-delay:.4s}
+h1 .l3>span{animation-delay:.55s;color:var(--lime);text-shadow:0 0 70px rgba(140,255,0,.4)}
+.lede{max-width:780px;margin:0 auto;color:var(--mut);font-size:clamp(.95rem,1.4vw,1.1rem);opacity:0;animation:fadeUp .9s ease .8s forwards}
+.lede b{color:var(--txt)}
+.cta-row{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin:40px 0 30px;opacity:0;animation:fadeUp .9s ease 1s forwards}
+.stats{display:flex;gap:20px;align-items:center;justify-content:center;flex-wrap:wrap;font-family:var(--mono);font-size:13px;color:var(--mut);opacity:0;animation:fadeUp .9s ease 1.15s forwards}
+.stats .num{color:var(--orange);font-weight:600;font-size:16px}
+.stats .sep{color:var(--mut2)}
+.gh-row{margin-top:22px;font-family:var(--mono);font-size:12px;color:var(--mut2);opacity:0;animation:fadeUp .9s ease 1.3s forwards}
+.gh-row a{color:var(--lime);border-bottom:1px solid rgba(140,255,0,.3)}
 
-    .hero-badge {
-      display: inline-flex; align-items: center; gap: 6px;
-      background: rgba(255,107,44,0.08); border: 1px solid rgba(255,107,44,0.15);
-      padding: 5px 14px; border-radius: 4px;
-      font-size: 10px; font-weight: 600;
-      color: var(--accent); text-transform: uppercase; letter-spacing: 1.5px;
-      margin-bottom: 24px;
-    }
-    .hero-badge .dot {
-      width: 5px; height: 5px; border-radius: 50%;
-      background: var(--accent);
-      animation: pulse-dot 2s infinite;
-    }
-    @keyframes pulse-dot {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.3; }
-    }
+/* ── window chrome ── */
+.window{position:relative;border:1px solid var(--line2);border-radius:14px;background:var(--panel);box-shadow:0 40px 120px rgba(0,0,0,.7);overflow:hidden}
+.win-bar{display:flex;align-items:center;gap:8px;padding:13px 18px;border-bottom:1px solid var(--line);background:var(--panel2)}
+.dot{width:11px;height:11px;border-radius:50%}
+.dot.r{background:#ff5f57}.dot.y{background:#febc2e}.dot.g{background:#28c840}
+.win-title{margin-left:12px;font-family:var(--mono);font-size:12px;color:var(--mut)}
+.win-title .live{color:var(--lime)}
+.window iframe{display:block;width:100%;height:560px;border:0;background:#0a0a0a}
+.iframe-fallback{padding:44px 24px;text-align:center;color:var(--mut);font-size:13.5px}
+.iframe-fallback a{color:var(--orange);font-weight:600}
 
-    .hero h1 {
-      font-size: clamp(40px, 7vw, 90px);
-      font-weight: 900; line-height: 1.02;
-      letter-spacing: -3px; margin-bottom: 16px;
-    }
-    .hero h1 .highlight {
-      background: linear-gradient(135deg, var(--accent) 0%, #ff8c42 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent; background-clip: text;
-    }
-    .hero h1 .highlight-green {
-      background: linear-gradient(135deg, var(--accent2) 0%, #7bff00 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent; background-clip: text;
-    }
-    .hero p {
-      font-size: 16px; color: var(--text-dim);
-      max-width: 560px; margin: 0 auto 28px;
-      line-height: 1.7;
-    }
-    .hero-actions {
-      display: flex; align-items: center; justify-content: center;
-      gap: 10px; flex-wrap: wrap; margin-bottom: 20px;
-    }
-    .btn-primary {
-      background: var(--accent); color: #000; border: none;
-      padding: 12px 28px; border-radius: 4px;
-      font-size: 13px; font-weight: 700; letter-spacing: 0.3px;
-      cursor: pointer; text-decoration: none;
-      display: inline-flex; align-items: center; gap: 8px;
-      transition: transform 0.2s, box-shadow 0.2s;
-    }
-    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 24px rgba(255,107,44,0.3); }
-    .btn-secondary {
-      background: transparent; color: var(--text);
-      border: 1px solid var(--border);
-      padding: 12px 28px; border-radius: 4px;
-      font-size: 13px; font-weight: 600; letter-spacing: 0.3px;
-      cursor: pointer; text-decoration: none;
-      display: inline-flex; align-items: center; gap: 8px;
-      transition: background 0.2s, transform 0.2s;
-    }
-    .btn-secondary:hover { background: var(--bg-hover); transform: translateY(-2px); }
+/* ── ticker ── */
+.ticker{border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:rgba(0,0,0,.35);overflow:hidden;padding:14px 0;margin-top:34px}
+.ticker-track{display:flex;gap:38px;width:max-content;animation:marquee 62s linear infinite}
+.ticker:hover .ticker-track{animation-play-state:paused}
+.ticker-item{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:12px;color:var(--mut);white-space:nowrap}
+.ticker-item .tdot{width:5px;height:5px;border-radius:50%;background:var(--orange);flex-shrink:0}
+.ticker-item .ts{color:var(--lime)}
+.sample-note{text-align:center;font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;color:var(--mut2);margin-top:14px}
 
-    /* ─── Hero Stats (Inline Stats) ── */
-    .hero-stats {
-      display: flex; align-items: center; justify-content: center;
-      gap: 24px; flex-wrap: wrap;
-      padding: 16px 0 0;
-      font-family: 'JetBrains Mono', monospace;
-    }
-    .hero-stat { display: flex; align-items: center; gap: 8px; }
-    .hero-stat .num {
-      font-size: 14px; font-weight: 700; color: var(--accent);
-    }
-    .hero-stat .label {
-      font-size: 11px; color: var(--text-muted);
-      letter-spacing: 0.3px;
-    }
-    .hero-stat .sep { color: var(--border); font-size: 10px; }
+/* ── brief ── */
+.brief-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:44px;align-items:start}
+.tg-card{border:1px solid var(--line2);border-radius:14px;background:var(--panel);overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.6)}
+.tg-head{display:flex;gap:12px;align-items:center;padding:16px 20px;border-bottom:1px solid var(--line);background:var(--panel2)}
+.tg-ava{width:40px;height:40px;border-radius:50%;background:radial-gradient(circle at 30% 30%,var(--orange),#7a2c07);display:grid;place-items:center;font-weight:700;color:#160a03;flex-shrink:0}
+.tg-head .n{font-weight:700;font-size:14px}
+.tg-head .h{font-family:var(--mono);font-size:11px;color:var(--mut2)}
+.tg-head .stag{margin-left:auto;font-family:var(--mono);font-size:9.5px;letter-spacing:.2em;color:var(--mut2);border:1px solid var(--line2);border-radius:999px;padding:4px 10px}
+.tg-body{padding:22px;font-family:var(--mono);font-size:12.5px;line-height:1.95;color:var(--mut)}
+.tg-body .h1l{color:var(--orange);font-weight:600}
+.tg-body .h2l{color:var(--lime);font-weight:600;margin-top:12px;display:block}
+.tg-item{opacity:0;transform:translateX(-14px);transition:all .6s ease var(--d)}
+.tg-body.in .tg-item{opacity:1;transform:none}
+.tg-item b{color:var(--txt)}
+.tg-item .up{color:var(--lime)}.tg-item .dn{color:var(--orange)}
+.bp{border:1px solid var(--line);border-radius:10px;padding:18px 20px;background:rgba(255,255,255,.02);transition:border-color .3s,transform .3s;margin-top:16px}
+.bp:hover{border-color:rgba(140,255,0,.4);transform:translateX(6px)}
+.bp .k{font-family:var(--mono);font-size:11px;letter-spacing:.2em;color:var(--lime);margin-bottom:8px}
+.bp p{color:var(--mut);font-size:14.5px}
+.bp p b{color:var(--txt)}
 
-    /* ─── Stats Section ── */
-    .stats-section {
-      padding: 60px 0;
-      border-top: 1px solid var(--border);
-      border-bottom: 1px solid var(--border);
-    }
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 1px;
-      background: var(--border);
-    }
-    .stats-grid > * { background: var(--bg); padding: 32px 24px; text-align: center; }
-    .stat-item .stat-number {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 36px; font-weight: 700;
-      color: var(--text); line-height: 1.1;
-    }
-    .stat-item .stat-number .orange { color: var(--accent); }
-    .stat-item .stat-number .green { color: var(--accent2); }
-    .stat-item .stat-label {
-      font-size: 10px; text-transform: uppercase;
-      letter-spacing: 1px; color: var(--text-muted);
-      margin-top: 6px; font-weight: 600;
-    }
-    @media (max-width: 768px) {
-      .stats-grid { grid-template-columns: repeat(2, 1fr); }
-    }
-    @media (max-width: 480px) {
-      .stats-grid { grid-template-columns: 1fr; }
-    }
+/* ── features ── */
+.feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.feat{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:26px;position:relative;overflow:hidden;transition:transform .4s cubic-bezier(.2,.7,.2,1),border-color .4s}
+.feat::before{content:'';position:absolute;inset:0;background:radial-gradient(400px 200px at var(--mx,50%) var(--my,0%),rgba(255,107,43,.12),transparent 60%);opacity:0;transition:opacity .4s}
+.feat:hover{transform:translateY(-6px);border-color:rgba(255,107,43,.45)}
+.feat:hover::before{opacity:1}
+.feat .ic{font-size:24px;display:inline-block;transition:transform .5s cubic-bezier(.2,.7,.2,1)}
+.feat:hover .ic{transform:rotate(-10deg) scale(1.2)}
+.feat h3{margin:16px 0 8px;font-size:17px;font-weight:700;position:relative}
+.feat p{font-size:13.6px;color:var(--mut);position:relative}
+.feat .tag{position:absolute;top:20px;right:20px;font-family:var(--mono);font-size:10px;color:var(--lime);letter-spacing:.15em}
 
-    /* ─── Live Ticker ── */
-    .ticker-section {
-      border-bottom: 1px solid var(--border);
-      overflow: hidden;
-      background: rgba(255,107,44,0.02);
-    }
-    .ticker-track {
-      display: flex;
-      white-space: nowrap;
-      animation: ticker-scroll 30s linear infinite;
-      padding: 10px 0;
-    }
-    .ticker-track:hover { animation-play-state: paused; }
-    .ticker-item {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 0 28px; font-size: 12px; color: var(--text-dim);
-      font-family: 'JetBrains Mono', monospace;
-    }
-    .ticker-item .dot {
-      width: 4px; height: 4px; border-radius: 50%;
-      background: var(--accent2); flex-shrink: 0;
-    }
-    .ticker-item .ts { color: var(--text-muted); font-size: 10px; }
-    @keyframes ticker-scroll {
-      0% { transform: translateX(0); }
-      100% { transform: translateX(-50%); }
-    }
+/* ── sector chips ── */
+.chips{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:46px}
+.chip{font-family:var(--mono);font-size:12px;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:8px 15px;background:rgba(255,255,255,.02);
+  opacity:0;transform:translateY(14px);transition:opacity .5s ease var(--d,0s),transform .5s cubic-bezier(.2,.7,.2,1) var(--d,0s),color .3s,border-color .3s}
+.in .chip{opacity:1;transform:none}
+.chip:hover{color:var(--lime);border-color:rgba(140,255,0,.4)}
 
-    /* ─── Terminal Section ── */
-    .terminal-section {
-      padding: 72px 0;
-      border-bottom: 1px solid var(--border);
-    }
-    .terminal-window {
-      max-width: 680px; margin: 0 auto;
-      background: #0a0a0a;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      overflow: hidden;
-      box-shadow: 0 0 40px rgba(255,107,44,0.04);
-    }
-    .terminal-bar {
-      display: flex; align-items: center; gap: 6px;
-      padding: 10px 14px;
-      background: rgba(255,255,255,0.03);
-      border-bottom: 1px solid var(--border);
-    }
-    .terminal-dot { width: 8px; height: 8px; border-radius: 50%; }
-    .terminal-dot.red { background: #ef4444; }
-    .terminal-dot.yellow { background: #fbbf24; }
-    .terminal-dot.green { background: #22c55e; }
-    .terminal-title {
-      font-size: 10px; color: var(--text-muted);
-      font-family: 'JetBrains Mono', monospace;
-      margin-left: 8px;
-    }
-    .terminal-body {
-      padding: 18px 20px;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 13px; line-height: 1.9;
-      min-height: 200px;
-      color: var(--text-dim);
-    }
-    .terminal-body .prompt { color: var(--accent2); }
-    .terminal-body .cmd { color: var(--text); }
-    .terminal-body .out { color: rgba(255,255,255,0.5); }
-    .terminal-body .cursor {
-      display: inline-block; width: 6px; height: 14px;
-      background: var(--accent); vertical-align: middle;
-      animation: blink 1s step-end infinite;
-    }
-    @keyframes blink { 50% { opacity: 0; } }
-    .terminal-body .line { margin-bottom: 2px; }
+/* ── pipeline ── */
+.pipe{position:relative;display:grid;grid-template-columns:repeat(5,1fr);gap:22px;margin-top:60px}
+.pipe-line{position:absolute;left:6%;right:6%;top:28px;height:2px;
+  background:repeating-linear-gradient(90deg,rgba(255,107,43,.7) 0 10px,transparent 10px 20px);animation:flow .7s linear infinite}
+.pipe-line::after{content:'';position:absolute;top:-4px;left:0;width:9px;height:9px;border-radius:50%;background:var(--lime);box-shadow:0 0 16px var(--lime);animation:travel 5s linear infinite}
+@keyframes travel{0%{left:0;opacity:0}8%{opacity:1}92%{opacity:1}100%{left:100%;opacity:0}}
+.step{text-align:center}
+.node{width:57px;height:57px;margin:0 auto;border-radius:50%;border:1px solid var(--line2);background:var(--panel);display:grid;place-items:center;font-size:21px;position:relative;z-index:2;transition:transform .4s,border-color .4s,box-shadow .4s}
+.step:hover .node{transform:scale(1.15) rotate(6deg);border-color:var(--orange);box-shadow:0 0 34px rgba(255,107,43,.35)}
+.node::after{content:'';position:absolute;inset:-1px;border-radius:50%;border:1px solid rgba(255,107,43,.5);animation:ping 2.6s ease infinite;animation-delay:var(--pd,0s)}
+.step .no{font-family:var(--mono);font-size:10px;letter-spacing:.25em;color:var(--mut2);margin:16px 0 6px}
+.step h4{font-size:16.5px;font-weight:700}
+.step h4 span{color:var(--orange)}
+.step p{font-size:12.8px;color:var(--mut);margin-top:8px}
+.step p b{color:var(--lime);font-family:var(--mono);font-weight:400}
 
-    /* ─── Section Shared ── */
-    section { padding: 72px 0; border-bottom: 1px solid var(--border); }
-    section:last-of-type { border-bottom: none; }
-    section:first-of-type { border-bottom: 1px solid var(--border); }
+/* ── terminal ── */
+.term{border:1px solid var(--line2);border-radius:14px;background:#0c0906;box-shadow:0 30px 90px rgba(0,0,0,.7);overflow:hidden;max-width:860px;margin:0 auto}
+.term-body{padding:24px 28px;font-family:var(--mono);font-size:12.6px;line-height:2.05;overflow-x:auto}
+.tline{white-space:pre-wrap}
+.tline .prompt{color:var(--orange);margin-right:8px}
+.tline .cmd{color:var(--txt)}
+.tline .out{color:var(--mut)}
+.tline .ok{color:var(--lime)}
+.tline .comment{color:var(--mut2)}
+.caret{display:inline-block;width:9px;height:1.1em;background:var(--lime);vertical-align:text-bottom;animation:blink 1s steps(1) infinite}
+.setup-cta{display:flex;gap:12px;justify-content:center;margin-top:30px;flex-wrap:wrap}
 
-    .section-label {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 10px; text-transform: uppercase; letter-spacing: 2px;
-      color: var(--accent); font-weight: 600; margin-bottom: 10px;
-    }
-    .section-title {
-      font-size: clamp(28px, 3.5vw, 40px);
-      font-weight: 900; letter-spacing: -1.5px;
-      margin-bottom: 12px; line-height: 1.1;
-    }
-    .section-sub {
-      font-size: 14px; color: var(--text-dim);
-      max-width: 540px; margin-bottom: 44px; line-height: 1.7;
-    }
-    .section-center { text-align: center; }
-    .section-center .section-sub { margin: 0 auto 44px; }
+/* ── roadmap ── */
+.road{position:relative;padding-left:44px;max-width:840px;margin:0 auto}
+.road::before{content:'';position:absolute;left:12px;top:6px;bottom:6px;width:2px;background:linear-gradient(var(--orange),var(--lime));transform:scaleY(0);transform-origin:top;transition:transform 2s cubic-bezier(.2,.7,.2,1) .2s}
+.road.in::before{transform:scaleY(1)}
+.ri{position:relative;margin-bottom:34px}
+.ri::before{content:'';position:absolute;left:-38px;top:8px;width:12px;height:12px;border-radius:50%;background:var(--bg);border:2px solid var(--orange)}
+.ri.now::before{background:var(--lime);border-color:var(--lime);box-shadow:0 0 18px var(--lime);animation:pip 1.6s infinite}
+.ri .q{font-family:var(--mono);font-size:11px;letter-spacing:.25em;color:var(--orange)}
+.ri.now .q{color:var(--lime)}
+.ri h4{font-size:18.5px;font-weight:700;margin:6px 0 8px}
+.ri ul{list-style:none;display:grid;gap:6px}
+.ri li{position:relative;padding-left:18px;color:var(--mut);font-size:14px}
+.ri li::before{content:'▸';position:absolute;left:0;color:var(--mut2)}
+.ri .st{font-family:var(--mono);font-size:10px;border:1px solid var(--line2);border-radius:999px;padding:3px 10px;margin-left:10px;color:var(--mut);vertical-align:middle}
+.ri .st.done{color:var(--lime);border-color:rgba(140,255,0,.4)}
+.ri .st.wip{color:var(--orange2);border-color:rgba(255,107,43,.4)}
 
-    /* ─── Features ── */
-    .features-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 1px;
-      background: var(--border);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      overflow: hidden;
-    }
-    @media (max-width: 900px) {
-      .features-grid { grid-template-columns: repeat(2, 1fr); }
-    }
-    @media (max-width: 600px) {
-      .features-grid { grid-template-columns: 1fr; }
-    }
-    .feature-card {
-      background: var(--bg);
-      padding: 28px 24px;
-      transition: all 0.3s var(--transition);
-      position: relative;
-    }
-    .feature-card::after {
-      content: ''; position: absolute; inset: 0;
-      opacity: 0; transition: opacity 0.3s;
-      background: linear-gradient(135deg, rgba(255,107,44,0.03) 0%, transparent 50%);
-      pointer-events: none;
-    }
-    .feature-card:hover::after { opacity: 1; }
-    .feature-card:hover { background: var(--bg-card); }
-    .feature-card .icon { font-size: 20px; margin-bottom: 10px; display: block; }
-    .feature-card h3 { font-size: 14px; font-weight: 700; margin-bottom: 6px; letter-spacing: -0.3px; }
-    .feature-card p { font-size: 12px; color: var(--text-dim); line-height: 1.65; }
+/* ── tech strip ── */
+.tech{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
+.tech .t{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12.5px;color:var(--mut);
+  border:1px solid var(--line);border-radius:8px;padding:10px 14px;background:var(--panel);transition:transform .3s,border-color .3s,color .3s}
+.tech .t:hover{transform:translateY(-4px);border-color:rgba(255,107,43,.45);color:var(--txt)}
 
-    /* ─── Pipeline ── */
-    .pipeline-flow {
-      display: flex; align-items: center; justify-content: center;
-      gap: 0; flex-wrap: wrap;
-    }
-    .pipeline-step {
-      display: flex; flex-direction: column; align-items: center;
-      gap: 8px; padding: 16px 20px;
-      flex: 1; min-width: 100px;
-    }
-    .pipeline-step .num {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 12px; font-weight: 600; color: var(--accent);
-      width: 36px; height: 36px; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      border: 1px solid rgba(255,107,44,0.2);
-      background: rgba(255,107,44,0.05);
-    }
-    .pipeline-step .step-label { font-size: 11px; font-weight: 600; letter-spacing: 0.3px; }
-    .pipeline-step .step-desc { font-size: 10px; color: var(--text-muted); text-align: center; max-width: 100px; }
-    .pipeline-arrow {
-      font-size: 14px; color: var(--text-muted);
-      flex-shrink: 0; opacity: 0.4;
-    }
-    @media (max-width: 640px) {
-      .pipeline-flow { flex-direction: column; }
-      .pipeline-arrow { transform: rotate(90deg); }
-    }
+/* ── final cta ── */
+.final{text-align:center}
+.final h2{margin-bottom:16px}
+.final p{color:var(--mut);max-width:560px;margin:0 auto 30px}
 
-    /* ─── Tech Strip ── */
-    .tech-strip {
-      display: flex; justify-content: center; gap: 6px;
-      flex-wrap: wrap;
-    }
-    .tech-chip {
-      display: flex; align-items: center; gap: 6px;
-      background: var(--bg-card);
-      border: 1px solid var(--border-light);
-      border-radius: 4px;
-      padding: 6px 14px;
-      font-size: 11px; font-weight: 500;
-      transition: all 0.2s; letter-spacing: 0.2px;
-    }
-    .tech-chip:hover {
-      border-color: rgba(255,107,44,0.2);
-      background: rgba(255,107,44,0.04);
-    }
-    .tech-chip .chip-icon { font-size: 13px; }
+footer{border-top:1px solid var(--line);padding:34px 40px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;font-family:var(--mono);font-size:12px;color:var(--mut2)}
+footer a:hover{color:var(--lime)}
+.foot-links{display:flex;gap:18px;flex-wrap:wrap}
 
-    /* ─── Roadmap (4-column horizontal) ── */
-    .roadmap-wrap {
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      background: var(--bg);
-      overflow: hidden;
-    }
-    .roadmap-top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 24px 28px 20px;
-      border-bottom: 1px solid var(--border);
-    }
-    .roadmap-top h2 {
-      font-size: clamp(20px, 2.5vw, 26px);
-      font-weight: 700;
-      letter-spacing: -0.5px;
-      color: var(--text);
-      line-height: 1.15;
-    }
-    .roadmap-top h2 span { color: var(--text-muted); font-weight: 400; }
-    .roadmap-top .catalyst-label {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 2px;
-      color: var(--accent);
-      text-transform: uppercase;
-      flex-shrink: 0;
-    }
-
-    .roadmap-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 0;
-    }
-    .roadmap-grid > * + * {
-      border-left: 1px solid var(--border);
-    }
-    .roadmap-grid > *:nth-child(4) {
-      border-left: none;
-      border-top: 1px solid var(--border);
-    }
-    .roadmap-grid > *:nth-child(5) {
-      border-left: 1px solid var(--border);
-      border-top: 1px solid var(--border);
-    }
-    .roadmap-grid > *:nth-child(6) {
-      border-left: 1px solid var(--border);
-      border-top: 1px solid var(--border);
-    }
-    .roadmap-grid > *:nth-child(7) {
-      border-left: none;
-      border-top: 1px solid var(--border);
-    }
-    .roadmap-grid > *:nth-child(8) {
-      border-left: 1px solid var(--border);
-      border-top: 1px solid var(--border);
-    }
-    .roadmap-grid > *:nth-child(9) {
-      border-left: 1px solid var(--border);
-      border-top: 1px solid var(--border);
-    }
-    .roadmap-grid > *:nth-child(10) {
-      border-left: none;
-      border-top: 1px solid var(--border);
-    }
-    .roadmap-grid > *:nth-child(11) {
-      border-left: 1px solid var(--border);
-      border-top: 1px solid var(--border);
-    }
-
-    .phase-card {
-      padding: 24px 22px;
-      position: relative;
-      transition: all 0.3s var(--transition);
-    }
-    .phase-card:hover {
-      background: rgba(255,107,44,0.02);
-    }
-    .phase-card::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      opacity: 0;
-      transition: opacity 0.3s;
-      border-radius: var(--radius);
-      pointer-events: none;
-      box-shadow: inset 0 0 0 1px transparent;
-    }
-    .phase-card.status-live::after { box-shadow: inset 0 0 0 1px rgba(255,107,44,0.3); }
-    .phase-card.status-live:hover::after { opacity: 1; box-shadow: inset 0 0 0 1px rgba(255,107,44,0.5), 0 0 30px rgba(255,107,44,0.06); }
-    .phase-card.status-next::after { box-shadow: inset 0 0 0 1px rgba(163,255,18,0.2); }
-    .phase-card.status-next:hover::after { opacity: 1; box-shadow: inset 0 0 0 1px rgba(163,255,18,0.4), 0 0 30px rgba(163,255,18,0.05); }
-    .phase-card.status-future::after { box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06); }
-    .phase-card.status-future:hover::after { opacity: 1; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12), 0 0 20px rgba(255,255,255,0.02); }
-
-    .phase-card .phase-top {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-bottom: 10px;
-    }
-    .phase-card .phase-num {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
-      color: var(--text-dim);
-    }
-    .phase-card .badge {
-      display: inline-block;
-      font-size: 8px;
-      font-weight: 700;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      padding: 2px 10px;
-      border-radius: 2px;
-    }
-    .phase-card .badge-live {
-      background: rgba(255,107,44,0.1);
-      color: var(--accent);
-      border: 1px solid rgba(255,107,44,0.2);
-    }
-    .phase-card .badge-next {
-      background: rgba(163,255,18,0.08);
-      color: var(--accent2);
-      border: 1px solid rgba(163,255,18,0.15);
-    }
-    .phase-card .badge-future {
-      background: rgba(255,255,255,0.03);
-      color: var(--text-muted);
-      border: 1px solid var(--border);
-    }
-
-    .phase-card .phase-title-text {
-      font-size: 18px;
-      font-weight: 700;
-      letter-spacing: -0.3px;
-      color: var(--text);
-      margin-bottom: 10px;
-      line-height: 1.2;
-    }
-
-    .phase-card .feature-list {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-    }
-    .phase-card .feature-list li {
-      font-size: 11.5px;
-      font-weight: 400;
-      color: var(--text-dim);
-      padding: 4px 0 4px 14px;
-      position: relative;
-      line-height: 1.6;
-      transition: color 0.2s;
-    }
-    .phase-card .feature-list li:hover { color: var(--text); }
-    .phase-card .feature-list li::before {
-      content: '';
-      position: absolute;
-      left: 1px;
-      top: 12px;
-      width: 3px;
-      height: 3px;
-      border-radius: 50%;
-      background: var(--text-muted);
-    }
-
-    /* ─── Responsive ── */
-    @media (max-width: 900px) {
-      .roadmap-grid { grid-template-columns: repeat(2, 1fr); }
-      .roadmap-grid > *:nth-child(2) { border-left: none; }
-      .roadmap-grid > *:nth-child(1),
-      .roadmap-grid > *:nth-child(2) { border-bottom: 1px solid var(--border); }
-    }
-    @media (max-width: 560px) {
-      .roadmap-grid { grid-template-columns: 1fr; }
-      .roadmap-grid > * { border-left: none !important; }
-      .roadmap-grid > * + * { border-top: 1px solid var(--border); }
-      .roadmap-top { flex-direction: column; align-items: flex-start; gap: 6px; }
-      .phase-card { padding: 20px 18px; }
-    }
-
-    /* ─── Terminal Block ── */
-    .terminal-block {
-      background: #0a0a0a; border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 18px 20px;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 12px; line-height: 1.8;
-      overflow-x: auto;
-    }
-    .terminal-block .comment { color: var(--text-muted); font-style: italic; }
-    .terminal-block .prompt { color: var(--accent2); }
-    .terminal-block .cmd { color: var(--text); }
-    .terminal-block .output { color: var(--text-dim); }
-
-    /* ─── CTA ── */
-    .cta-section {
-      text-align: center;
-      padding: 80px 0;
-      position: relative;
-      overflow: hidden;
-    }
-    .cta-section::before {
-      content: ''; position: absolute;
-      top: -50%; left: -50%; width: 200%; height: 200%;
-      background: radial-gradient(circle at center, rgba(255,107,44,0.03) 0%, transparent 50%);
-      pointer-events: none;
-    }
-    .cta-section h2 {
-      font-size: clamp(24px, 3vw, 36px);
-      font-weight: 800; margin-bottom: 10px;
-      letter-spacing: -1px;
-    }
-    .cta-section p {
-      font-size: 13px; color: var(--text-dim);
-      max-width: 460px; margin: 0 auto 24px;
-    }
-
-    /* ─── Footer ── */
-    .footer {
-      border-top: 1px solid var(--border);
-      padding: 36px 0;
-      text-align: center;
-    }
-    .footer-links {
-      display: flex; justify-content: center;
-      gap: 20px; margin-bottom: 14px; flex-wrap: wrap;
-    }
-    .footer-links a {
-      color: var(--text-muted); text-decoration: none;
-      font-size: 11px; letter-spacing: 0.3px;
-      transition: color 0.2s;
-    }
-    .footer-links a:hover { color: var(--text); }
-    .footer-copy { font-size: 11px; color: var(--text-muted); }
-    .footer-copy a { color: var(--text-dim); text-decoration: none; }
-    .footer-copy a:hover { color: var(--accent); }
-
-    /* ─── Animations ── */
-    @keyframes fadeInUp {
-      from { opacity: 0; transform: translateY(20px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-    .animate { opacity: 0; }
-    .animate.visible { animation: fadeInUp 0.5s var(--transition) forwards; }
-    .delay-1 { animation-delay: 0.08s; }
-    .delay-2 { animation-delay: 0.15s; }
-    .delay-3 { animation-delay: 0.22s; }
-
-    .github-link-row {
-      display: flex; align-items: center; justify-content: center;
-      gap: 6px; margin-top: 8px;
-      font-size: 11px; color: var(--text-muted);
-    }
-    .github-link-row a {
-      color: var(--text-dim); text-decoration: none;
-      font-weight: 500; transition: color 0.2s;
-    }
-    .github-link-row a:hover { color: var(--accent); }
-
-    /* ─── Dashboard Preview ── */
-    .hero-preview {
-      margin: 48px auto 0;
-      max-width: 900px;
-      border-radius: var(--radius);
-      overflow: hidden;
-      border: 1px solid var(--border);
-      background: #0a0a0a;
-      box-shadow: 0 20px 80px rgba(0,0,0,0.6);
-      position: relative;
-      transition: box-shadow 0.3s;
-    }
-    .hero-preview:hover {
-      box-shadow: 0 24px 100px rgba(0,0,0,0.6), 0 0 40px rgba(255,107,44,0.06);
-    }
-    .hero-preview-header {
-      display: flex; align-items: center; gap: 8px;
-      padding: 10px 16px;
-      border-bottom: 1px solid var(--border);
-      background: rgba(0,0,0,0.4);
-    }
-    .hero-preview-dot { width: 8px; height: 8px; border-radius: 50%; }
-    .hero-preview-dot.red { background: #ef4444; }
-    .hero-preview-dot.yellow { background: #fbbf24; }
-    .hero-preview-dot.green { background: #22c55e; }
-    .hero-preview-title {
-      font-size: 10px; color: var(--text-muted);
-      font-weight: 500; margin-left: 6px;
-      font-family: 'JetBrains Mono', monospace;
-    }
-    .hero-preview iframe {
-      width: 100%; height: 380px; border: none;
-      display: block;
-    }
-    @media (max-width: 768px) {
-      .hero-preview iframe { height: 260px; }
-    }
-    @media (max-width: 480px) {
-      .hero-preview iframe { height: 180px; }
-      .hero { padding: 70px 0 40px; }
-    }
-
-    @media (max-width: 768px) {
-      section { padding: 48px 0; }
-      .nav-links a:not(.nav-cta) { display: none; }
-    }
-    @media (max-width: 480px) {
-      .container { padding: 0 16px; }
-      .hero h1 { font-size: 32px; letter-spacing: -1px; }
-    }
-
-    /* ─── Accessibility ── */
-    /* Skip link: hidden until keyboard-focused, then pinned top-left */
-    .skip-link {
-      position: absolute; left: 8px; top: -48px;
-      z-index: 200;
-      background: var(--accent); color: #000;
-      padding: 8px 16px; border-radius: 4px;
-      font-size: 13px; font-weight: 700; text-decoration: none;
-      transition: top 0.15s;
-    }
-    .skip-link:focus { top: 8px; }
-
-    /* Visible focus ring for keyboard users (mouse clicks stay clean) */
-    a:focus-visible, button:focus-visible, input:focus-visible {
-      outline: 2px solid var(--accent);
-      outline-offset: 2px;
-      border-radius: 3px;
-    }
-
-    /* Respect users who ask the OS to reduce motion */
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after {
-        animation-duration: 0.001ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: 0.001ms !important;
-        scroll-behavior: auto !important;
-      }
-      .ticker-track { animation: none !important; }
-    }
-  </style>
+@media(max-width:1100px){.live-chip{display:none}}
+@media(max-width:900px){
+  .links{display:none}
+  .burger{display:block}
+  .kchip{display:none} /* palette lives in the mobile menu — keep room for the burger */
+  .pipe{grid-template-columns:1fr;gap:30px}
+  .pipe-line{display:none}
+  .step{display:grid;grid-template-columns:57px 1fr;column-gap:18px;align-items:start;text-align:left}
+  .step .node{grid-column:1;grid-row:1 / span 3;margin:0}
+  .step .no,.step h4,.step p{grid-column:2}
+  .step .no{margin:4px 0 4px}
+  .step p{margin-top:4px}
+  .feat-grid{grid-template-columns:1fr 1fr}
+  .brief-grid{grid-template-columns:1fr}
+  .window iframe{height:420px}
+}
+@media(max-width:700px){.kchip span{display:none}}
+@media(max-width:640px){
+  .feat-grid{grid-template-columns:1fr}
+  .nav{gap:10px;padding:10px 8px 10px 14px}
+  .nav-wrap{padding:12px 12px 0}
+  .logo{font-size:15px}
+  section{padding:80px 20px}
+  .nav .cta{padding:9px 13px;font-size:12px}
+  .road{padding-left:34px}
+  .ri::before{left:-30px}
+  footer{padding:28px 20px}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+  [data-reveal]{opacity:1;transform:none}
+  .mask>span{transform:none}
+  .chip{opacity:1;transform:none}
+  .tg-item{opacity:1;transform:none}
+  .road::before{transform:scaleY(1)}
+}
+</style>
 </head>
 <body>
-  <a href="#main-content" class="skip-link">Skip to content</a>
-  <div class="grid-overlay" aria-hidden="true"></div>
-  <div class="bg-glow" aria-hidden="true"></div>
-  <div class="bg-glow-2" aria-hidden="true"></div>
+<a href="#main" class="skip-link">Skip to content</a>
+<div class="grid-bg" aria-hidden="true"></div>
+<div id="curDot" aria-hidden="true"></div><div id="curRing" aria-hidden="true"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
-  <!-- Navigation -->
-  <nav class="nav" aria-label="Primary">
-    <div class="nav-inner">
-      <div class="nav-logo"><span class="accent">✦</span> Goldirham <span class="accent">Stack</span></div>
-      <div class="nav-links">
-        <a href="#features">Features</a>
-        <a href="#pipeline">Pipeline</a>
-        <a href="#roadmap">Roadmap</a>
-        <a href="#setup">Setup</a>
-        <a href="https://github.com/ixtaqq/ai-infra-digest" target="_blank" rel="noopener">GitHub</a>
-        <a href="/dashboard/" class="nav-cta">Dashboard →</a>
-      </div>
+<!-- ══════════ NAV ══════════ -->
+<header class="nav-wrap" id="navWrap">
+  <div class="nav" id="nav">
+    <a class="logo" href="#top" id="logoBtn"><span class="spark" aria-hidden="true">✦</span>Goldirham&nbsp;<em>Stack</em></a>
+    <nav class="links" id="navLinks" aria-label="Primary">
+      <span class="ind" id="navInd" aria-hidden="true"></span>
+      <a href="#brief" data-sec="brief">Brief</a>
+      <a href="#features" data-sec="features">Features</a>
+      <a href="#how" data-sec="how">How it works</a>
+      <a href="#roadmap" data-sec="roadmap">Roadmap</a>
+      <a href="#setup" data-sec="setup">Setup</a>
+      <a href="https://github.com/ixtaqq/ai-infra-digest" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+    <div class="nav-right">
+      <button class="kchip" id="kOpen" aria-label="Open command palette">⌕ <span>Jump to…</span> <kbd>⌘K</kbd></button>
+      <span class="live-chip"><i aria-hidden="true"></i>LIVE · 68 FEEDS</span>
+      <a class="btn btn-orange cta" href="/dashboard/">Dashboard →</a>
+      <button class="burger" id="burger" aria-label="Menu" aria-expanded="false"><span></span><span></span></button>
     </div>
+    <span class="nav-prog" id="navProg" aria-hidden="true"></span>
+  </div>
+</header>
+
+<!-- mobile menu -->
+<div class="mmenu" id="mmenu">
+  <nav aria-label="Mobile">
+    <a href="#brief" style="--i:0"><small>01</small>Brief</a>
+    <a href="#features" style="--i:1"><small>02</small>Features</a>
+    <a href="#how" style="--i:2"><small>03</small>How it works</a>
+    <a href="#roadmap" style="--i:3"><small>04</small>Roadmap</a>
+    <a href="#setup" style="--i:4"><small>05</small>Setup</a>
+    <a href="https://github.com/ixtaqq/ai-infra-digest" target="_blank" rel="noopener" style="--i:5"><small>06</small>GitHub</a>
   </nav>
+  <div class="mfoot">
+    <span class="live-chip" style="display:flex"><i aria-hidden="true"></i>LIVE · 68 FEEDS</span>
+    <a class="btn btn-orange" href="/dashboard/">Dashboard →</a>
+    <button class="btn" id="kOpenM">⌕ Jump to…</button>
+  </div>
+</div>
 
-  <main id="main-content">
+<!-- command palette -->
+<div class="pal" id="pal" role="dialog" aria-modal="true" aria-label="Command palette">
+  <div class="pal-box">
+    <div class="pal-head"><span class="sic" aria-hidden="true">⌕</span><input id="palInput" placeholder="Jump to a section or run an action…" autocomplete="off" spellcheck="false" aria-label="Search commands"><kbd>ESC</kbd></div>
+    <div class="pal-list" id="palList"></div>
+    <div class="pal-foot"><b>↑↓</b> navigate · <b>↵</b> select · <b>esc</b> close</div>
+  </div>
+</div>
 
-  <!-- Hero -->
-  <section class="hero" style="border:none">
-    <div class="container">
-      <div class="hero-badge">
-        <span class="dot"></span> Daily Intelligence for the AI Infrastructure Age
+<main id="main">
+<div id="top"></div>
+
+<!-- ══════════ HERO ══════════ -->
+<section class="hero">
+  <canvas id="rain" aria-hidden="true"></canvas>
+  <div class="hero-glow glow-a" aria-hidden="true"></div>
+  <div class="hero-glow glow-b" aria-hidden="true"></div>
+  <div class="hero-inner">
+    <div class="badge"><span class="pip" aria-hidden="true"></span>DAILY INTELLIGENCE FOR THE AI INFRASTRUCTURE AGE</div>
+    <h1>
+      <span class="mask l1"><span>Goldirham Stack</span></span>
+      <span class="mask l2"><span>AI Infrastructure</span></span>
+      <span class="mask l3"><span>Intelligence</span></span>
+    </h1>
+    <p class="lede">Collects <b>68 RSS feeds</b>, analyzes them with <b>two-tier AI routing</b>, extracts <b>SEC filings</b> from 35 companies via two-pass extraction, mines <b>earnings call transcripts</b> from 15 companies with guidance delta, and delivers a curated morning digest — straight to your Telegram and live analytics dashboard.</p>
+    <div class="cta-row">
+      <a class="btn btn-orange" href="/dashboard/">🚀 View Live Dashboard</a>
+      <a class="btn" href="https://t.me/ai_infra_digest_bot" target="_blank" rel="noopener">🤖 Try the Bot</a>
+      <button class="btn" id="palHint">⌘K · Jump anywhere</button>
+    </div>
+    <div class="stats">
+      <div><span class="num" data-count="68">0</span> <span>RSS Feeds</span></div><span class="sep">•</span>
+      <div><span class="num" data-count="10">0</span> <span>Sectors</span></div><span class="sep">•</span>
+      <div><span class="num" data-count="35">0</span> <span>SEC Companies</span></div><span class="sep">•</span>
+      <div><span class="num" data-count="2" data-prefix="&lt;$">&lt;$0</span> <span>/month</span></div>
+    </div>
+    <div class="gh-row">★ <a href="https://github.com/ixtaqq/ai-infra-digest" target="_blank" rel="noopener">Star on GitHub</a></div>
+  </div>
+</section>
+
+<!-- ══════════ LIVE DASHBOARD ══════════ -->
+<section id="demo" style="padding-top:10px">
+  <div class="wrap">
+    <div class="window" data-reveal>
+      <div class="win-bar">
+        <span class="dot r" aria-hidden="true"></span><span class="dot y" aria-hidden="true"></span><span class="dot g" aria-hidden="true"></span>
+        <span class="win-title">Goldirham Stack — <span class="live">Live Dashboard</span></span>
       </div>
+      <iframe id="dashPreview" src="about:blank" title="Goldirham Stack live dashboard preview" loading="lazy"></iframe>
+    </div>
 
-      <h1>
-        <span class="highlight">Goldirham Stack</span><br>
-        AI Infrastructure <span class="highlight-green">Intelligence</span>
-      </h1>
+    <div class="ticker" aria-hidden="true">
+      <div class="ticker-track" id="tickerTrack"></div>
+    </div>
+    <p class="sample-note">ILLUSTRATIVE PIPELINE TIMELINE — A TYPICAL RUN</p>
+  </div>
+</section>
 
-      <p>
-        Collects <strong>68 RSS feeds</strong>, analyzes them with <strong>two-tier AI routing</strong>,
-        extracts <strong>SEC filings</strong> from 35 companies via two-pass extraction,
-        mines <strong>earnings call transcripts</strong> from 15 companies with guidance delta,
-        and delivers a curated morning digest — straight to your Telegram and live analytics dashboard.
-      </p>
-
-      <div class="hero-actions">
-        <a href="/dashboard/" class="btn-primary">🚀 View Live Dashboard</a>
-        <a href="https://t.me/ai_infra_digest_bot" target="_blank" rel="noopener" class="btn-secondary">🤖 Try the Bot</a>
+<!-- ══════════ BRIEF ══════════ -->
+<section id="brief">
+  <div class="wrap brief-grid">
+    <div class="tg-card" data-reveal>
+      <div class="tg-head">
+        <div class="tg-ava" aria-hidden="true">G</div>
+        <div><div class="n">Goldirham Stack</div><div class="h">Telegram · your preferred time</div></div>
+        <span class="stag">SAMPLE</span>
       </div>
-
-      <div class="hero-stats">
-        <div class="hero-stat"><span class="num">68</span> <span class="label">RSS Feeds</span></div>
-        <span class="sep">·</span>
-        <div class="hero-stat"><span class="num">10</span> <span class="label">Sectors</span></div>
-        <span class="sep">·</span>
-        <div class="hero-stat"><span class="num">35</span> <span class="label">Companies</span></div>
-        <span class="sep">·</span>
-        <div class="hero-stat"><span class="num">&lt;$2</span> <span class="label">/month</span></div>
-      </div>
-
-      <div class="github-link-row">
-        ★ <a href="https://github.com/ixtaqq/ai-infra-digest" target="_blank" rel="noopener">Star on GitHub</a>
-      </div>
-
-      <!-- Dashboard Preview -->
-      <div class="hero-preview">
-        <div class="hero-preview-header">
-          <span class="hero-preview-dot red"></span>
-          <span class="hero-preview-dot yellow"></span>
-          <span class="hero-preview-dot green"></span>
-          <span class="hero-preview-title">Goldirham Stack — Live Dashboard</span>
-        </div>
-        <iframe id="dashPreview" src="about:blank" title="AI Infra Dashboard Preview" loading="lazy"></iframe>
+      <div class="tg-body" id="tgBody" data-reveal>
+        <span class="h1l tg-item" style="--d:.1s">📡 MORNING DIGEST</span><br>
+        <span class="tg-item" style="--d:.3s"><b>📊 Market Pulse:</b> NVDA mentions <span class="up">+32% WoW</span> · Datacenters <span class="up">+18% WoW</span></span><br>
+        <span class="tg-item" style="--d:.5s"><b>🏛️ SEC:</b> 5 new filings · 2 high-impact · capex &amp; guidance extracted</span><br>
+        <span class="h2l tg-item" style="--d:.7s">▸ 🎙️ EARNINGS WATCH</span>
+        <span class="tg-item" style="--d:.85s">Guidance delta QoQ · management tone <span class="up">bullish (8/10)</span></span><br>
+        <span class="tg-item" style="--d:1s">Cooling suppliers <span class="dn">▼ cautious</span> — watch contract pricing</span><br>
+        <span class="h2l tg-item" style="--d:1.15s">▸ 🔬 DAILY DEEP-DIVE</span>
+        <span class="tg-item" style="--d:1.3s">Top-scoring story gets a full 🟢 bull / 🔴 bear / 📊 context thesis</span><br>
+        <span class="tg-item" style="--d:1.45s">⚠️ Bear case attached to every article scoring ≥ 7/10</span><br>
+        <span class="tg-item" style="--d:1.6s">👍 / 👎 buttons on the top 3 — your votes retrain source trust</span>
       </div>
     </div>
-  </section>
-
-  <!-- Stats Section -->
-  <div class="stats-section">
-    <div class="container">
-      <div class="stats-grid">
-        <div class="stat-item animate delay-1">
-          <div class="stat-number"><span class="orange">68</span></div>
-          <div class="stat-label">RSS Feeds Tracked</div>
-        </div>
-        <div class="stat-item animate delay-1">
-          <div class="stat-number"><span class="green">10</span></div>
-          <div class="stat-label">Sectors Covered</div>
-        </div>
-        <div class="stat-item animate delay-2">
-          <div class="stat-number"><span class="orange">35</span></div>
-          <div class="stat-label">SEC Companies</div>
-        </div>
-        <div class="stat-item animate delay-2">
-          <div class="stat-number"><span class="green">19</span></div>
-          <div class="stat-label">Database Tables</div>
-        </div>
+    <div>
+      <div class="sec-head" data-reveal>
+        <span class="kicker">// 01 · THE BRIEF</span>
+        <h2><span class="mask"><span>One digest.</span></span><span class="mask" style="--d:.15s"><span>Zero <span class="lime">noise</span>.</span></span></h2>
       </div>
+      <div class="bp" data-reveal style="--d:.1s"><div class="k">RELEVANCE GATE</div><p>Every article scored <b>1–10</b> for AI-infra relevance, then passed through a <b>semantic gate</b> (cosine &lt; 0.55 vs 20 canonical seeds) — off-topic filler never reaches you.</p></div>
+      <div class="bp" data-reveal style="--d:.25s"><div class="k">TRUST-WEIGHTED RANKING</div><p>Vote-learned source multipliers, editorial tiers (<b>1.2×</b> Reuters/WSJ, <b>0.8×</b> vendor PR), PR-wire dampening and 48h novelty decay decide the order.</p></div>
+      <div class="bp" data-reveal style="--d:.4s"><div class="k">MULTI-CHANNEL</div><p>Telegram, Slack and Gmail fan out in parallel at <b>your preferred time</b> — Slack or email failures never block Telegram.</p></div>
     </div>
   </div>
+</section>
 
-  <!-- Live Ticker -->
-  <div class="ticker-section" aria-hidden="true">
-    <div class="ticker-track" id="tickerTrack">
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:00</span> NVIDIA files 8-K — $26B capex</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:02</span> Article analysis complete — 142 articles processed</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:04</span> Earnings transcripts fetched — 5 calls analyzed</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:07</span> SEC filings analyzed — 5 new filings, 2 high-impact</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:10</span> Stock prices updated — 30 tickers via Yahoo Finance</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:12</span> 🎙️ Earnings Watch generated — guidance delta computed</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:13</span> 📊 Derived metrics: 45 rows written to daily_derived_metrics</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:14</span> ⚖️ Trust scores: effectiveScore computed — TechCrunch 1.2× · NVIDIA Blog 0.8×</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:14</span> ⚠️ Bear cases: 5 devil's advocate counter-arguments generated (score ≥7)</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:14</span> 🔢 Embeddings: 28/28 vectors generated · semantic corroboration map rebuilt</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:15</span> 🎯 Semantic gate: 3 off-topic articles dropped (cosine &lt; 0.55 vs 20 AI-infra seeds)</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:15</span> 📊 Market Pulse: NVDA mentions +32% WoW · Datacenters +18% WoW</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:16</span> Digest delivered to Telegram/Slack/Gmail + 19 tables updated in Supabase</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:00</span> NVIDIA files 8-K — $26B capex</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:02</span> Article analysis complete — 142 articles processed</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:04</span> Earnings transcripts fetched — 5 calls analyzed</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:07</span> SEC filings analyzed — 5 new filings, 2 high-impact</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:10</span> Stock prices updated — 30 tickers via Yahoo Finance</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:12</span> 🎙️ Earnings Watch generated — guidance delta computed</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:13</span> 📊 Derived metrics: 45 rows written to daily_derived_metrics</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:14</span> ⚖️ Trust scores: effectiveScore computed — TechCrunch 1.2× · NVIDIA Blog 0.8×</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:14</span> ⚠️ Bear cases: 5 devil's advocate counter-arguments generated (score ≥7)</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:14</span> 🔢 Embeddings: 28/28 vectors generated · semantic corroboration map rebuilt</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:15</span> 🎯 Semantic gate: 3 off-topic articles dropped (cosine &lt; 0.55 vs 20 AI-infra seeds)</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:15</span> 📊 Market Pulse: NVDA mentions +32% WoW · Datacenters +18% WoW</span>
-      <span class="ticker-item"><span class="dot"></span> <span class="ts">08:16</span> Digest delivered to Telegram/Slack/Gmail + 19 tables updated in Supabase</span>
+<!-- ══════════ FEATURES ══════════ -->
+<section id="features">
+  <div class="wrap">
+    <div class="sec-head" data-reveal>
+      <span class="kicker">// 02 · CAPABILITIES</span>
+      <h2><span class="mask"><span>Full value chain <span class="lime">coverage</span>.</span></span></h2>
+      <p>From semiconductor manufacturing to power utilities — every layer of the AI infrastructure stack monitored daily.</p>
+    </div>
+    <div class="feat-grid">
+      <div class="feat" data-reveal style="--d:.05s"><span class="tag">FEEDS</span><span class="ic" aria-hidden="true">📡</span><h3>RSS News Collection</h3><p>68 feeds across 10 sectors — NVIDIA and TSMC to Vertiv and Constellation Energy. Conditional GET caching, retry with jitter, auto-skip for dead feeds.</p></div>
+      <div class="feat" data-reveal style="--d:.12s"><span class="tag">CORE</span><span class="ic" aria-hidden="true">🧠</span><h3>Two-Tier AI Routing</h3><p>Classification on a fast 8B model, synthesis on a strong 70B model. Saves <strong>40–60%</strong> on AI cost — about 3,000 tokens per day in total.</p></div>
+      <div class="feat" data-reveal style="--d:.19s"><span class="tag">SEC</span><span class="ic" aria-hidden="true">🏛️</span><h3>SEC Two-Pass Extraction</h3><p>Free keyword pre-filter → fast-model flagging (~$0.0005) → strong-model extraction (~$0.01). Capex, AI revenue, margins and guidance from 35 companies.</p></div>
+      <div class="feat" data-reveal style="--d:.26s"><span class="tag">EDGE</span><span class="ic" aria-hidden="true">🎙️</span><h3>Earnings Transcript Mining</h3><p>Transcripts for 15 AI companies via Roic.ai. Topic segmentation then guidance extraction, with QoQ guidance delta and management tone.</p></div>
+      <div class="feat" data-reveal style="--d:.33s"><span class="tag">MARKET</span><span class="ic" aria-hidden="true">📊</span><h3>Stock &amp; Market Data</h3><p>Yahoo Finance snapshots for 30+ tickers, stored daily. Tracks price deltas and sector rotation for every mentioned stock.</p></div>
+      <div class="feat" data-reveal style="--d:.4s"><span class="tag">LAYER</span><span class="ic" aria-hidden="true">📈</span><h3>Intelligence Layer</h3><p>Materializes <code>daily_derived_metrics</code> every run. Market Pulse surfaces WoW movers ≥ 20%; <code>/trends NVDA 30d</code> renders a Unicode sparkline.</p></div>
+      <div class="feat" data-reveal style="--d:.47s"><span class="tag">TRUST</span><span class="ic" aria-hidden="true">⚖️</span><h3>Trust-Weighted Ranking</h3><p>👍/👎 votes learn per-source multipliers. Cosine-similarity corroboration boosts stories confirmed by several outlets; ⚠️ bear cases challenge the rest.</p></div>
+      <div class="feat" data-reveal style="--d:.54s"><span class="tag">SEMANTIC</span><span class="ic" aria-hidden="true">🔢</span><h3>Embeddings + pgvector</h3><p>OpenAI vectors in Supabase with an IVFFlat index. Same story, different headline now clusters correctly — and off-topic articles get gated out.</p></div>
+      <div class="feat" data-reveal style="--d:.61s"><span class="tag">SHIP</span><span class="ic" aria-hidden="true">🖥️</span><h3>Premium Live Dashboard</h3><p>Graphite + copper terminal UI. Auth gate, 6 charts, SEC filings table, full-text search, expandable rows with bear cases, auto-refresh every 60s.</p></div>
+    </div>
+    <div class="chips" data-reveal>
+      <span class="chip" style="--d:.05s">Chips &amp; GPUs</span>
+      <span class="chip" style="--d:.1s">Cloud &amp; Hyperscalers</span>
+      <span class="chip" style="--d:.15s">Datacenters</span>
+      <span class="chip" style="--d:.2s">Networking</span>
+      <span class="chip" style="--d:.25s">Semiconductor Manufacturing</span>
+      <span class="chip" style="--d:.3s">Power &amp; Utilities</span>
+      <span class="chip" style="--d:.35s">Cooling Infrastructure</span>
+      <span class="chip" style="--d:.4s">AI Models &amp; Labs</span>
+      <span class="chip" style="--d:.45s">M&amp;A</span>
+      <span class="chip" style="--d:.5s">Earnings</span>
     </div>
   </div>
+</section>
 
-  <!-- Terminal Demo -->
-  <div class="terminal-section">
-    <div class="container section-center">
-      <div class="section-label animate">Live Demo</div>
-      <h2 class="section-title animate">Pipeline in Action</h2>
-      <p class="section-sub animate">Watch the infrastructure intelligence pipeline process 200+ articles in under 15 minutes.</p>
+<!-- ══════════ HOW IT WORKS ══════════ -->
+<section id="how">
+  <div class="wrap">
+    <div class="sec-head mid" data-reveal>
+      <span class="kicker">// 03 · HOW IT WORKS</span>
+      <h2><span class="mask"><span>Feeds in. <span class="lime">Signal out.</span></span></span></h2>
+    </div>
+    <div class="pipe" data-reveal>
+      <div class="pipe-line" aria-hidden="true"></div>
+      <div class="step" data-reveal style="--d:.1s"><div class="node" style="--pd:0s" aria-hidden="true">📡</div><div class="no">STAGE 01</div><h4>COLLECT<span>.</span></h4><p><b>68 feeds</b> + SEC EDGAR + transcripts</p></div>
+      <div class="step" data-reveal style="--d:.25s"><div class="node" style="--pd:.4s" aria-hidden="true">🧠</div><div class="no">STAGE 02</div><h4>ANALYZE<span>.</span></h4><p>two-tier routing · <b>40–60% cheaper</b></p></div>
+      <div class="step" data-reveal style="--d:.4s"><div class="node" style="--pd:.8s" aria-hidden="true">🏛️</div><div class="no">STAGE 03</div><h4>EXTRACT<span>.</span></h4><p>two-pass SEC · <b>35 companies</b></p></div>
+      <div class="step" data-reveal style="--d:.55s"><div class="node" style="--pd:1.2s" aria-hidden="true">📈</div><div class="no">STAGE 04</div><h4>MATERIALIZE<span>.</span></h4><p>derived metrics · <b>WoW movers</b></p></div>
+      <div class="step" data-reveal style="--d:.7s"><div class="node" style="--pd:1.6s" aria-hidden="true">📨</div><div class="no">STAGE 05</div><h4>DELIVER<span>.</span></h4><p>Telegram · Slack · Gmail · <b>&lt;$2/mo</b></p></div>
+    </div>
 
-      <div class="terminal-window animate">
-        <div class="terminal-bar">
-          <span class="terminal-dot red"></span>
-          <span class="terminal-dot yellow"></span>
-          <span class="terminal-dot green"></span>
-          <span class="terminal-title">goldirham-pipeline — zsh</span>
-        </div>
-        <div class="terminal-body" id="terminalBody">
-          <div class="line"><span class="prompt">$</span> <span class="cmd">./run-digest --full</span></div>
-          <div class="line"><span class="out" id="termLine1"></span></div>
-          <div class="line"><span class="out" id="termLine2"></span></div>
-          <div class="line"><span class="out" id="termLine3"></span></div>
-          <div class="line"><span class="out" id="termLine4"></span></div>
-          <div class="line"><span class="out" id="termLine5"></span></div>
-          <div class="line"><span class="out" id="termLine6"></span></div>
-          <div class="line"><span class="out" id="termLine7"></span></div>
-          <div class="line"><span class="out" id="termLine8"></span></div>
-          <div class="line"><span class="out" id="termLine9"></span></div>
-          <div class="line"><span class="out" id="termLine10"></span></div>
-          <div class="line" id="termCursor"><span class="cursor"></span></div>
-        </div>
+    <div class="term" data-reveal style="margin-top:70px">
+      <div class="win-bar">
+        <span class="dot r" aria-hidden="true"></span><span class="dot y" aria-hidden="true"></span><span class="dot g" aria-hidden="true"></span>
+        <span class="win-title">goldirham-pipeline — zsh</span>
       </div>
+      <div class="term-body" id="terminalBody">
+        <div class="tline"><span class="prompt">$</span><span class="cmd">./run-digest --full</span></div>
+        <div class="tline"><span class="out" id="termLine1"></span></div>
+        <div class="tline"><span class="out" id="termLine2"></span></div>
+        <div class="tline"><span class="out" id="termLine3"></span></div>
+        <div class="tline"><span class="out" id="termLine4"></span></div>
+        <div class="tline"><span class="out" id="termLine5"></span></div>
+        <div class="tline"><span class="out" id="termLine6"></span></div>
+        <div class="tline"><span class="out" id="termLine7"></span></div>
+        <div class="tline"><span class="out" id="termLine8"></span></div>
+        <div class="tline"><span class="ok" id="termLine9"></span></div>
+        <div class="tline" id="termCursor"><span class="caret" aria-hidden="true"></span></div>
+      </div>
+    </div>
+    <p class="sample-note">ILLUSTRATIVE OUTPUT — NUMBERS VARY PER RUN</p>
+  </div>
+</section>
+
+<!-- ══════════ TECH ══════════ -->
+<section id="tech">
+  <div class="wrap">
+    <div class="sec-head mid" data-reveal>
+      <span class="kicker">// 04 · TECHNOLOGY</span>
+      <h2><span class="mask"><span>TypeScript <span class="lime">end to end</span>.</span></span></h2>
+      <p>Designed for low cost — the whole pipeline runs on the GitHub Actions free tier.</p>
+    </div>
+    <div class="tech" data-reveal>
+      <span class="t">📘 TypeScript</span>
+      <span class="t">🧠 Two-Tier AI (8B + 70B)</span>
+      <span class="t">💬 Telegram Bot API</span>
+      <span class="t">📬 Slack + Gmail</span>
+      <span class="t">📊 Supabase</span>
+      <span class="t">📈 Chart.js</span>
+      <span class="t">🏛️ SEC EDGAR</span>
+      <span class="t">💰 Yahoo Finance</span>
+      <span class="t">⚙️ GitHub Actions</span>
+      <span class="t">🔢 pgvector + Embeddings</span>
     </div>
   </div>
+</section>
 
-  <!-- Features -->
-  <section id="features">
-    <div class="container">
-      <div class="section-label animate">Capabilities</div>
-      <h2 class="section-title animate">Full Value Chain Coverage</h2>
-      <p class="section-sub animate">
-        From semiconductor manufacturing to power utilities — every layer of the AI infrastructure stack monitored daily.
-      </p>
+<!-- ══════════ ROADMAP ══════════ -->
+<section id="roadmap">
+  <div class="wrap">
+    <div class="sec-head" data-reveal>
+      <span class="kicker">// 05 · ROADMAP</span>
+      <h2><span class="mask"><span>Shipping in <span class="lime">public</span>.</span></span></h2>
+      <p>Thirteen phases shipped. Every candidate is diagnosed for real demand before a line of code gets written.</p>
+    </div>
+    <div class="road" data-reveal>
 
-      <div class="features-grid animate">
-        <div class="feature-card delay-1">
-          <span class="icon">📡</span>
-          <h3>RSS News Collection</h3>
-          <p>68 feeds across 10 sectors — from NVIDIA and TSMC to Vertiv and Constellation Energy. Conditional GET caching minimises bandwidth.</p>
-        </div>
-        <div class="feature-card delay-1">
-          <span class="icon">🧠</span>
-          <h3>Two-Tier AI Routing</h3>
-          <p>Classification via fast 8B model (llama-3.1), synthesis via strong 70B model (llama-3.3). Saves 40–60% on AI costs — ~3,000 tokens/day total.</p>
-        </div>
-        <div class="feature-card delay-2">
-          <span class="icon">📊</span>
-          <h3>Stock &amp; Market Data</h3>
-          <p>Yahoo Finance price snapshots for 30+ tickers. Tracks changes and sector rotation for every mentioned stock.</p>
-        </div>
-        <div class="feature-card delay-2">
-          <span class="icon">🎙️</span>
-          <h3>Earnings Transcript Mining</h3>
-          <p>Fetches earnings calls via Roic.ai API for 15 AI companies. Two-pass AI: topic segmentation (fast) + guidance extraction &amp; tone (strong). QoQ guidance delta with &#x2191;&#x2193; arrows.</p>
-        </div>
-        <div class="feature-card delay-3">
-          <span class="icon">🏛️</span>
-          <h3>SEC Two-Pass Extraction</h3>
-          <p>Keyword pre-filter (free) → fast model flagging (~$0.0005) → strong model extraction (~$0.01). Capex, AI Revenue, Margins, Guidance from 35 companies. 🏛️ badge on filing articles.</p>
-        </div>
-        <div class="feature-card delay-3">
-          <span class="icon">📈</span>
-          <h3>Intelligence Layer</h3>
-          <p>Materializes a <code>daily_derived_metrics</code> table every run. "What Changed" Market Pulse block in each digest shows WoW mention movers ≥20%. <code>/trends NVDA 30d</code> renders a Unicode sparkline + delta.</p>
-        </div>
-        <div class="feature-card delay-3">
-          <span class="icon">⚖️</span>
-          <h3>Trust-Weighted Ranking</h3>
-          <p>Vote-learned source multipliers from 👍/👎 feedback. Static editorial tiers (1.2× for Reuters/WSJ, 0.8× for vendor PR). Corroboration boost (+5% per extra source) now uses <strong>cosine similarity</strong> for smarter story clustering. ⚠️ Bear cases for high-impact articles.</p>
-        </div>
-        <div class="feature-card delay-3">
-          <span class="icon">🤖</span>
-          <h3>Telegram Bot + Digest</h3>
-          <p>Delivered at your preferred time with /digest, /trends, /sec, /sources quality commands. 🏛️ SEC badges + 🎙️ Earnings Watch + 📊 Market Pulse + ⚠️ bear cases included.</p>
-        </div>
-        <div class="feature-card delay-3">
-          <span class="icon">🖥️</span>
-          <h3>Premium Live Dashboard</h3>
-          <p>Graphite + copper terminal UI. Auth gate, 6 charts, SEC filings table, full‑text search, expandable article rows with bear cases and thumbs scores, auto-refresh every 60 s.</p>
-        </div>
+      <div class="ri" data-reveal style="--d:.05s">
+        <span class="q">PHASE I &amp; II</span><span class="st done">SHIPPED</span>
+        <h4>Foundation + Intelligence</h4>
+        <ul>
+          <li>RSS feeds · conditional GET caching · Jaccard dedup</li>
+          <li>Two-tier AI routing — 8B classification + 70B synthesis, 40–60% cheaper</li>
+          <li>SEC EDGAR two-pass extraction for 35 companies</li>
+          <li>Earnings transcript mining with QoQ guidance delta · Yahoo Finance for 30+ tickers</li>
+        </ul>
+      </div>
+
+      <div class="ri" data-reveal style="--d:.1s">
+        <span class="q">PHASE III &amp; IV</span><span class="st done">SHIPPED</span>
+        <h4>Reliability + Platform</h4>
+        <ul>
+          <li>Fan-out delivery — generate once, personalize per user</li>
+          <li>4-step onboarding · digest length · watchlist · alert threshold</li>
+          <li>AI response cache (SHA-256, 23h TTL) · budget cap alerts</li>
+          <li>Dashboard auth gate · expandable article rows · 6 Chart.js charts</li>
+        </ul>
+      </div>
+
+      <div class="ri" data-reveal style="--d:.15s">
+        <span class="q">PHASE V</span><span class="st done">SHIPPED</span>
+        <h4>Intelligence Layer</h4>
+        <ul>
+          <li><code>daily_derived_metrics</code> — ticker &amp; sector rows every pipeline run</li>
+          <li>"What Changed" Market Pulse block in the digest header (WoW movers ≥ 20%)</li>
+          <li><code>/trends NVDA 30d</code> — Unicode sparkline ▁▂▄▆█ + WoW delta + price</li>
+        </ul>
+      </div>
+
+      <div class="ri" data-reveal style="--d:.2s">
+        <span class="q">PHASE VI</span><span class="st done">SHIPPED</span>
+        <h4>Validation + Trust</h4>
+        <ul>
+          <li>👍/👎 inline validation on the top 3 articles, idempotent per user</li>
+          <li>Trust-weighted ranking — vote-learned multipliers drive order and effectiveScore</li>
+          <li>Editorial tiers 1.2× · vendor PR 0.8× · corroboration boost +5% per extra source</li>
+          <li>⚠️ Devil's Advocate bear cases for high-impact articles (≥ 7/10)</li>
+        </ul>
+      </div>
+
+      <div class="ri" data-reveal style="--d:.25s">
+        <span class="q">PHASE VII</span><span class="st done">SHIPPED</span>
+        <h4>Sharper Signal</h4>
+        <ul>
+          <li>Relevance scoring — 1–10 AI-infra rating; off-topic filler dropped before ranking</li>
+          <li>Anchored impact rubric — scores ≥ 8 require a justification sentence</li>
+          <li>PR wire dampening — BusinessWire/PRNewswire/GlobeNewswire capped at 6</li>
+          <li>48h novelty detection — rehashed stories get a 0.6× multiplier</li>
+        </ul>
+      </div>
+
+      <div class="ri" data-reveal style="--d:.3s">
+        <span class="q">PHASE VIII</span><span class="st done">SHIPPED</span>
+        <h4>Semantic Core</h4>
+        <ul>
+          <li>Embeddings + pgvector — OpenAI vectors in Supabase, IVFFlat index for fast cosine search</li>
+          <li>Semantic corroboration — cosine similarity (0.85) replaces Jaccard</li>
+          <li>Semantic relevance gate — 20 canonical seeds, dropped at cosine &lt; 0.55</li>
+          <li>Security hardening — token redacted, <code>WEBHOOK_SECRET</code> required, RLS tightened</li>
+        </ul>
+      </div>
+
+      <div class="ri" data-reveal style="--d:.35s">
+        <span class="q">PHASE IX</span><span class="st done">SHIPPED</span>
+        <h4>Stabilization + Channels</h4>
+        <ul>
+          <li>Multi-channel delivery — Telegram, Slack (HTML→mrkdwn) and Gmail in parallel</li>
+          <li>Cross-source grounding — each article linked to same-run filings, earnings or stock moves</li>
+          <li>🔬 Daily Deep-Dive — top article gets a full bull/bear/context thesis, no extra round-trip</li>
+        </ul>
+      </div>
+
+      <div class="ri" data-reveal style="--d:.4s">
+        <span class="q">PHASE X</span><span class="st done">SHIPPED</span>
+        <h4>Hardening + Thesis Layer</h4>
+        <ul>
+          <li>🧭 Bull/Bear thesis snapshots per top-10 ticker from 30d of pipeline data</li>
+          <li>RLS hardening — 9 tables' write policies scoped to <code>service_role</code></li>
+          <li>Repaired all 10 dead RSS feeds — 68/68 sources healthy, up from 57/68</li>
+        </ul>
+      </div>
+
+      <div class="ri" data-reveal style="--d:.45s">
+        <span class="q">PHASE XI</span><span class="st done">SHIPPED</span>
+        <h4>Demand-First Discipline</h4>
+        <ul>
+          <li>Every candidate diagnosed before any code — demand evidence required first</li>
+          <li>💰 Price Watch — <code>/watch TICKER PRICE</code> threshold ping, no new polling infra</li>
+          <li>📊 <code>/coverage TICKER</code> + thesis evolution history from data already collected</li>
+        </ul>
+      </div>
+
+      <div class="ri" data-reveal style="--d:.5s">
+        <span class="q">PHASE XII</span><span class="st done">SHIPPED</span>
+        <h4>Production Hardening</h4>
+        <ul>
+          <li>🔧 Fixed a real production bug — 6+ commands were registered and tested but unreachable from the live bot</li>
+          <li>One generic command dispatcher + a routing-seam test so the gap can't recur</li>
+          <li>📈 Durable command usage logging · 🛡️ CodeQL in CI · schema drift fixed</li>
+        </ul>
+      </div>
+
+      <div class="ri now" data-reveal style="--d:.55s">
+        <span class="q">PHASE XIII</span><span class="st wip">LATEST</span>
+        <h4>Intelligence Connections</h4>
+        <ul>
+          <li>Persisted <code>corroboration_count</code>, <code>grounding_text</code>, <code>effective_score</code> — enabling historical confidence-trend analysis</li>
+          <li>Fixed a second bug in the same path: <code>is_sec_filing</code> was dropped before the insert</li>
+          <li><code>/thesis</code> now grounded in the same per-article coverage <code>/coverage</code> shows</li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ SETUP ══════════ -->
+<section id="setup">
+  <div class="wrap">
+    <div class="sec-head mid" data-reveal>
+      <span class="kicker">// 06 · SETUP</span>
+      <h2><span class="mask"><span>Run it in <span class="lime">5 minutes</span>.</span></span></h2>
+      <p>All you need is a Telegram bot token and a Groq API key (free tier). No credit card required.</p>
+    </div>
+    <div class="term" data-reveal>
+      <div class="win-bar">
+        <span class="dot r" aria-hidden="true"></span><span class="dot y" aria-hidden="true"></span><span class="dot g" aria-hidden="true"></span>
+        <span class="win-title">analyst@stack: ~/ai-infra-digest</span>
+      </div>
+      <div class="term-body">
+        <div class="tline"><span class="comment"># Clone &amp; install</span></div>
+        <div class="tline"><span class="prompt">$</span><span class="cmd">git clone https://github.com/ixtaqq/ai-infra-digest.git</span></div>
+        <div class="tline"><span class="prompt">$</span><span class="cmd">cd ai-infra-digest &amp;&amp; npm install</span></div>
+        <div class="tline">&nbsp;</div>
+        <div class="tline"><span class="comment"># Add your API keys</span></div>
+        <div class="tline"><span class="prompt">$</span><span class="cmd">cp .env.example .env &amp;&amp; nano .env</span></div>
+        <div class="tline">&nbsp;</div>
+        <div class="tline"><span class="comment"># Run the full pipeline</span></div>
+        <div class="tline"><span class="prompt">$</span><span class="cmd">npm run dev</span></div>
+        <div class="tline">&nbsp;</div>
+        <div class="tline"><span class="comment"># 241 unit tests, no credentials needed</span></div>
+        <div class="tline"><span class="prompt">$</span><span class="cmd">npm run test:unit</span></div>
+        <div class="tline"><span class="ok">  ✓ 241 unit tests passing <span class="caret" aria-hidden="true"></span></span></div>
       </div>
     </div>
-  </section>
-
-  <!-- Pipeline -->
-  <section id="pipeline">
-    <div class="container section-center">
-      <div class="section-label animate">How It Works</div>
-      <h2 class="section-title animate">Data Pipeline</h2>
-      <p class="section-sub animate">
-        Four stages process over 200 articles into actionable intelligence, delivered straight to your Telegram.
-      </p>
-
-      <div class="pipeline-flow animate">
-        <div class="pipeline-step">
-          <div class="num">1</div>
-          <div class="step-label">Collect</div>
-          <div class="step-desc">68 RSS feeds + SEC EDGAR + earnings transcripts</div>
-        </div>
-        <span class="pipeline-arrow">→</span>
-        <div class="pipeline-step">
-          <div class="num">2</div>
-          <div class="step-label">Analyze</div>
-          <div class="step-desc">Two-tier AI · SEC two-pass · cached responses</div>
-        </div>
-        <span class="pipeline-arrow">→</span>
-        <div class="pipeline-step">
-          <div class="num">3</div>
-          <div class="step-label">Materialize</div>
-          <div class="step-desc">Write daily_derived_metrics · compute WoW movers</div>
-        </div>
-        <span class="pipeline-arrow">→</span>
-        <div class="pipeline-step">
-          <div class="num">4</div>
-          <div class="step-label">Deliver</div>
-          <div class="step-desc">Fan-out per user · Market Pulse header · dashboard</div>
-        </div>
-      </div>
+    <div class="setup-cta" data-reveal>
+      <button class="btn btn-orange" id="copyCmd">⧉ Copy install command</button>
+      <a class="btn" href="/dashboard/">Back to the dashboard ↑</a>
     </div>
-  </section>
+  </div>
+</section>
 
-  <!-- Tech Stack -->
-  <section>
-    <div class="container section-center">
-      <div class="section-label animate">Technology</div>
-      <h2 class="section-title animate">Built with Modern Tools</h2>
-      <p class="section-sub animate">
-        TypeScript end‑to‑end. Designed for low cost — runs on GitHub Actions free tier.
-      </p>
-
-      <div class="tech-strip animate">
-        <span class="tech-chip"><span class="chip-icon">📘</span> TypeScript</span>          <span class="tech-chip"><span class="chip-icon">🧠</span> Two-Tier AI (8B + 70B)</span>
-        <span class="tech-chip"><span class="chip-icon">💬</span> Telegram Bot API</span>
-        <span class="tech-chip"><span class="chip-icon">📬</span> Slack + Gmail</span>
-        <span class="tech-chip"><span class="chip-icon">📊</span> Supabase</span>
-        <span class="tech-chip"><span class="chip-icon">📈</span> Chart.js</span>
-        <span class="tech-chip"><span class="chip-icon">🏛️</span> SEC EDGAR</span>
-        <span class="tech-chip"><span class="chip-icon">💰</span> Yahoo Finance</span>
-        <span class="tech-chip"><span class="chip-icon">⚙️</span> GitHub Actions</span>
-        <span class="tech-chip"><span class="chip-icon">🔢</span> pgvector + Embeddings</span>
-      </div>
+<!-- ══════════ FINAL CTA ══════════ -->
+<section class="final">
+  <div class="wrap" data-reveal>
+    <h2><span class="mask"><span>Ready to build <span class="lime">your own?</span></span></span></h2>
+    <p>Star the repository, deploy your own instance, and start receiving daily AI infrastructure intelligence.</p>
+    <div class="setup-cta">
+      <a class="btn btn-orange" href="/dashboard/">🚀 View Live Dashboard</a>
+      <a class="btn" href="https://github.com/ixtaqq/ai-infra-digest" target="_blank" rel="noopener">★ Star on GitHub</a>
+      <a class="btn" href="https://t.me/ai_infra_digest_bot" target="_blank" rel="noopener">🤖 Try the Bot</a>
     </div>
-  </section>
+  </div>
+</section>
+</main>
 
-  <!-- Roadmap -->
-  <section id="roadmap">
-    <div class="container">
-      <div class="roadmap-wrap animate">
-        <div class="roadmap-top">
-          <h2>What ships <span>next.</span></h2>
-          <span class="catalyst-label">Catalysts</span>
-        </div>
+<footer>
+  <span>✦ <strong>Goldirham Stack</strong> by <a href="https://github.com/ixtaqq" target="_blank" rel="noopener">ixtaqq</a> — built in the open · MIT</span>
+  <span class="foot-links">
+    <a href="/dashboard/">Dashboard</a>
+    <a href="https://github.com/ixtaqq/ai-infra-digest" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://t.me/ai_infra_digest_bot" target="_blank" rel="noopener">Telegram Bot</a>
+    <a href="#top">back to top ↑</a>
+  </span>
+</footer>
 
-        <div class="roadmap-grid">
-          <!-- Phase I+II -->
-          <div class="phase-card status-live delay-1">
-            <div class="phase-top">
-              <span class="phase-num">Phase I &amp; II</span>
-              <span class="badge badge-live">Shipped</span>
-            </div>
-            <div class="phase-title-text">Foundation + Intelligence.</div>
-            <ul class="feature-list">
-              <li>57 RSS feeds · conditional GET caching · Jaccard dedup</li>
-              <li>Two-tier AI routing — 8B classification + 70B synthesis, 40–60% cheaper</li>
-              <li>SEC EDGAR two-pass extraction for 35 companies</li>
-              <li>🎙️ Earnings transcript mining with QoQ guidance delta</li>
-              <li>Yahoo Finance snapshots · 30+ tickers with price deltas</li>
-            </ul>
-          </div>
+<script>
+(function(){
+"use strict";
+var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+var finePtr = window.matchMedia('(pointer:fine)').matches;
+var REPO = 'https://github.com/ixtaqq/ai-infra-digest';
+var BOT  = 'https://t.me/ai_infra_digest_bot';
 
-          <!-- Phase III+IV -->
-          <div class="phase-card status-live delay-2">
-            <div class="phase-top">
-              <span class="phase-num">Phase III &amp; IV</span>
-              <span class="badge badge-live">Shipped</span>
-            </div>
-            <div class="phase-title-text">Reliability + Platform.</div>
-            <ul class="feature-list">
-              <li>Fan-out delivery — generate once, personalize per user</li>
-              <li>4-step onboarding · digest_length · watchlist · alert threshold</li>
-              <li>AI response cache (SHA-256, 23h TTL) · budget cap alerts</li>
-              <li>Dashboard auth gate · expandable article rows · 6 Chart.js charts</li>
-              <li>34 unit tests · CI on every push · Supabase CLI migrations</li>
-            </ul>
-          </div>
+/* ---------- toast ---------- */
+var toastEl = document.getElementById('toast'), toastT = null;
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastT);
+  toastT = setTimeout(function(){ toastEl.classList.remove('show'); }, 2400);
+}
 
-          <!-- Phase V -->
-          <div class="phase-card status-live delay-2">
-            <div class="phase-top">
-              <span class="phase-num">Phase V</span>
-              <span class="badge badge-live">Shipped</span>
-            </div>
-            <div class="phase-title-text">Intelligence Layer.</div>
-            <ul class="feature-list">
-              <li>daily_derived_metrics — ticker &amp; sector rows, every pipeline run</li>
-              <li>"What Changed" Market Pulse block in digest header (WoW movers ≥20%)</li>
-              <li>/trends NVDA 30d — Unicode sparkline ▁▂▄▆█ + WoW delta + price</li>
-              <li>Backfill script — seeds up to 90 days from historical data, idempotent</li>
-            </ul>
-          </div>
+/* ---------- custom cursor ---------- */
+if (finePtr && !reduce){
+  var dot = document.getElementById('curDot'), ring = document.getElementById('curRing');
+  var cx = innerWidth/2, cy = innerHeight/2, rx = cx, ry = cy, hov = false;
+  window.addEventListener('mousemove', function(e){
+    // only take over the cursor once the pointer has actually moved,
+    // otherwise the dot sits parked at 0,0 on load
+    document.documentElement.classList.add('ccur');
+    cx = e.clientX; cy = e.clientY;
+    dot.style.transform = 'translate(' + (cx-3) + 'px,' + (cy-3) + 'px)';
+  }, {passive:true});
+  document.addEventListener('mouseover', function(e){
+    hov = !!(e.target.closest && e.target.closest('a,button,.feat,.chip,.step,.bp,.t'));
+  });
+  (function cl(){
+    rx += (cx-rx)*.16; ry += (cy-ry)*.16;
+    ring.style.transform = 'translate(' + (rx-17) + 'px,' + (ry-17) + 'px) scale(' + (hov ? 1.55 : 1) + ')';
+    ring.style.borderColor = hov ? 'var(--lime)' : 'var(--orange)';
+    requestAnimationFrame(cl);
+  })();
+}
 
-          <!-- Phase VI -->
-          <div class="phase-card status-live delay-3">
-            <div class="phase-top">
-              <span class="phase-num">Phase VI</span>
-              <span class="badge badge-live">Shipped</span>
-            </div>
-            <div class="phase-title-text">Validation + Trust.</div>
-            <ul class="feature-list">
-              <li>👍/👎 inline validation buttons — top-3 articles per digest, idempotent per-user votes</li>
-              <li>Trust-weighted ranking — vote-learned multipliers drive article order and effectiveScore</li>
-              <li>Static credibility tiers — editorial sources 1.2×, vendor PR 0.8× from day one</li>
-              <li>Corroboration boost — +5% per extra source reporting same story</li>
-              <li>⚠️ Devil's Advocate bear cases — skeptical AI counter-argument for high-impact articles (≥7/10)</li>
-            </ul>
-          </div>
+/* ---------- nav: dock morph + progress ---------- */
+var navWrap = document.getElementById('navWrap'), navProg = document.getElementById('navProg');
+window.addEventListener('scroll', function(){
+  var h = document.documentElement;
+  navWrap.classList.toggle('scrolled', h.scrollTop > 40);
+  navProg.style.transform = 'scaleX(' + (h.scrollTop / Math.max(1, h.scrollHeight - h.clientHeight)) + ')';
+  if (h.scrollTop < 240) setActive(null);
+}, {passive:true});
 
-          <div class="phase-card status-live delay-4">
-            <div class="phase-top">
-              <span class="phase-num">Phase VII</span>
-              <span class="badge badge-live">Shipped</span>
-            </div>
-            <div class="phase-title-text">Sharper Signal.</div>
-            <ul class="feature-list">
-              <li>Relevance scoring — AI rates each article's AI-infra relevance (1–10); off-topic filler dropped before ranking</li>
-              <li>Anchored impact rubric — calibrated 1–10 scale with tier anchors; scores ≥8 require a justification sentence</li>
-              <li>PR wire dampening — BusinessWire/PRNewswire/GlobeNewswire capped at effectiveScore 6, never competing with independent reporting</li>
-              <li>48h novelty detection — rehashed stories get 0.6× multiplier; breaking news always surfaces first</li>
-              <li>75 unit tests — source credibility, novelty detection, trust layer fully covered</li>
-            </ul>
-          </div>
+/* ---------- sliding indicator + scrollspy ---------- */
+var navLinks = document.getElementById('navLinks'), ind = document.getElementById('navInd');
+var linkEls = Array.prototype.slice.call(navLinks.querySelectorAll('a'));
+var activeEl = null, hoverLock = false;
+function moveInd(el){
+  if (!el){ ind.style.opacity = 0; return; }
+  ind.style.opacity = 1;
+  ind.style.left = el.offsetLeft + 'px';
+  ind.style.width = el.offsetWidth + 'px';
+}
+function setActive(id){
+  activeEl = null;
+  linkEls.forEach(function(a){
+    var on = a.getAttribute('data-sec') === id;
+    a.classList.toggle('active', on);
+    if (on) activeEl = a;
+  });
+  if (!hoverLock) moveInd(activeEl);
+}
+navLinks.addEventListener('mouseover', function(e){
+  var a = e.target.closest('a');
+  if (a){ hoverLock = true; moveInd(a); }
+});
+navLinks.addEventListener('mouseleave', function(){ hoverLock = false; moveInd(activeEl); });
+window.addEventListener('resize', function(){ moveInd(activeEl); });
+window.addEventListener('load', function(){ moveInd(activeEl); });
+var spy = new IntersectionObserver(function(es){
+  es.forEach(function(en){ if (en.isIntersecting) setActive(en.target.id); });
+},{rootMargin:'-42% 0px -52% 0px'});
+['brief','features','how','roadmap','setup'].forEach(function(id){
+  var el = document.getElementById(id);
+  if (el) spy.observe(el);
+});
 
-          <div class="phase-card status-live delay-5">
-            <div class="phase-top">
-              <span class="phase-num">Phase VIII</span>
-              <span class="badge badge-live">Shipped</span>
-            </div>
-            <div class="phase-title-text">Semantic Core.</div>
-            <ul class="feature-list">
-              <li>Embeddings + pgvector — OpenAI text-embedding-3-small vectors stored in Supabase; IVFFlat index for fast cosine search</li>
-              <li>Semantic corroboration — cosine similarity (0.85) replaces Jaccard; same story, different headline now clusters correctly</li>
-              <li>Semantic relevance gate — 20 canonical AI-infra seed sentences; off-topic articles dropped at cosine &lt; 0.55</li>
-              <li>Security hardening — compromised token redacted, WEBHOOK_SECRET required in production, RLS tightened on 4 tables</li>
-            </ul>
-          </div>
+/* ---------- mobile menu ---------- */
+var burger = document.getElementById('burger'), mmenu = document.getElementById('mmenu');
+function closeMenu(){
+  mmenu.classList.remove('open');
+  burger.classList.remove('open');
+  burger.setAttribute('aria-expanded','false');
+}
+burger.addEventListener('click', function(){
+  var open = !mmenu.classList.contains('open');
+  mmenu.classList.toggle('open', open);
+  burger.classList.toggle('open', open);
+  burger.setAttribute('aria-expanded', String(open));
+});
+mmenu.querySelectorAll('a').forEach(function(a){ a.addEventListener('click', closeMenu); });
 
-          <div class="phase-card status-live delay-1">
-            <div class="phase-top">
-              <span class="phase-num">Phase IX</span>
-              <span class="badge badge-live">Shipped</span>
-            </div>
-            <div class="phase-title-text">Stabilization + Channels.</div>
-            <ul class="feature-list">
-              <li>Multi-channel delivery — Telegram, Slack (HTML→mrkdwn), and Gmail fan out in parallel; Slack/email failures never block Telegram</li>
-              <li>Cross-source grounding — each article annotated with a one-line note linking it to same-run SEC filings, earnings, or stock moves</li>
-              <li>🔬 Daily Deep-Dive — the top-scoring article gets a full bull/bear/context thesis, no extra AI round-trip</li>
-              <li>TypeScript clean, crash guards, seed embedding cache — zero-error baseline, 59 unit tests</li>
-            </ul>
-          </div>
+/* ---------- command palette ---------- */
+var pal = document.getElementById('pal'), palInput = document.getElementById('palInput'), palList = document.getElementById('palList');
+var palOpen = false, palSel = 0, palItems = [];
+function go(id){
+  closePal();
+  setTimeout(function(){
+    var el = document.getElementById(id);
+    if (el) el.scrollIntoView({behavior: reduce ? 'auto' : 'smooth'});
+  }, 60);
+}
+function open(url){ closePal(); window.open(url, '_blank', 'noopener'); }
+function copyInstall(){
+  var cmd = 'git clone ' + REPO + '.git';
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(cmd).then(
+      function(){ toast('✔ install command copied to clipboard'); },
+      function(){ toast(cmd); });
+  } else toast(cmd);
+  closePal();
+}
+var PAL = [
+  {l:'Go to · Brief', h:'SECTION', run:function(){ go('brief'); }},
+  {l:'Go to · Features', h:'SECTION', run:function(){ go('features'); }},
+  {l:'Go to · How it works', h:'SECTION', run:function(){ go('how'); }},
+  {l:'Go to · Technology', h:'SECTION', run:function(){ go('tech'); }},
+  {l:'Go to · Roadmap', h:'SECTION', run:function(){ go('roadmap'); }},
+  {l:'Go to · Setup', h:'SECTION', run:function(){ go('setup'); }},
+  {l:'Go to · Live dashboard preview', h:'SECTION', run:function(){ go('demo'); }},
+  {l:'Go to · Back to top', h:'NAV', run:function(){ go('top'); }},
+  {l:'Open · Live dashboard', h:'PAGE', run:function(){ closePal(); location.href = '/dashboard/'; }},
+  {l:'Open · GitHub repository', h:'EXTERNAL', run:function(){ open(REPO); }},
+  {l:'Open · Telegram bot', h:'EXTERNAL', run:function(){ open(BOT); }},
+  {l:'Action · Copy install command', h:'CLIPBOARD', run:copyInstall}
+];
+function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function renderPal(){
+  var q = palInput.value.trim().toLowerCase();
+  palItems = PAL.filter(function(it){ return it.l.toLowerCase().indexOf(q) !== -1; });
+  if (palSel >= palItems.length) palSel = 0;
+  if (!palItems.length){ palList.innerHTML = '<div class="pal-empty">no matches — try "brief", "setup", "copy"…</div>'; return; }
+  var h = '';
+  palItems.forEach(function(it, i){
+    h += '<div class="pi' + (i === palSel ? ' sel' : '') + '" data-i="' + i + '"><span>' + esc(it.l) + '</span><span class="phh">' + esc(it.h) + '</span></div>';
+  });
+  palList.innerHTML = h;
+}
+function openPal(){
+  palOpen = true; pal.classList.add('open'); closeMenu();
+  palInput.value = ''; palSel = 0; renderPal();
+  setTimeout(function(){ palInput.focus(); }, 60);
+}
+function closePal(){ palOpen = false; pal.classList.remove('open'); }
+document.getElementById('kOpen').addEventListener('click', openPal);
+document.getElementById('kOpenM').addEventListener('click', openPal);
+document.getElementById('palHint').addEventListener('click', openPal);
+pal.addEventListener('click', function(e){ if (e.target === pal) closePal(); });
+palInput.addEventListener('input', function(){ palSel = 0; renderPal(); });
+palInput.addEventListener('keydown', function(e){
+  if (e.key === 'ArrowDown'){ e.preventDefault(); palSel = Math.min(palItems.length-1, palSel+1); renderPal(); }
+  else if (e.key === 'ArrowUp'){ e.preventDefault(); palSel = Math.max(0, palSel-1); renderPal(); }
+  else if (e.key === 'Enter'){ if (palItems[palSel]) palItems[palSel].run(); }
+});
+palList.addEventListener('click', function(e){
+  var pi = e.target.closest('.pi');
+  if (pi && palItems[+pi.getAttribute('data-i')]) palItems[+pi.getAttribute('data-i')].run();
+});
+palList.addEventListener('mouseover', function(e){
+  var pi = e.target.closest('.pi');
+  if (pi){ palSel = +pi.getAttribute('data-i'); renderPal(); }
+});
+document.addEventListener('keydown', function(e){
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k'){ e.preventDefault(); palOpen ? closePal() : openPal(); }
+  else if (e.key === 'Escape'){ closePal(); closeMenu(); }
+});
 
-          <div class="phase-card status-live delay-2">
-            <div class="phase-top">
-              <span class="phase-num">Phase X</span>
-              <span class="badge badge-live">Shipped</span>
-            </div>
-            <div class="phase-title-text">Hardening + Thesis Layer.</div>
-            <ul class="feature-list">
-              <li>🧭 Bull/Bear Thesis Snapshots — weekly AI narrative per top-10 ticker from 30d of pipeline data; <code>/thesis NVDA</code> + dashboard card</li>
-              <li>RLS hardening — 9 tables' write policies scoped to service_role, closing a client-exposed anon-key write path</li>
-              <li>Repaired all 10 permanently-dead RSS feeds — 68/68 sources healthy, up from 57/68</li>
-              <li>84 unit tests, parallelized AI batches, actions pinned to commit SHAs, non-root container</li>
-            </ul>
-          </div>
+/* ---------- copy button ---------- */
+document.getElementById('copyCmd').addEventListener('click', copyInstall);
 
-          <div class="phase-card status-live delay-3">
-            <div class="phase-top">
-              <span class="phase-num">Phase XI</span>
-              <span class="badge badge-live">Shipped</span>
-            </div>
-            <div class="phase-title-text">Demand-First Discipline.</div>
-            <ul class="feature-list">
-              <li>Every candidate diagnosed via <code>/office-hours</code> before any code — demand evidence required first</li>
-              <li>💰 Price Watch (v12) — <code>/watch TICKER PRICE</code> one-shot threshold ping, checked per digest cycle, no new polling infra</li>
-              <li>📊 <code>/coverage TICKER</code> + thesis evolution history — longitudinal per-ticker view from data already collected</li>
-              <li>Source Leaderboard found already shipped (<code>/sources quality</code>); Related Prior Coverage killed for zero demand evidence</li>
-            </ul>
-          </div>
+/* ---------- logo spark burst ---------- */
+document.getElementById('logoBtn').addEventListener('click', function(e){
+  if (reduce) return;
+  for (var i = 0; i < 20; i++){
+    var s = document.createElement('span');
+    s.textContent = '✦';
+    s.style.cssText = 'position:fixed;z-index:999;pointer-events:none;font-size:14px;left:' + e.clientX + 'px;top:' + e.clientY + 'px;color:' +
+      (Math.random() < .5 ? '#ff6b2b' : '#8cff00') + ';animation:burst .85s ease forwards;--tx:' +
+      (Math.cos(i)*(50+Math.random()*70)) + 'px;--ty:' + (Math.sin(i)*(50+Math.random()*70)) + 'px';
+    document.body.appendChild(s);
+    (function(el){ setTimeout(function(){ el.remove(); }, 900); })(s);
+  }
+});
 
-          <div class="phase-card status-live delay-1">
-            <div class="phase-top">
-              <span class="phase-num">Phase XII</span>
-              <span class="badge badge-live">Shipped</span>
-            </div>
-            <div class="phase-title-text">Production Hardening.</div>
-            <ul class="feature-list">
-              <li>🔧 Fixed a real production bug — 6+ commands (<code>/alert</code>, <code>/sec</code>, <code>/trends</code>, <code>/thesis</code>, <code>/coverage</code>, <code>/watch</code>) were registered, documented, and unit-tested, but silently unreachable from the live bot since v2.0</li>
-              <li>One generic command dispatcher replaces the hand-written per-command routing; a new routing-seam test drives the real bot so this class of gap can't recur</li>
-              <li>📈 Durable command usage logging — answers "does this feature actually get used?" with data, not guesses</li>
-              <li>🛡️ CodeQL static security analysis added to CI; <code>supabase-schema.sql</code> drift fixed (was 13 tables documented vs. 18 actual)</li>
-              <li>Deployed the webhook live on Render and verified end-to-end via a real Telegram smoke test</li>
-            </ul>
-          </div>
+/* ---------- reveal ---------- */
+var rio = new IntersectionObserver(function(es){
+  es.forEach(function(en){ if (en.isIntersecting){ en.target.classList.add('in'); rio.unobserve(en.target); } });
+},{threshold:.15});
+document.querySelectorAll('[data-reveal]').forEach(function(el){ rio.observe(el); });
 
-          <div class="phase-card status-live delay-2">
-            <div class="phase-top">
-              <span class="phase-num">Phase XIII</span>
-              <span class="badge badge-live">Shipped</span>
-            </div>
-            <div class="phase-title-text">Intelligence Connections.</div>
-            <ul class="feature-list">
-              <li>Persisted <code>corroboration_count</code>, <code>grounding_text</code>, <code>effective_score</code> to <code>articles</code> — was computed fresh every run and discarded, now enables historical confidence-trend analysis</li>
-              <li>Found and fixed a second real bug in the same code path: <code>is_sec_filing</code> was silently dropped before ever reaching the database insert</li>
-              <li>🧭 <code>/thesis</code>'s weekly AI narrative now grounded in the same per-article coverage <code>/coverage</code> shows, instead of aggregate stats alone</li>
-              <li>Four more roadmap candidates deliberately parked pending real demand evidence, not built speculatively</li>
-            </ul>
-          </div>
+/* ---------- counters ---------- */
+function runCount(el){
+  var target = parseFloat(el.getAttribute('data-count'));
+  var pre = el.getAttribute('data-prefix') || '';
+  var dec = parseInt(el.getAttribute('data-dec') || '0', 10);
+  var comma = el.getAttribute('data-comma') === '1';
+  function fmt(v){
+    var s = dec ? v.toFixed(dec) : String(Math.round(v));
+    if (comma) s = Math.round(v).toLocaleString('en-US');
+    return pre + s;
+  }
+  if (reduce){ el.textContent = fmt(target); return; }
+  var t0 = null;
+  function tick(t){
+    if (!t0) t0 = t;
+    var p = Math.min(1, (t-t0)/1600), e = 1 - Math.pow(1-p, 3);
+    el.textContent = fmt(target*e);
+    if (p < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+var cio = new IntersectionObserver(function(es){
+  es.forEach(function(en){ if (en.isIntersecting){ runCount(en.target); cio.unobserve(en.target); } });
+},{threshold:.5});
+document.querySelectorAll('[data-count]').forEach(function(el){ cio.observe(el); });
 
-        </div>
-      </div>
-    </div>
-  </section>
+/* ---------- hero data-rain canvas ---------- */
+var rainC = document.getElementById('rain'), rctx = rainC.getContext('2d');
+var rw = 0, rh = 0, drops = [], CH = '01<>/$#%&=+*✦';
+function sizeRain(){
+  var dpr = Math.min(2, window.devicePixelRatio || 1);
+  rw = rainC.offsetWidth; rh = rainC.offsetHeight;
+  rainC.width = rw*dpr; rainC.height = rh*dpr;
+  rctx.setTransform(dpr,0,0,dpr,0,0);
+  drops = [];
+  var cols = Math.floor(rw/32);
+  for (var i = 0; i < cols; i++){
+    drops.push({x:i*32 + Math.random()*18, y:Math.random()*rh, s:1.4 + Math.random()*3, lime:Math.random() < .22});
+  }
+}
+function rainLoop(){
+  rctx.clearRect(0,0,rw,rh);
+  rctx.font = '12px "IBM Plex Mono", monospace';
+  for (var i = 0; i < drops.length; i++){
+    var d = drops[i];
+    rctx.fillStyle = d.lime ? 'rgba(140,255,0,.4)' : 'rgba(255,107,43,.32)';
+    rctx.fillText(CH[(Math.random()*CH.length)|0], d.x, d.y);
+    d.y += d.s;
+    if (d.y > rh + 12){ d.y = -12; d.x = Math.random()*rw; }
+  }
+  requestAnimationFrame(rainLoop);
+}
+sizeRain();
+window.addEventListener('resize', sizeRain);
+if (!reduce) requestAnimationFrame(rainLoop);
 
-  <!-- Setup -->
-  <section id="setup">
-    <div class="container">
-      <div class="section-label animate">Get Started</div>
-      <h2 class="section-title animate">Run in 5 Minutes</h2>
-      <p class="section-sub animate">
-        All you need is a Telegram bot token and a Groq API key (free tier). No credit card required. Two-tier AI routing saves 40-60% on costs.
-      </p>
+/* ---------- feature spotlight ---------- */
+document.querySelectorAll('.feat').forEach(function(card){
+  card.addEventListener('mousemove', function(e){
+    var r = card.getBoundingClientRect();
+    card.style.setProperty('--mx', ((e.clientX-r.left)/r.width*100) + '%');
+    card.style.setProperty('--my', ((e.clientY-r.top)/r.height*100) + '%');
+  });
+});
 
-      <div class="terminal-block animate">
-        <div><span class="comment"># Clone &amp; install</span></div>
-        <div><span class="prompt">$</span> <span class="cmd">git clone https://github.com/ixtaqq/ai-infra-digest.git</span></div>
-        <div><span class="prompt">$</span> <span class="cmd">cd ai-infra-digest &amp;&amp; npm install</span></div>
-        <div>&nbsp;</div>
-        <div><span class="comment"># Add your API keys</span></div>
-        <div><span class="prompt">$</span> <span class="cmd">cp .env.example .env &amp;&amp; nano .env</span></div>
-        <div>&nbsp;</div>
-        <div><span class="comment"># Run the full pipeline</span></div>
-        <div><span class="prompt">$</span> <span class="cmd">npm run dev</span></div>
-        <div><span class="comment"># Or test with sample data</span></div>
-        <div><span class="prompt">$</span> <span class="cmd">npm run test-digest</span></div>
-        <div>&nbsp;</div>
-        <div><span class="comment"># 241 unit tests, no credentials needed</span></div>
-        <div><span class="prompt">$</span> <span class="cmd">npm run test:unit</span></div>
-        <div><span class="output">  ✓ 241 unit tests passing</span></div>
-      </div>
-    </div>
-  </section>
+/* ---------- ticker ---------- */
+var TICKS = [
+  ['08:00', 'NVIDIA files 8-K — capex figures extracted'],
+  ['08:02', 'Article analysis complete — 142 articles processed'],
+  ['08:04', 'Earnings transcripts fetched — 5 calls analyzed'],
+  ['08:07', 'SEC filings analyzed — 5 new filings, 2 high-impact'],
+  ['08:10', 'Stock prices updated — 30 tickers via Yahoo Finance'],
+  ['08:12', '🎙️ Earnings Watch generated — guidance delta computed'],
+  ['08:13', '📊 Derived metrics written to daily_derived_metrics'],
+  ['08:14', '⚖️ Trust scores — editorial 1.2× · vendor PR 0.8×'],
+  ['08:14', "⚠️ Bear cases — devil's advocate counter-arguments (score ≥ 7)"],
+  ['08:14', '🔢 Embeddings generated · semantic corroboration map rebuilt'],
+  ['08:15', '🎯 Semantic gate — off-topic articles dropped (cosine < 0.55)'],
+  ['08:15', '📊 Market Pulse — NVDA mentions +32% WoW · Datacenters +18% WoW'],
+  ['08:16', 'Digest delivered to Telegram / Slack / Gmail + Supabase updated']
+];
+var track = document.getElementById('tickerTrack');
+if (track){
+  var html = '';
+  for (var pass = 0; pass < 2; pass++){
+    TICKS.forEach(function(t){
+      html += '<span class="ticker-item"><span class="tdot"></span><span class="ts">' + t[0] + '</span>' + esc(t[1]) + '</span>';
+    });
+  }
+  track.innerHTML = html;
+}
 
-  <!-- CTA -->
-  <section class="cta-section" style="border:none">
-    <div class="container">
-      <h2 class="animate">Ready to Build Your Own?</h2>
-      <p class="animate">
-        Star the repository, deploy your own instance, and start receiving daily AI infrastructure intelligence.
-      </p>
-      <div class="hero-actions animate">
-        <a href="/dashboard/" class="btn-primary">🚀 View Live Dashboard</a>
-        <a href="https://github.com/ixtaqq/ai-infra-digest" target="_blank" rel="noopener" class="btn-secondary">★ Star on GitHub</a>
-      </div>
-    </div>
-  </section>
+/* ---------- terminal typing ---------- */
+var terminalLines = [
+  { id:'termLine1', text:'→ RSS: 68 feeds fetched (32 cached, 304)' },
+  { id:'termLine2', text:'→ Dedup: 142 unique articles (23 duplicates)' },
+  { id:'termLine3', text:'→ AI: classification batch 1/4 — fast model' },
+  { id:'termLine4', text:'→ AI: synthesis pass — market outlook generated' },
+  { id:'termLine5', text:'→ Earnings: 5 transcripts analyzed — guidance delta computed' },
+  { id:'termLine6', text:'→ SEC: 5 new filings analyzed — 2 high-impact' },
+  { id:'termLine7', text:'→ Embeddings: vectors generated · cosine corroboration rebuilt' },
+  { id:'termLine8', text:'→ Semantic gate: off-topic articles dropped (cosine < 0.55)' },
+  { id:'termLine9', text:'✔ Digest delivered — Telegram · Slack · Gmail' }
+];
+function typeLine(el, text, done){
+  if (!el){ if (done) done(); return; }
+  var i = 0;
+  (function type(){
+    if (i < text.length){ el.textContent += text.charAt(i++); setTimeout(type, 14 + Math.random()*18); }
+    else if (done) done();
+  })();
+}
+function startTerminal(){
+  var cursor = document.getElementById('termCursor');
+  if (reduce){
+    terminalLines.forEach(function(l){
+      var el = document.getElementById(l.id);
+      if (el) el.textContent = l.text;
+    });
+    if (cursor) cursor.style.display = 'none';
+    return;
+  }
+  (function next(i){
+    if (i >= terminalLines.length){ if (cursor) cursor.style.display = 'none'; return; }
+    var el = document.getElementById(terminalLines[i].id);
+    typeLine(el, terminalLines[i].text, function(){ setTimeout(function(){ next(i+1); }, 160); });
+  })(0);
+}
+var termObserver = new IntersectionObserver(function(es){
+  es.forEach(function(en){
+    if (en.isIntersecting){ startTerminal(); termObserver.unobserve(en.target); }
+  });
+},{threshold:.3});
+var terminalBody = document.getElementById('terminalBody');
+if (terminalBody) termObserver.observe(terminalBody);
 
-  </main>
-
-  <!-- Footer -->
-  <footer class="footer">
-    <div class="container">
-      <div class="footer-links">
-        <a href="/dashboard/">Dashboard</a>
-        <a href="https://github.com/ixtaqq/ai-infra-digest" target="_blank" rel="noopener">GitHub</a>
-        <a href="https://t.me/ai_infra_digest_bot" target="_blank" rel="noopener">Telegram Bot</a>
-        <a href="#features">Features</a>
-        <a href="#pipeline">Pipeline</a>
-        <a href="#roadmap">Roadmap</a>
-        <a href="#setup">Setup</a>
-      </div>
-      <div class="footer-copy">
-        <strong>Goldirham Stack</strong> by <a href="https://github.com/ixtaqq" target="_blank" rel="noopener">ixtaqq</a> ·
-        <a href="https://groq.com" target="_blank" rel="noopener">Groq</a> · <a href="https://supabase.com" target="_blank" rel="noopener">Supabase</a> ·
-        Powered by <a href="https://vercel.com" target="_blank" rel="noopener">Vercel</a>
-      </div>
-    </div>
-  </footer>
-
-  <script>
-    // ─── Scroll Animations ──
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('visible');
-          observer.unobserve(entry.target);
-        }
-      });
-    }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
-    document.querySelectorAll('.animate').forEach(el => observer.observe(el));
-
-    // ─── Terminal Typing Animation ──
-    const terminalLines = [
-      { id: 'termLine1', text: '→ RSS: 68 feeds fetched (32 cached, 304)', delay: 600 },
-      { id: 'termLine2', text: '→ Dedup: 142 unique articles (23 duplicates)', delay: 1400 },
-      { id: 'termLine3', text: '→ AI: Processing batch 1/4 — 12 articles', delay: 2400 },
-      { id: 'termLine4', text: '→ AI: Synthesis pass — market outlook generated', delay: 3600 },
-      { id: 'termLine5', text: '→ Earnings: 5 transcripts analyzed — guidance delta computed', delay: 4200 },
-      { id: 'termLine6', text: '→ SEC: 5 new filings analyzed — 2 high-impact', delay: 5200 },
-      { id: 'termLine7', text: '→ Embeddings: 28/28 vectors generated · cosine corroboration rebuilt', delay: 6200 },
-      { id: 'termLine8', text: '→ Semantic gate: 3 off-topic articles dropped (cosine < 0.55)', delay: 7200 },
-      { id: 'termLine9', text: '→ Telegram: Digest sent — 25 articles + Earnings Watch + Market Pulse', delay: 8400 },
-      { id: 'termLine10', text: '→ Weekly: 10 bull/bear thesis snapshots generated for top tickers', delay: 9400 },
-    ];
-
-    function typeLine(element, text, callback) {
-      if (!element) { if (callback) callback(); return; }
-      let i = 0;
-      function type() {
-        if (i < text.length) {
-          element.textContent += text.charAt(i);
-          i++;
-          setTimeout(type, 15 + Math.random() * 20);
-        } else if (callback) {
-          callback();
-        }
-      }
-      type();
+/* ---------- dashboard iframe: only load on live domain ---------- */
+var iframe = document.getElementById('dashPreview');
+if (iframe){
+  var proto = window.location.protocol, host = window.location.hostname;
+  var servedOverHttp = (proto === 'http:' || proto === 'https:');
+  var isLocal = (host === 'localhost' || host === '127.0.0.1');
+  if (servedOverHttp && !isLocal){
+    iframe.src = '/dashboard/';
+  } else {
+    iframe.remove();
+    var win = document.querySelector('#demo .window');
+    if (win){
+      var fb = document.createElement('div');
+      fb.className = 'iframe-fallback';
+      fb.innerHTML = '📊 Dashboard preview appears here once deployed. <a href="/dashboard/">Open full dashboard →</a>';
+      win.appendChild(fb);
     }
-
-    function startTerminalAnimation() {
-      const cursor = document.getElementById('termCursor');
-      function animateLine(index) {
-        if (index >= terminalLines.length) return;
-        const line = terminalLines[index];
-        setTimeout(() => {
-          const el = document.getElementById(line.id);
-          if (el) {
-            typeLine(el, line.text, () => {
-              if (index === terminalLines.length - 1 && cursor) {
-                cursor.style.display = 'none';
-              }
-              animateLine(index + 1);
-            });
-          }
-        }, line.delay - (terminalLines[index - 1]?.delay || 0));
-      }
-      animateLine(0);
-    }
-
-    // Start terminal animation when visible
-    const termObserver = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          startTerminalAnimation();
-          termObserver.unobserve(entry.target);
-        }
-      });
-    }, { threshold: 0.3 });
-    const terminalBody = document.getElementById('terminalBody');
-    if (terminalBody) termObserver.observe(terminalBody);
-
-    // ─── Dashboard iframe: only load on live domain ──
-    const iframe = document.getElementById('dashPreview');
-    if (iframe && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && window.location.protocol !== 'file:') {
-      iframe.src = '/dashboard/';
-    } else if (iframe) {
-      iframe.style.display = 'none';
-      const parent = iframe.parentElement;
-      if (parent) {
-        const fallback = document.createElement('div');
-        fallback.style.cssText = 'padding:32px;text-align:center;color:rgba(255,255,255,0.55);font-size:13px;background:#0a0a0a';
-        fallback.innerHTML = '📊 Dashboard preview will appear here once deployed. ' +
-          '<a href="/dashboard/" style="color:#FF6B2C;text-decoration:none;font-weight:600">Open full dashboard →</a>';
-        parent.appendChild(fallback);
-      }
-    }
-  </script>
+  }
+}
+})();
+</script>
 </body>
 </html>
