@@ -1252,8 +1252,11 @@
 
     // ─── Helpers ──
     function fmtNum(n) { return (n||0).toLocaleString(); }
-    function fmtDate(d) { try { return new Date(d).toLocaleDateString('en-MY',{timeZone:'Asia/Kuala_Lumpur'}); } catch { return d; } }
-    function fmtShortDate(d) { try { const dt=new Date(d); return dt.toLocaleDateString('en-MY',{timeZone:'Asia/Kuala_Lumpur',month:'short',day:'numeric'}); } catch { return d; } }
+    // On the happy path these return a formatted date with no markup. The
+    // catch branch hands back the raw DB value, and most call sites drop the
+    // result straight into innerHTML — so escape the fallback, not the format.
+    function fmtDate(d) { try { return new Date(d).toLocaleDateString('en-MY',{timeZone:'Asia/Kuala_Lumpur'}); } catch { return escapeHtml(d); } }
+    function fmtShortDate(d) { try { const dt=new Date(d); return dt.toLocaleDateString('en-MY',{timeZone:'Asia/Kuala_Lumpur',month:'short',day:'numeric'}); } catch { return escapeHtml(d); } }
     function sentimentClass(i) { return i==='Bullish'?'sentiment-bullish':i==='Bearish'?'sentiment-bearish':'sentiment-neutral'; }
     function sentimentArrow(i) { return i==='Bullish'?'▲':i==='Bearish'?'▼':'▬'; }
     function fmtPct(n) { return (n>=0?'+':'')+(n||0).toFixed(1)+'%'; }
@@ -1573,8 +1576,18 @@
         const active = activeTickers.includes(t);
         const idx = tickers.indexOf(t);
         const color = TICKER_COLORS[idx % TICKER_COLORS.length];
-        return `<button onclick="toggleTicker('${t}')" style="border-color:${active ? color : 'var(--border)'};background:${active ? color + '22' : 'transparent'};color:${active ? color : 'var(--text-dim)'};font-weight:${active ? '600' : '500'}">${t}</button>`;
+        // ticker comes from the DB — carry it on a data attribute instead of
+        // interpolating into an inline handler (see the sector filter pills)
+        return `<button data-ticker="${escapeHtml(t)}" style="border-color:${active ? color : 'var(--border)'};background:${active ? color + '22' : 'transparent'};color:${active ? color : 'var(--text-dim)'};font-weight:${active ? '600' : '500'}">${escapeHtml(t)}</button>`;
       }).join('');
+      // one delegated listener; the container element is never replaced
+      if (!toggleEl.dataset.wired) {
+        toggleEl.dataset.wired = '1';
+        toggleEl.addEventListener('click', e => {
+          const btn = e.target.closest('button[data-ticker]');
+          if (btn) toggleTicker(btn.dataset.ticker);
+        });
+      }
       document.getElementById('tickerBadge').textContent = `${activeTickers.length} shown`;
       const allDates = [...new Set(prices.map(p => p.date))].sort();
       if (!allDates.length) return;
@@ -1882,7 +1895,7 @@
           : '';
         const safeUrl = safeHref(a.url);
         const thumbs = (a.thumbs_up || a.thumbs_down)
-          ? `<span style="font-size:10px;color:var(--text-muted);margin-left:8px">👍 ${a.thumbs_up||0} · 👎 ${a.thumbs_down||0}</span>`
+          ? `<span style="font-size:10px;color:var(--text-muted);margin-left:8px">👍 ${Number(a.thumbs_up)||0} · 👎 ${Number(a.thumbs_down)||0}</span>`
           : '';
 
         const mainRow = `<tr id="article-row-${i}" style="cursor:pointer;transition:background 0.15s" onclick="toggleArticleExpand(${i})">` +
@@ -1942,7 +1955,7 @@
           <span style="font-size:11px;display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:var(--danger);display:inline-block"></span>${failing} failing</span>
           <span style="font-size:11px;color:var(--text-dim)">${entries.length} total feeds</span>
         </div>
-        ${entries.slice(0, 40).map(f => `<div class="feed-row"><span class="feed-status ${f.status}"></span><span style="flex:1;font-weight:500">${escapeHtml(f.feed_name)}</span><span style="color:var(--text-muted);font-size:10px;font-family:'IBM Plex Mono', monospace">${f.articles_fetched || 0}</span>${f.status === 'failed' ? `<span style="color:var(--danger);font-size:10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml((f.error_message || '').slice(0, 50))}</span>` : ''}</div>`).join('')}
+        ${entries.slice(0, 40).map(f => `<div class="feed-row"><span class="feed-status ${f.status === 'success' ? 'success' : f.status === 'failed' ? 'failed' : ''}"></span><span style="flex:1;font-weight:500">${escapeHtml(f.feed_name)}</span><span style="color:var(--text-muted);font-size:10px;font-family:'IBM Plex Mono', monospace">${Number(f.articles_fetched) || 0}</span>${f.status === 'failed' ? `<span style="color:var(--danger);font-size:10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml((f.error_message || '').slice(0, 50))}</span>` : ''}</div>`).join('')}
       `;
     }
 
@@ -1966,13 +1979,13 @@
         const fmtCapex = f.capex !== null && f.capex !== undefined ? `$${f.capex.toLocaleString()}M` : '—';
         const fmtAiRev = f.ai_revenue !== null && f.ai_revenue !== undefined ? `$${f.ai_revenue.toLocaleString()}M` : '—';
         const fmtMargins = [];
-        if (f.gross_margin !== null && f.gross_margin !== undefined) fmtMargins.push(`GM:${f.gross_margin}%`);
-        if (f.operating_margin !== null && f.operating_margin !== undefined) fmtMargins.push(`OM:${f.operating_margin}%`);
+        if (f.gross_margin !== null && f.gross_margin !== undefined) fmtMargins.push(`GM:${Number(f.gross_margin)}%`);
+        if (f.operating_margin !== null && f.operating_margin !== undefined) fmtMargins.push(`OM:${Number(f.operating_margin)}%`);
         const marginStr = fmtMargins.length > 0 ? fmtMargins.join(' ') : '—';
         const fmtGuide = f.revenue_guidance !== null && f.revenue_guidance !== undefined ? `$${f.revenue_guidance.toLocaleString()}M` : '—';
         html += `<tr><td><strong>${escapeHtml(f.ticker)}</strong><br><span style="font-size:9px;color:var(--text-muted)">${escapeHtml((f.company_name || '').slice(0, 30))}</span></td>
           <td><span style="font-size:10px;background:${formColor}22;color:${formColor};padding:1px 6px;border-radius:2px;font-weight:600">${escapeHtml(f.form_type)}</span></td>
-          <td style="font-size:10px;color:var(--text-dim);font-family:'IBM Plex Mono', monospace">${fmtDate(f.filing_date) || f.filing_date}</td>
+          <td style="font-size:10px;color:var(--text-dim);font-family:'IBM Plex Mono', monospace">${fmtDate(f.filing_date) || escapeHtml(f.filing_date)}</td>
           <td style="font-family:'IBM Plex Mono', monospace;font-size:11px">${fmtCapex}</td>
           <td style="font-family:'IBM Plex Mono', monospace;font-size:11px">${fmtAiRev}</td>
           <td style="font-family:'IBM Plex Mono', monospace;font-size:10px;color:var(--text-dim)">${marginStr}</td>
@@ -2019,7 +2032,7 @@
                 : ` <span style="color:var(--bearish)">(${delta})</span>`;
             return `<div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);padding:2px 0">
               <span style="font-family:'IBM Plex Mono', monospace">${escapeHtml(h.week_of || '')}</span>
-              <span>confidence ${h.confidence}/10${deltaHtml}</span>
+              <span>confidence ${Number(h.confidence)}/10${deltaHtml}</span>
             </div>`;
           }).join('');
           historyHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border-light)">${rows}</div>`;
@@ -2028,7 +2041,7 @@
         return `<div style="padding:10px 0;border-bottom:1px solid var(--border-light)">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
             <strong style="font-family:'IBM Plex Mono', monospace">${escapeHtml(t.ticker)}</strong>
-            <span style="color:${confColor};font-size:11px;font-weight:600">confidence ${t.confidence}/10</span>
+            <span style="color:${confColor};font-size:11px;font-weight:600">confidence ${Number(t.confidence)}/10</span>
             <span style="color:var(--text-muted);font-size:10px;margin-left:auto">${escapeHtml(updated)}</span>
           </div>
           <div style="font-size:12px;color:var(--text-dim);line-height:1.5;margin-bottom:4px">🟢 ${escapeHtml(t.bull_case)}</div>
@@ -2053,11 +2066,11 @@
       let items = [];
       try { items = JSON.parse(latest.trending_json); } catch { el.innerHTML = '<p style="color:var(--text-dim);padding:10px 0;font-size:12px">Could not parse trending data</p>'; return; }
       if (!items.length) { el.innerHTML = '<p style="color:var(--text-dim);padding:10px 0;font-size:12px">No trending entities</p>'; return; }
-      let html = `<div style="display:flex;gap:14px;margin-bottom:10px;flex-wrap:wrap"><span style="font-size:11px;display:flex;align-items:center;gap:6px">🔥 ${items.length} trending</span><span style="font-size:11px;color:var(--text-dim)">Based on ${latest.date}</span></div>`;
+      let html = `<div style="display:flex;gap:14px;margin-bottom:10px;flex-wrap:wrap"><span style="font-size:11px;display:flex;align-items:center;gap:6px">🔥 ${items.length} trending</span><span style="font-size:11px;color:var(--text-dim)">Based on ${escapeHtml(latest.date)}</span></div>`;
       for (const item of items.slice(0, 8)) {
         const te = item.type === 'ticker' ? '📈' : item.type === 'sector' ? '📊' : '🏢';
         const se = item.dominantSentiment === 'positive' ? '🟢' : item.dominantSentiment === 'negative' ? '🔴' : '⚪';
-        html += `<div class="feed-row"><span>${te}</span><span style="flex:1;font-weight:600;font-size:12px">${escapeHtml(item.entity)}</span><span style="color:var(--text-muted);font-size:10px">${item.mentionCount} mentions</span><span style="color:var(--text-dim);font-size:10px;font-family:'IBM Plex Mono', monospace">${item.avgScore}/10</span><span>${se}</span></div>`;
+        html += `<div class="feed-row"><span>${te}</span><span style="flex:1;font-weight:600;font-size:12px">${escapeHtml(item.entity)}</span><span style="color:var(--text-muted);font-size:10px">${Number(item.mentionCount)} mentions</span><span style="color:var(--text-dim);font-size:10px;font-family:'IBM Plex Mono', monospace">${Number(item.avgScore)}/10</span><span>${se}</span></div>`;
       }
       el.innerHTML = html;
     }
