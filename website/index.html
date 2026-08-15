@@ -194,9 +194,34 @@ h1 .l3>span{animation-delay:.55s;color:var(--lime);text-shadow:0 0 70px rgba(140
 .dot.r{background:#ff5f57}.dot.y{background:#febc2e}.dot.g{background:#28c840}
 .win-title{margin-left:12px;font-family:var(--mono);font-size:12px;color:var(--mut)}
 .win-title .live{color:var(--lime)}
-.window iframe{display:block;width:100%;height:560px;border:0;background:#0a0a0a}
-.iframe-fallback{padding:44px 24px;text-align:center;color:var(--mut);font-size:13.5px}
-.iframe-fallback a{color:var(--orange);font-weight:600}
+.dashboard-preview{padding:26px;background:linear-gradient(135deg,#111412 0%,#0b0d0c 52%,#11110d 100%);font-family:var(--mono);color:var(--mut)}
+.dashboard-preview-top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding-bottom:22px;border-bottom:1px solid var(--line)}
+.dashboard-preview-kicker{display:block;margin-bottom:7px;color:var(--mut2);font-size:10px;letter-spacing:.14em}
+.dashboard-preview-title{display:block;color:var(--text);font-family:var(--sans);font-size:18px;letter-spacing:-.02em}
+.dashboard-preview-live{display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid rgba(140,255,0,.25);border-radius:999px;color:var(--lime);font-size:10px;letter-spacing:.08em;white-space:nowrap}
+.dashboard-preview-live::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--lime);box-shadow:0 0 12px var(--lime)}
+.dashboard-preview-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:18px 0}
+.dashboard-preview-stat{padding:14px;border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,.025)}
+.dashboard-preview-stat span{display:block;color:var(--mut2);font-size:9px;letter-spacing:.1em}
+.dashboard-preview-stat strong{display:block;margin:7px 0 2px;color:var(--text);font-family:var(--sans);font-size:25px;font-weight:600;letter-spacing:-.04em}
+.dashboard-preview-stat small{color:var(--lime);font-size:10px}
+.dashboard-preview-grid{display:grid;grid-template-columns:1.4fr .9fr;gap:12px}
+.dashboard-preview-panel{min-height:214px;padding:16px;border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,.02)}
+.dashboard-preview-panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;color:var(--mut2);font-size:10px;letter-spacing:.08em}
+.dashboard-preview-panel-head strong{color:var(--orange);font-weight:500}
+.dashboard-preview-chart{display:block;width:100%;height:150px}
+.dashboard-preview-chart .gridline{stroke:rgba(255,255,255,.08);stroke-width:1}
+.dashboard-preview-chart .area{fill:url(#dashboardPreviewFill)}
+.dashboard-preview-chart .line{fill:none;stroke:var(--orange);stroke-linecap:round;stroke-linejoin:round;stroke-width:2.5}
+.dashboard-preview-signal{display:grid;grid-template-columns:8px 1fr auto;gap:10px;align-items:center;padding:12px 0;border-top:1px solid var(--line);font-size:11px}
+.dashboard-preview-panel-head + .dashboard-preview-signal{border-top:0;padding-top:2px}
+.dashboard-preview-signal i{width:7px;height:7px;border-radius:50%;background:var(--lime);box-shadow:0 0 10px rgba(140,255,0,.7)}
+.dashboard-preview-signal:last-child i{background:var(--orange);box-shadow:0 0 10px rgba(255,107,43,.7)}
+.dashboard-preview-signal b{display:block;color:var(--text);font-family:var(--sans);font-size:12px;font-weight:500}
+.dashboard-preview-signal span{display:block;margin-top:3px;color:var(--mut2);font-size:9px}
+.dashboard-preview-signal em{color:var(--lime);font-size:10px;font-style:normal}
+.dashboard-preview-foot{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-top:18px;color:var(--mut2);font-size:10px;letter-spacing:.08em}
+.dashboard-preview-foot a{color:var(--orange);font-weight:600;letter-spacing:.04em}
 
 /* ── ticker ── */
 .ticker{border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:rgba(0,0,0,.35);overflow:hidden;padding:14px 0;margin-top:34px}
@@ -321,11 +346,16 @@ footer a:hover{color:var(--lime)}
   .step p{margin-top:4px}
   .feat-grid{grid-template-columns:1fr 1fr}
   .brief-grid{grid-template-columns:1fr}
-  .window iframe{height:420px}
+  .dashboard-preview-grid{grid-template-columns:1fr}
 }
 @media(max-width:700px){.kchip span{display:none}}
 @media(max-width:640px){
   .feat-grid{grid-template-columns:1fr}
+  .dashboard-preview{padding:18px}
+  .dashboard-preview-top{display:block}
+  .dashboard-preview-live{margin-top:14px}
+  .dashboard-preview-stats{grid-template-columns:1fr 1fr}
+  .dashboard-preview-foot{align-items:flex-start;flex-direction:column}
   .nav{gap:10px;padding:10px 8px 10px 14px}
   .nav-wrap{padding:12px 12px 0}
   .logo{font-size:15px}
@@ -437,9 +467,41 @@ footer a:hover{color:var(--lime)}
     <div class="window" data-reveal>
       <div class="win-bar">
         <span class="dot r" aria-hidden="true"></span><span class="dot y" aria-hidden="true"></span><span class="dot g" aria-hidden="true"></span>
-        <span class="win-title">Goldirham Stack — <span class="live">Live Dashboard</span></span>
+        <span class="win-title">Goldirham Stack — <span class="live">Dashboard Preview</span></span>
       </div>
-      <iframe id="dashPreview" src="about:blank" title="Goldirham Stack live dashboard preview" loading="lazy"></iframe>
+      <div class="dashboard-preview">
+        <div class="dashboard-preview-top">
+          <div>
+            <span class="dashboard-preview-kicker">OVERVIEW / 08:14 MYT</span>
+            <strong class="dashboard-preview-title">Infrastructure signal</strong>
+          </div>
+          <span class="dashboard-preview-live">DATA UPDATED</span>
+        </div>
+        <div class="dashboard-preview-stats">
+          <div class="dashboard-preview-stat"><span>ARTICLES TODAY</span><strong>142</strong><small>+18 vs avg</small></div>
+          <div class="dashboard-preview-stat"><span>HIGH IMPACT</span><strong>18</strong><small>3 new signals</small></div>
+          <div class="dashboard-preview-stat"><span>SEC FILINGS</span><strong>5</strong><small>2 need review</small></div>
+          <div class="dashboard-preview-stat"><span>MARKET PULSE</span><strong>+32%</strong><small>NVDA mentions</small></div>
+        </div>
+        <div class="dashboard-preview-grid">
+          <div class="dashboard-preview-panel">
+            <div class="dashboard-preview-panel-head"><span>Signal volume · 7 days</span><strong>+32% WoW</strong></div>
+            <svg class="dashboard-preview-chart" viewBox="0 0 640 150" role="img" aria-label="Illustrative seven-day signal volume chart" preserveAspectRatio="none">
+              <defs><linearGradient id="dashboardPreviewFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#ff6b2b" stop-opacity=".28"/><stop offset="1" stop-color="#ff6b2b" stop-opacity="0"/></linearGradient></defs>
+              <path class="gridline" d="M0 25H640M0 75H640M0 125H640"/>
+              <path class="area" d="M0 124L80 110L160 116L240 78L320 93L400 52L480 66L560 30L640 42V150H0Z"/>
+              <path class="line" d="M0 124L80 110L160 116L240 78L320 93L400 52L480 66L560 30L640 42"/>
+            </svg>
+          </div>
+          <div class="dashboard-preview-panel">
+            <div class="dashboard-preview-panel-head"><span>High-impact signals</span><strong>3 NEW</strong></div>
+            <div class="dashboard-preview-signal"><i aria-hidden="true"></i><div><b>Datacenter power demand</b><span>Power &amp; Utilities · 9.1 / 10</span></div><em>▲</em></div>
+            <div class="dashboard-preview-signal"><i aria-hidden="true"></i><div><b>TSMC capacity update</b><span>Semiconductors · 8.7 / 10</span></div><em>▲</em></div>
+            <div class="dashboard-preview-signal"><i aria-hidden="true"></i><div><b>Cooling supply watch</b><span>Infrastructure · 7.8 / 10</span></div><em>◆</em></div>
+          </div>
+        </div>
+        <div class="dashboard-preview-foot"><span>SEC · MARKET · EARNINGS</span><a href="/dashboard/">OPEN LIVE DASHBOARD ↗</a></div>
+      </div>
     </div>
 
     <div class="ticker" aria-hidden="true">
@@ -1099,25 +1161,6 @@ var termObserver = new IntersectionObserver(function(es){
 var terminalBody = document.getElementById('terminalBody');
 if (terminalBody) termObserver.observe(terminalBody);
 
-/* ---------- dashboard iframe: only load on live domain ---------- */
-var iframe = document.getElementById('dashPreview');
-if (iframe){
-  var proto = window.location.protocol, host = window.location.hostname;
-  var servedOverHttp = (proto === 'http:' || proto === 'https:');
-  var isLocal = (host === 'localhost' || host === '127.0.0.1');
-  if (servedOverHttp && !isLocal){
-    iframe.src = '/dashboard/';
-  } else {
-    iframe.remove();
-    var win = document.querySelector('#demo .window');
-    if (win){
-      var fb = document.createElement('div');
-      fb.className = 'iframe-fallback';
-      fb.innerHTML = '📊 Dashboard preview appears here once deployed. <a href="/dashboard/">Open full dashboard →</a>';
-      win.appendChild(fb);
-    }
-  }
-}
 })();
 </script>
 </body>
