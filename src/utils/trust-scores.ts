@@ -26,6 +26,19 @@ interface VoteTally {
 
 const cache = new Map<string, { data: Map<string, number>; expires: number }>();
 const CACHE_TTL_MS = 3_600_000; // 1 hour
+const MAX_CACHE_ENTRIES = 2;
+
+function pruneCache(now: number): void {
+  for (const [key, entry] of cache) {
+    if (entry.expires <= now) cache.delete(key);
+  }
+
+  while (cache.size > MAX_CACHE_ENTRIES) {
+    const oldestKey = cache.keys().next().value as string | undefined;
+    if (oldestKey === undefined) break;
+    cache.delete(oldestKey);
+  }
+}
 
 function approvalToMultiplier(up: number, down: number): number {
   const total = up + down;
@@ -124,10 +137,12 @@ async function fetchMultipliers(type: "source" | "sector"): Promise<Map<string, 
 async function getCachedMultipliers(type: "source" | "sector"): Promise<Map<string, number>> {
   const k = `${type}_trust`;
   const now = Date.now();
+  pruneCache(now);
   const hit = cache.get(k);
   if (hit && hit.expires > now) return hit.data;
   const fresh = await fetchMultipliers(type);
   cache.set(k, { data: fresh, expires: now + CACHE_TTL_MS });
+  pruneCache(Date.now());
   return fresh;
 }
 

@@ -71,15 +71,22 @@ export interface CommandUsageEvent extends MetricsEvent {
 // ─── Log Directory Setup ──────────────────────────────
 
 const LOG_DIR = path.join(process.cwd(), "logs");
+let logDirReady: Promise<void> | null = null;
+let writeQueue: Promise<void> = Promise.resolve();
 
-function ensureLogDir(): void {
-  if (!fs.existsSync(LOG_DIR)) {
-    fs.mkdirSync(LOG_DIR, { recursive: true });
-  }
+function ensureLogDir(): Promise<void> {
+  if (logDirReady) return logDirReady;
+
+  const pending = fs.promises.mkdir(LOG_DIR, { recursive: true }).then(() => undefined).catch((error) => {
+    logDirReady = null;
+    throw error;
+  });
+  logDirReady = pending;
+  return pending;
 }
 
-function getLogFilePath(): string {
-  const date = new Date().toISOString().split("T")[0];
+function getLogFilePath(timestamp = new Date().toISOString()): string {
+  const date = timestamp.split("T")[0];
   return path.join(LOG_DIR, `${date}.ndjson`);
 }
 
@@ -87,22 +94,38 @@ function getLogFilePath(): string {
 
 function writeEvent(event: MetricsEvent): void {
   const line = JSON.stringify(event) + "\n";
+  const filePath = getLogFilePath(event.timestamp);
 
-  // Stream to stdout
-  process.stdout.write(line);
+  // Keep emitters fire-and-forget, but serialize both outputs so events cannot
+  // overtake one another and callers can await flushMetrics() at shutdown.
+  writeQueue = writeQueue.then(async () => {
+    const results = await Promise.allSettled([
+      new Promise<void>((resolve, reject) => {
+        try {
+          process.stdout.write(line, (error?: Error | null) => {
+            if (error) reject(error);
+            else resolve();
+          });
+        } catch (error) {
+          reject(error);
+        }
+      }),
+      ensureLogDir().then(() => fs.promises.appendFile(filePath, line, "utf-8")),
+    ]);
 
-  // Append to per-day NDJSON file — fired async so a slow/network-mounted disk
-  // never blocks the event loop mid-pipeline. Not awaited: callers treat metrics
-  // as fire-and-forget, so this keeps every emit* signature synchronous.
-  try {
-    ensureLogDir();
-    fs.promises.appendFile(getLogFilePath(), line, "utf-8").catch((err) => {
-      // Non-critical — don't let logging failure crash the pipeline
-      logger.debug(`Metrics write failed: ${(err as Error).message}`);
-    });
-  } catch (err) {
-    logger.debug(`Metrics write failed: ${(err as Error).message}`);
-  }
+    for (const result of results) {
+      if (result.status === "rejected") {
+        // Non-critical — don't let logging failure crash the pipeline.
+        const message = result.reason instanceof Error ? result.reason.message : String(result.reason);
+        logger.debug(`Metrics write failed: ${message}`);
+      }
+    }
+  });
+}
+
+/** Wait for all queued metrics output to finish, usually before process exit. */
+export function flushMetrics(): Promise<void> {
+  return writeQueue;
 }
 
 // ─── Convenience Functions ────────────────────────────

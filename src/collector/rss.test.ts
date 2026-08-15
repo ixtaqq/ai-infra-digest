@@ -81,6 +81,33 @@ describe("matchesKeywords", () => {
 });
 
 describe("fetchFeedWithStatus", () => {
+  it("parses the successful response body without fetching the feed a second time", async () => {
+    const rss = `<?xml version="1.0"?>
+      <rss version="2.0"><channel><title>Example</title>
+        <item><title>New GPU announcement</title><link>https://example.com/gpu</link>
+          <description>AI infrastructure update</description>
+        </item>
+      </channel></rss>`;
+    const fetchMock = vi.fn().mockResolvedValue(new Response(rss, { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { fetchFeedWithStatus } = await import("./rss");
+    const result = await fetchFeedWithStatus(
+      { name: "Example feed", url: "https://example.com/feed.xml" },
+      5
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.status).toBe("success");
+    expect(result.articles).toMatchObject([
+      {
+        title: "New GPU announcement",
+        url: "https://example.com/gpu",
+        contentSnippet: "AI infrastructure update",
+      },
+    ]);
+  });
+
   it("returns a failed result when the conditional request throws", async () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error("network down"));
     vi.stubGlobal("fetch", fetchMock);
@@ -99,5 +126,32 @@ describe("fetchFeedWithStatus", () => {
       error: "network down",
     });
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("collectArticles", () => {
+  it("caps the number of feeds fetched concurrently", async () => {
+    const rss = `<?xml version="1.0"?>
+      <rss version="2.0"><channel><title>Example</title>
+        <item><title>GPU infrastructure update</title><link>https://example.com/gpu</link></item>
+      </channel></rss>`;
+    let active = 0;
+    let peak = 0;
+    const fetchMock = vi.fn(async () => {
+      active++;
+      peak = Math.max(peak, active);
+      await Promise.resolve();
+      active--;
+      return new Response(rss, { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { collectArticles, RSS_FETCH_CONCURRENCY } = await import("./rss");
+    const result = await collectArticles();
+
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(RSS_FETCH_CONCURRENCY);
+    expect(peak).toBeLessThanOrEqual(RSS_FETCH_CONCURRENCY);
+    expect(result.feedStatuses).toHaveLength(fetchMock.mock.calls.length);
+    expect(result.feedStatuses.every((feed) => feed.status === "success")).toBe(true);
   });
 });

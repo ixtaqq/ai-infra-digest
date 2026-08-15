@@ -21,6 +21,7 @@ const h = vi.hoisted(() => ({
   deletePriceWatchesByIds: vi.fn(),
   claimUserDelivery: vi.fn(),
   logUserDelivery: vi.fn(),
+  recordProductEvent: vi.fn(),
   getAllActiveUsers: vi.fn(),
   createDigestRun: vi.fn(),
   insertArticles: vi.fn(),
@@ -82,7 +83,7 @@ vi.mock("./sender/telegram", () => ({
   registerCommand: vi.fn(),
 }));
 // Supabase reports "not configured" by default so persistence/alert branches
-// are skipped — flipped to true in the price-watch tests below, which need it.
+// are skipped — flipped to true in delivery/price-watch tests below, which need it.
 vi.mock("./utils/supabase", () => ({
   supabase: {
     isConfigured: h.isConfigured,
@@ -91,6 +92,7 @@ vi.mock("./utils/supabase", () => ({
     deletePriceWatchesByIds: h.deletePriceWatchesByIds,
     claimUserDelivery: h.claimUserDelivery,
     logUserDelivery: h.logUserDelivery,
+    recordProductEvent: h.recordProductEvent,
     getAllActiveUsers: h.getAllActiveUsers,
     createDigestRun: h.createDigestRun,
     insertArticles: h.insertArticles,
@@ -158,6 +160,7 @@ beforeEach(() => {
   h.deletePriceWatchesByIds.mockReset().mockResolvedValue(true);
   h.claimUserDelivery.mockReset().mockResolvedValue(true);
   h.logUserDelivery.mockReset().mockResolvedValue(true);
+  h.recordProductEvent.mockReset().mockResolvedValue(true);
   h.getAllActiveUsers.mockReset().mockResolvedValue([]);
   h.createDigestRun.mockReset().mockResolvedValue(42);
   h.insertArticles.mockReset().mockResolvedValue([]);
@@ -243,6 +246,99 @@ describe("digest fan-out", () => {
 
     expect(h.sendSlackDigest).not.toHaveBeenCalled();
     expect(h.sendEmailDigest).not.toHaveBeenCalled();
+  });
+});
+
+describe("delivery state", () => {
+  it("releases a failed claim so the next attempt can retry", async () => {
+    h.isConfigured.mockReturnValue(true);
+    h.claimUserDelivery
+      .mockReset()
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(true);
+    h.sendDigestMessageToUser
+      .mockReset()
+      .mockResolvedValueOnce({ success: false, error: "telegram down" })
+      .mockResolvedValueOnce({ success: true, messageId: 2 });
+
+    const generated = await generateDigest();
+    const deliveryDate = "2026-01-01";
+    const first = await deliverDigest(generated!, 101, undefined, deliveryDate);
+    const second = await deliverDigest(generated!, 101, undefined, deliveryDate);
+
+    expect(first).toEqual({ success: false, error: "telegram down" });
+    expect(second).toEqual({ success: true, messageId: 2 });
+    expect(h.sendDigestMessageToUser).toHaveBeenCalledTimes(2);
+    expect(h.logUserDelivery).toHaveBeenNthCalledWith(
+      1,
+      101,
+      deliveryDate,
+      "failed",
+      "telegram down"
+    );
+    expect(h.logUserDelivery).toHaveBeenNthCalledWith(
+      2,
+      101,
+      deliveryDate,
+      "success",
+      undefined
+    );
+    expect(h.recordProductEvent).toHaveBeenNthCalledWith(
+      1,
+      "delivery_failed",
+      101,
+      expect.objectContaining({ run_date: deliveryDate, lateness_seconds: expect.any(Number) })
+    );
+    expect(h.recordProductEvent).toHaveBeenNthCalledWith(
+      2,
+      "delivery_succeeded",
+      101,
+      expect.objectContaining({ run_date: deliveryDate, lateness_seconds: expect.any(Number) })
+    );
+  });
+
+  it("suppresses a duplicate when a concurrent claim is already active", async () => {
+    h.isConfigured.mockReturnValue(true);
+    h.claimUserDelivery
+      .mockReset()
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+
+    const generated = await generateDigest();
+    const deliveryDate = "2026-01-01";
+    const first = await deliverDigest(generated!, 101, undefined, deliveryDate);
+    const second = await deliverDigest(generated!, 101, undefined, deliveryDate);
+
+    expect(first.success).toBe(true);
+    expect(second).toEqual({ success: false, error: "already delivered for this run date" });
+    expect(h.sendDigestMessageToUser).toHaveBeenCalledTimes(1);
+    expect(h.logUserDelivery).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps optional channel failures non-fatal after Telegram succeeds", async () => {
+    h.isConfigured.mockReturnValue(true);
+    h.sendSlackDigest.mockRejectedValueOnce(new Error("slack down"));
+    h.sendEmailDigest.mockRejectedValueOnce(new Error("email down"));
+
+    const generated = await generateDigest();
+    const result = await deliverDigest(
+      generated!,
+      101,
+      {
+        chat_id: 101,
+        delivery_email: "analyst@example.com",
+        slack_webhook_url: "https://hooks.slack.com/services/T/B/secret",
+      },
+      "2026-01-01"
+    );
+
+    expect(result.success).toBe(true);
+    expect(h.logUserDelivery).toHaveBeenCalledWith(
+      101,
+      "2026-01-01",
+      "success",
+      "slack:failed; email:failed"
+    );
   });
 });
 

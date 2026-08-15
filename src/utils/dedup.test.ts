@@ -104,17 +104,21 @@ describe("deduplicateArticles", () => {
     expect(secondRun[0].url).toBe("");
   });
 
-  it("should deduplicate by URL, not by title", async () => {
+  it("should remove exact URL and title duplicates within the current batch", async () => {
     const { deduplicateArticles } = await import("./dedup");
-    const article1 = { url: "https://example.com/1", title: "Same Title" };
-    const article2 = { url: "https://example.com/2", title: "Same Title" };
+    const articles = [
+      { url: "https://example.com/1", title: "Same story" },
+      { url: "https://example.com/1", title: "Same story from another feed" },
+      { url: "https://example.com/2", title: "Same story" },
+      { url: "https://example.com/3", title: "Unrelated report" },
+    ];
 
-    const firstRun = await deduplicateArticles([article1, article2], 48);
-    expect(firstRun).toHaveLength(2);
+    const result = await deduplicateArticles(articles, 48);
 
-    // Same articles (dup URLs) should be skipped
-    const secondRun = await deduplicateArticles([article1, article2], 48);
-    expect(secondRun).toHaveLength(0);
+    expect(result.map((article) => article.url)).toEqual([
+      "https://example.com/1",
+      "https://example.com/3",
+    ]);
   });
 
   it("should respect retention hours", async () => {

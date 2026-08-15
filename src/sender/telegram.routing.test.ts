@@ -21,6 +21,11 @@ const h = vi.hoisted(() => ({
   sendMessage: vi.fn(async (..._args: unknown[]) => ({ message_id: 1 })),
   emitCommandUsage: vi.fn(),
   logCommandUsage: vi.fn(async () => true),
+  getUserPreferences: vi.fn(async () => null as Record<string, unknown> | null),
+  upsertUserPreferences: vi.fn(async () => true),
+  deleteUserData: vi.fn(async () => true),
+  recordProductEvent: vi.fn(async () => true),
+  cancelOnboarding: vi.fn(),
 }));
 
 vi.mock("node-telegram-bot-api", () => ({
@@ -51,6 +56,7 @@ vi.mock("../utils/logger", () => ({
 }));
 vi.mock("../onboarding", () => ({
   startOnboarding: vi.fn(),
+  cancelOnboarding: h.cancelOnboarding,
   handleOnboardingCallback: vi.fn(async () => false),
   handleOnboardingText: vi.fn(),
 }));
@@ -62,13 +68,15 @@ vi.mock("../utils/metrics", () => ({
 vi.mock("../utils/supabase", () => ({
   supabase: {
     isConfigured: () => false,
-    getUserPreferences: vi.fn(async () => null),
-    upsertUserPreferences: vi.fn(async () => true),
+    getUserPreferences: h.getUserPreferences,
+    upsertUserPreferences: h.upsertUserPreferences,
+    deleteUserData: h.deleteUserData,
+    recordProductEvent: h.recordProductEvent,
     logCommandUsage: h.logCommandUsage,
   },
 }));
 
-import { registerCommand, startInteractiveBot } from "./telegram";
+import { registerCommand, splitMessage, startInteractiveBot } from "./telegram";
 
 // Mirror of every registerCommand() name in src/index.ts's registerDigestCommands().
 // If a new command is added there, add it here — this test then proves it routes.
@@ -135,6 +143,11 @@ beforeEach(() => {
   h.sendMessage.mockClear();
   h.emitCommandUsage.mockClear();
   h.logCommandUsage.mockClear();
+  h.getUserPreferences.mockClear();
+  h.upsertUserPreferences.mockClear();
+  h.deleteUserData.mockClear();
+  h.recordProductEvent.mockClear();
+  h.cancelOnboarding.mockClear();
   for (const spy of spies.values()) spy.mockClear();
 });
 
@@ -239,5 +252,127 @@ describe("command usage logging (v13)", () => {
     await flushMicrotasks();
     // The handler must still have run despite the logging failure.
     expect(spies.get("sec")!).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("delivery opt-out", () => {
+  it.each(["/stop", "/unsubscribe"])("deactivates delivery for %s", async (command) => {
+    await simulate(command);
+
+    expect(h.cancelOnboarding).toHaveBeenCalledWith(42);
+    expect(h.upsertUserPreferences).toHaveBeenCalledWith({
+      chat_id: 42,
+      is_active: false,
+    });
+    expect(h.sendMessage.mock.calls.map((call) => String(call[1]))).toEqual([
+      "🛑 <b>Delivery stopped</b>\n\nYou won't receive scheduled digests. Send /resume to continue with your saved preferences, or /start to set up again.",
+    ]);
+  });
+
+  it("resumes a user who previously completed onboarding", async () => {
+    h.getUserPreferences.mockResolvedValueOnce({
+      chat_id: 42,
+      is_active: false,
+      onboarding_completed_at: "2026-08-15T09:00:00.000Z",
+    });
+
+    await simulate("/resume");
+
+    expect(h.cancelOnboarding).toHaveBeenCalledWith(42);
+    expect(h.upsertUserPreferences).toHaveBeenCalledWith({
+      chat_id: 42,
+      is_active: true,
+    });
+    expect(h.recordProductEvent).toHaveBeenCalledWith("delivery_resumed", 42);
+    expect(String(h.sendMessage.mock.calls.at(-1)?.[1])).toContain("Delivery resumed");
+  });
+
+  it("does not let incomplete onboarding bypass consent through /resume", async () => {
+    h.getUserPreferences.mockResolvedValueOnce({ chat_id: 42, is_active: false });
+
+    await simulate("/resume");
+
+    expect(h.upsertUserPreferences).not.toHaveBeenCalled();
+    expect(String(h.sendMessage.mock.calls.at(-1)?.[1])).toContain("complete setup");
+  });
+});
+
+describe("editable settings", () => {
+  it.each([
+    ["/settings time 07:30", { chat_id: 42, preferred_time: "07:30" }],
+    ["/settings timezone America/New_York", { chat_id: 42, timezone: "America/New_York" }],
+    ["/settings min_score 7", { chat_id: 42, min_impact_score: 7 }],
+    ["/settings length detailed", { chat_id: 42, digest_length: "detailed" }],
+    ["/settings categories chips & gpus, Datacenters", { chat_id: 42, categories_enabled: ["Chips & GPUs", "Datacenters"] }],
+    ["/settings categories all", { chat_id: 42, categories_enabled: [] }],
+  ])("accepts %s", async (input, expected) => {
+    await simulate(input);
+    expect(h.upsertUserPreferences).toHaveBeenCalledWith(expected);
+    expect(String(h.sendMessage.mock.calls.at(-1)?.[1])).toContain("✅");
+  });
+
+  it.each([
+    "/settings time 7:30",
+    "/settings timezone Not/A_Timezone",
+    "/settings min_score 11",
+    "/settings length verbose",
+    "/settings categories Unknown Sector",
+  ])("rejects invalid input %s without saving", async (input) => {
+    await simulate(input);
+    expect(h.upsertUserPreferences).not.toHaveBeenCalled();
+    expect(String(h.sendMessage.mock.calls.at(-1)?.[1])).toContain("Settings commands");
+  });
+
+  it("keeps bare /settings as a display and escapes stored values", async () => {
+    h.getUserPreferences.mockResolvedValueOnce({
+      chat_id: 42,
+      watchlist: ["<b>NVDA</b>"],
+      categories_enabled: ["<i>Injected</i>"],
+      preferred_time: "08:00",
+      timezone: "UTC",
+      min_impact_score: 5,
+      digest_length: "standard",
+      is_active: true,
+    });
+
+    await simulate("/settings");
+    const text = String(h.sendMessage.mock.calls.at(-1)?.[1]);
+    expect(text).toContain("&lt;b&gt;NVDA&lt;/b&gt;");
+    expect(text).toContain("&lt;i&gt;Injected&lt;/i&gt;");
+    expect(text).not.toContain("<b>NVDA</b>");
+  });
+});
+
+describe("private-data deletion", () => {
+  it.each(["/delete_my_data", "/delete"])("handles %s", async (command) => {
+    await simulate(command);
+    expect(h.cancelOnboarding).toHaveBeenCalledWith(42);
+    expect(h.deleteUserData).toHaveBeenCalledWith(42);
+    expect(String(h.sendMessage.mock.calls.at(-1)?.[1])).toContain("private data was deleted");
+  });
+
+  it("reports deletion failures without exposing the database error", async () => {
+    h.deleteUserData.mockRejectedValueOnce(new Error("secret database detail"));
+    await simulate("/delete_my_data");
+    const text = String(h.sendMessage.mock.calls.at(-1)?.[1]);
+    expect(text).toContain("couldn't complete");
+    expect(text).not.toContain("secret database detail");
+  });
+});
+
+describe("Telegram message splitting", () => {
+  it("hard-splits a line longer than Telegram's limit", () => {
+    const chunks = splitMessage("x".repeat(10), 4);
+
+    expect(chunks).toEqual(["xxxx", "xxxx", "xx"]);
+    expect(chunks.every((chunk) => chunk.length <= 4)).toBe(true);
+  });
+
+  it("keeps an exact-limit line within the limit and does not emit empty chunks", () => {
+    const chunks = splitMessage(`${"a".repeat(4)}\ntiny`, 4);
+
+    expect(chunks).toEqual(["aaaa", "tiny"]);
+    expect(chunks).not.toContain("");
+    expect(chunks.every((chunk) => chunk.length <= 4)).toBe(true);
   });
 });

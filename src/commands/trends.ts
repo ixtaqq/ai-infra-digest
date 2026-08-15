@@ -82,14 +82,19 @@ export function registerTrendCommands(): void {
       const blocks = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
       const sparkline = counts.map((c) => blocks[Math.min(Math.floor((c / maxCount) * 7), 7)]).join("");
 
-      // WoW delta (today vs 7 days ago)
+      // WoW delta (today vs 7 days ago) — do not compare against the oldest
+      // available row when the requested history is shorter than one week.
       const today = rows[rows.length - 1];
-      const weekAgo = rows.length >= 8 ? rows[rows.length - 8] : rows[0];
-      const delta = today.mention_count - weekAgo.mention_count;
-      const pct = weekAgo.mention_count > 0 ? Math.round((delta / weekAgo.mention_count) * 100) : 0;
-      const wowLine = pct >= 0
-        ? `📈 Mentions <b>+${pct}%</b> WoW (${weekAgo.mention_count} → ${today.mention_count})`
-        : `📉 Mentions <b>${pct}%</b> WoW (${weekAgo.mention_count} → ${today.mention_count})`;
+      const weekAgo = rows.length >= 8 ? rows[rows.length - 8] : undefined;
+      const wowLine = weekAgo
+        ? (() => {
+            const delta = today.mention_count - weekAgo.mention_count;
+            const pct = weekAgo.mention_count > 0 ? Math.round((delta / weekAgo.mention_count) * 100) : 0;
+            return pct >= 0
+              ? `📈 Mentions <b>+${pct}%</b> WoW (${weekAgo.mention_count} → ${today.mention_count})`
+              : `📉 Mentions <b>${pct}%</b> WoW (${weekAgo.mention_count} → ${today.mention_count})`;
+          })()
+        : "ℹ️ WoW delta unavailable — need 8 days of history";
 
       const lines = [
         `📊 <b>${escapeHtml(entity)}</b> · Last ${rows.length}d`,

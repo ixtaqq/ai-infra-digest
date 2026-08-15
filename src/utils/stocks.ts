@@ -10,6 +10,8 @@ export interface StockPrice {
 
 const YAHOO_FINANCE_URL =
   "https://query1.finance.yahoo.com/v8/finance/chart";
+const MAX_TICKERS = 25;
+const STOCK_FETCH_BATCH_SIZE = 5;
 
 // Complete AI Infrastructure Universe — all tickers across 10 sectors
 const TICKER_MAP: Record<string, string> = {
@@ -106,20 +108,21 @@ export async function fetchStockPrices(
 ): Promise<Map<string, StockPrice>> {
   const uniqueTickers = [...new Set(tickers)]
     .filter((t) => TICKER_MAP[t] || t.length <= 5)
-    .slice(0, 25); // Max 25 tickers
+    .slice(0, MAX_TICKERS);
 
   if (uniqueTickers.length === 0) return new Map();
 
   logger.info(`Fetching stock prices for ${uniqueTickers.length} tickers...`);
 
-  const results = await Promise.allSettled(
-    uniqueTickers.map((t) => fetchPrice(t))
-  );
-
   const prices = new Map<string, StockPrice>();
-  for (const result of results) {
-    if (result.status === "fulfilled" && result.value) {
-      prices.set(result.value.ticker, result.value);
+  for (let start = 0; start < uniqueTickers.length; start += STOCK_FETCH_BATCH_SIZE) {
+    const batch = uniqueTickers.slice(start, start + STOCK_FETCH_BATCH_SIZE);
+    const results = await Promise.allSettled(batch.map((ticker) => fetchPrice(ticker)));
+
+    for (const result of results) {
+      if (result.status === "fulfilled" && result.value) {
+        prices.set(result.value.ticker, result.value);
+      }
     }
   }
 

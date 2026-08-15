@@ -3,57 +3,55 @@
  * Scheduled Delivery Runner
  *
  * Designed to be called by a cron job (GitHub Actions scheduled workflow).
- * Queries all active users, finds those whose preferred_time matches the
- * current clock time in their timezone, and runs the digest pipeline for
- * each matching user — but only if they haven't already received a
- * successful delivery today (idempotency via user_delivery_log).
+ * Queries all active users, finds those whose preferred_time is due in their
+ * timezone, and runs the digest pipeline for each user who has not already
+ * received a successful delivery for that local date.
  *
  * Usage:
  *   npx tsx src/scheduler.ts
  *
- * GitHub Actions cron: every 15 minutes
+ * GitHub Actions cron: every 10 minutes
  */
 
 import { logger } from "./utils/logger";
 import { supabase } from "./utils/supabase";
 import { generateDigest, deliverDigest, persistDigestMetrics } from "./index";
-import { startInteractiveBot, sendValidationFollowUp } from "./sender/telegram";
-import { config } from "./config";
+import { sendValidationFollowUp } from "./sender/telegram";
 import { todayInTimezone } from "./utils/helpers";
+import { flushMetrics } from "./utils/metrics";
 
 // ─── Time Helpers ───────────────────────────────────────
 
-/**
- * Get the current time (HH:MM) in a given timezone.
- * Node 18+ supports the `timeZone` option for toLocaleTimeString.
- */
-function getCurrentTimeInTimezone(tz: string): string {
+/** Get the current local clock minutes in a given timezone. */
+function getCurrentMinutesInTimezone(tz: string, date: Date): number {
   try {
-    const formatter = new Intl.DateTimeFormat("en-US", {
+    const parts = new Intl.DateTimeFormat("en-US", {
       timeZone: tz,
       hour: "2-digit",
       minute: "2-digit",
-      hour12: false,
-    });
-    return formatter.format(new Date());
+      hourCycle: "h23",
+    }).formatToParts(date);
+    const hour = Number(parts.find((part) => part.type === "hour")?.value || 0);
+    const minute = Number(parts.find((part) => part.type === "minute")?.value || 0);
+    return hour * 60 + minute;
   } catch {
     logger.warn(`Invalid timezone "${tz}" — falling back to UTC`);
-    return new Date().toISOString().slice(11, 16);
+    return date.getUTCHours() * 60 + date.getUTCMinutes();
   }
 }
 
 /**
- * Check if a user's preferred_time falls within ±2 minutes of now in their timezone.
- * A 2-minute window prevents missed deliveries when the cron tick lands slightly late.
+ * Check whether a user's scheduled delivery is due in their local timezone.
+ * Once the preferred time has passed, the delivery stays due until the
+ * per-user local date has a successful delivery record.
  */
-export function isTimeMatch(
+export function isDeliveryDue(
   preferredTime: string | undefined,
   userTimezone: string | undefined,
-  windowMinutes = 2
+  now: Date = new Date()
 ): boolean {
   const pref = preferredTime || "08:00";
   const tz = userTimezone || "Asia/Kuala_Lumpur";
-  const now = getCurrentTimeInTimezone(tz);
 
   const toMinutes = (t: string) => {
     const [h, m] = t.split(":").map(Number);
@@ -61,20 +59,23 @@ export function isTimeMatch(
   };
 
   const prefMins = toMinutes(pref);
-  const nowMins = toMinutes(now);
-  // Handle midnight wrap-around (e.g. 23:59 vs 00:01)
-  const diff = Math.abs(prefMins - nowMins);
-  const wrappedDiff = Math.min(diff, 1440 - diff);
-  return wrappedDiff <= windowMinutes;
+  const nowMins = getCurrentMinutesInTimezone(tz, now);
+  return nowMins >= prefMins;
+}
+
+/** Return the date key used for a user's delivery slot in their timezone. */
+export function getDeliveryDate(
+  userTimezone: string | undefined,
+  now: Date = new Date()
+): string {
+  return todayInTimezone(userTimezone || "Asia/Kuala_Lumpur", now);
 }
 
 // ─── Main ────────────────────────────────────────────────
 
-async function schedulerMain(): Promise<void> {
+export async function schedulerMain(): Promise<void> {
   const startTime = Date.now();
-  // Must match generateDigest()'s runDate (also computed in the app's configured
-  // timezone) so the pre-check and the claim/log writes key off the same day.
-  const today = todayInTimezone(config.app.timezone);
+  const now = new Date(startTime);
 
   logger.info("⏰ Scheduled delivery check — starting");
 
@@ -92,46 +93,51 @@ async function schedulerMain(): Promise<void> {
 
   logger.info(`Found ${users.length} active users — checking time preferences`);
 
-  // Find users whose preferred time matches now
-  const matchingUsers = users.filter((u) => isTimeMatch(u.preferred_time, u.timezone));
+  // Find users whose preferred time has passed in their local timezone. The
+  // successful-delivery check below makes this due state idempotent across all
+  // later cron ticks on the same local date.
+  const dueUsers = users.filter((u) => isDeliveryDue(u.preferred_time, u.timezone, now));
 
-  if (matchingUsers.length === 0) {
-    logger.info(`No users at their preferred delivery time right now`);
+  if (dueUsers.length === 0) {
+    logger.info(`No users are due for delivery right now`);
     return;
   }
 
   logger.info(
-    `${matchingUsers.length} user(s) at preferred delivery time: ` +
-      matchingUsers.map((u) => `${u.first_name || u.chat_id} (${u.preferred_time || "08:00"} ${u.timezone || "MYT"})`).join(", ")
+    `${dueUsers.length} user(s) due for delivery: ` +
+      dueUsers.map((u) => `${u.first_name || u.chat_id} (${u.preferred_time || "08:00"} ${u.timezone || "MYT"})`).join(", ")
   );
 
   // Cheap read-only pre-filter to avoid running the full digest pipeline when
   // nobody is actually pending. This is an optimization, not the correctness
-  // guarantee — deliverDigest() atomically claims each (chat_id, run_date) slot
+  // guarantee — deliverDigest() atomically claims each (chat_id, local date) slot
   // right before sending, which is what actually prevents double delivery from
   // overlapping scheduler runs.
   const toDeliver = await Promise.all(
-    matchingUsers.map(async (user) => {
-      const alreadyDelivered = await supabase.wasUserDeliveredToday(user.chat_id, today);
+    dueUsers.map(async (user) => {
+      const deliveryDate = getDeliveryDate(user.timezone, now);
+      const alreadyDelivered = await supabase.wasUserDeliveredToday(user.chat_id, deliveryDate);
       if (alreadyDelivered) {
-        logger.info(`Skipping user ${user.chat_id} — already delivered today`);
+        logger.info(`Skipping user ${user.chat_id} — already delivered for ${deliveryDate}`);
         return null;
       }
-      return user;
+      return { user, deliveryDate };
     })
   );
 
-  const pendingUsers = toDeliver.filter((u): u is NonNullable<typeof u> => u !== null);
+  const pendingUsers = toDeliver.filter(
+    (entry): entry is { user: (typeof users)[number]; deliveryDate: string } => entry !== null
+  );
 
   if (pendingUsers.length === 0) {
-    logger.info("All matching users already received today's digest — nothing to do");
+    logger.info("All due users already received their local-date digest — nothing to do");
     return;
   }
 
   logger.info(`Delivering digest to ${pendingUsers.length} user(s)`);
 
   // Generate the digest ONCE, then fan out the same formatted message to every
-  // matching user. This is the whole point of the scheduler: the expensive work
+  // due user. This is the whole point of the scheduler: the expensive work
   // (RSS crawl + AI + SEC + earnings + stock prices) happens a single time per
   // run regardless of how many users are due, instead of once per user.
   const generated = await generateDigest();
@@ -144,9 +150,9 @@ async function schedulerMain(): Promise<void> {
   let failCount = 0;
   const successfulChatIds: number[] = [];
 
-  for (const user of pendingUsers) {
+  for (const { user, deliveryDate } of pendingUsers) {
     try {
-      const result = await deliverDigest(generated, user.chat_id, user);
+      const result = await deliverDigest(generated, user.chat_id, user, deliveryDate);
       if (result.success) {
         successCount++;
         successfulChatIds.push(user.chat_id);
@@ -187,14 +193,15 @@ async function schedulerMain(): Promise<void> {
 
 // ─── Run ─────────────────────────────────────────────────
 
-// Start interactive bot so command handlers are available
-startInteractiveBot();
-
-schedulerMain()
-  .then(() => {
-    process.exit(0);
-  })
-  .catch((error) => {
-    logger.error(`Scheduler failed: ${(error as Error).message}`, { stack: (error as Error).stack });
-    process.exit(1);
-  });
+if (require.main === module) {
+  schedulerMain()
+    .then(async () => {
+      await flushMetrics();
+      process.exit(0);
+    })
+    .catch(async (error) => {
+      logger.error(`Scheduler failed: ${(error as Error).message}`, { stack: (error as Error).stack });
+      await flushMetrics();
+      process.exit(1);
+    });
+}

@@ -1,0 +1,2 @@
+-- Local reset seed: migrations define the schema; no sample data or credentials
+-- are required for a clean local database.

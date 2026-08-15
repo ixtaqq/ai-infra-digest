@@ -30,6 +30,12 @@ export interface SECFinancialExtract {
   filingDate: string;
   /** Company name */
   companyName: string;
+  /** SEC accession number used as the idempotency key */
+  accessionNumber?: string;
+  /** Primary SEC document URL */
+  primaryDocumentUrl?: string;
+  /** Items disclosed by the filing */
+  items?: string[];
 
   // ─── Capex ────────────────────────────────────────
   /** Capex this quarter/year (in $M) */
@@ -346,6 +352,9 @@ async function processFiling(
     extract.formType = filing.formType;
     extract.filingDate = filing.filingDate;
     extract.companyName = filing.companyName;
+    extract.accessionNumber = filing.accessionNumber;
+    extract.primaryDocumentUrl = filing.primaryDocumentUrl;
+    extract.items = filing.items;
 
     return {
       extract,
@@ -369,7 +378,10 @@ async function processFiling(
 interface FlagResult {
   hasData: boolean;
   reason: string;
+  tokenUsage: { totalTokens: number; promptTokens: number; completionTokens: number };
 }
+
+const EMPTY_TOKEN_USAGE = { totalTokens: 0, promptTokens: 0, completionTokens: 0 };
 
 /**
  * Pass 1: Use the fast/cheap model to flag whether a filing contains
@@ -382,7 +394,11 @@ async function flagFiling(
 ): Promise<FlagResult> {
   // Step 1a: Free keyword pre-filter — skip if no relevant keywords found
   if (!hasRelevantKeywords(filing.rawText)) {
-    return { hasData: false, reason: "No relevant keywords found in filing text" };
+    return {
+      hasData: false,
+      reason: "No relevant keywords found in filing text",
+      tokenUsage: EMPTY_TOKEN_USAGE,
+    };
   }
 
   // Step 1b: Fast AI flagging — confirm relevance with context awareness
@@ -394,14 +410,27 @@ async function flagFiling(
       return {
         hasData: parsed.hasFinancialData,
         reason: parsed.reason || (parsed.hasFinancialData ? "Flagged by fast model" : "Skipped by fast model"),
+        tokenUsage: {
+          totalTokens: result.totalTokens,
+          promptTokens: result.promptTokens,
+          completionTokens: result.completionTokens,
+        },
       };
     }
     // If parsing fails, default to flagging (safer to over-include)
-    return { hasData: true, reason: "Default flag (parse failure)" };
+    return {
+      hasData: true,
+      reason: "Default flag (parse failure)",
+      tokenUsage: {
+        totalTokens: result.totalTokens,
+        promptTokens: result.promptTokens,
+        completionTokens: result.completionTokens,
+      },
+    };
   } catch (error) {
     logger.warn(`SEC flag failed for ${filing.ticker}: ${(error as Error).message}`);
     // On error, default to flagging (safer to over-include)
-    return { hasData: true, reason: "Default flag (error fallback)" };
+    return { hasData: true, reason: "Default flag (error fallback)", tokenUsage: EMPTY_TOKEN_USAGE };
   }
 }
 
@@ -455,6 +484,9 @@ export async function analyzeSECFilings(
     const start = Date.now();
     const flag = await flagFiling(client, filing);
     flaggedResults.push({ filing, flag });
+    totalTokens += flag.tokenUsage.totalTokens;
+    totalPrompt += flag.tokenUsage.promptTokens;
+    totalCompletion += flag.tokenUsage.completionTokens;
 
     if (flag.hasData) {
       logger.info(`  ✓ ${filing.ticker} ${filing.formType}: ${flag.reason} (${Date.now() - start}ms)`);

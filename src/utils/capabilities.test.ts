@@ -22,6 +22,7 @@ function makeConfig(): Config {
       timezone: "UTC",
       cacheDir: ".",
       maxArticlesPerSource: 5,
+      maxArticlesForAI: 35,
       supabaseUrl: "https://example.supabase.co",
       supabaseServiceKey: "supabase-secret",
       roicAiApiKey: "roic-secret",

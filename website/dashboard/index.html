@@ -10,6 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="/dashboard/config.js"></script>
   <style>
     /* ══════════════════════════════════════════════════
        Design System — matches the landing page
@@ -348,18 +349,48 @@
       font-weight: 500; margin-bottom: 2px;
     }
     .greeting-section .date-row { font-family: var(--mono); }
-    .greeting-section h2 {
+    .greeting-section h1 {
       font-family: var(--sans);
       font-size: 30px; font-weight: 700;
       letter-spacing: -0.03em;
       color: var(--text); line-height: 1.15;
       overflow: hidden;
     }
-    .greeting-section h2 .gold { color: var(--gold); }
-    .greeting-section h2 > span.rise {
+    .greeting-section h1 .gold { color: var(--gold); }
+    .greeting-section h1 > span.rise {
       display: inline-block;
       animation: rise-in .9s var(--transition) both;
     }
+
+    .access-note {
+      display: flex; align-items: flex-start; gap: 8px;
+      margin: -8px 0 18px; padding: 8px 10px;
+      border-left: 2px solid var(--gold);
+      color: var(--text-dim); font-size: 10px; line-height: 1.5;
+      background: rgba(255,107,43,0.035);
+    }
+    .access-note strong { color: var(--gold-light); font-family: var(--mono); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
+
+    .partial-load-errors {
+      margin: 0 0 16px; padding: 10px 12px;
+      background: rgba(239,68,68,0.06);
+      border: 1px solid rgba(239,68,68,0.24);
+      border-radius: var(--radius-sm);
+      color: #fecaca; font-size: 11px; line-height: 1.5;
+    }
+    .partial-load-errors strong { display: block; color: #fca5a5; margin-bottom: 3px; }
+    .partial-load-errors ul { margin: 4px 0 0 18px; }
+
+    .chart-fallback {
+      min-height: 16px; margin-top: 7px;
+      color: var(--text-muted); font-size: 10px; line-height: 1.4;
+    }
+
+    .article-row:focus-visible {
+      outline: 2px solid var(--lime); outline-offset: -2px;
+      background: var(--bg-hover);
+    }
+    .article-row[aria-expanded="true"] { background: rgba(255,107,43,0.04); }
 
     /* ─── KPI Cards ── */
     .kpi-grid {
@@ -790,7 +821,7 @@
         scroll-behavior: auto !important;
       }
       [data-reveal] { opacity: 1 !important; transform: none !important; }
-      .greeting-section h2 > span.rise { animation: none; }
+      .greeting-section h1 > span.rise { animation: none; }
     }
   </style>
 </head>
@@ -811,7 +842,7 @@
 
     <nav class="sidebar-nav" aria-label="Dashboard sections">
       <span class="sidebar-ind" id="sidebarInd" aria-hidden="true"></span>
-      <button type="button" class="sidebar-link active" onclick="switchSection('overview', this)">
+      <button type="button" class="sidebar-link active" aria-current="location" onclick="switchSection('overview', this)">
         <span class="icon" aria-hidden="true">◆</span> <span>Overview</span>
       </button>
       <button type="button" class="sidebar-link" onclick="switchSection('pipeline', this)">
@@ -848,13 +879,13 @@
       </div>
       <div class="header-right">
         <span class="live-chip"><i aria-hidden="true"></i>LIVE</span>
-        <div class="header-search">
+        <div class="header-search" role="search">
           <span class="search-icon" aria-hidden="true">⌕</span>
-          <input type="text" aria-label="Search articles" placeholder="Search transactions..." id="globalSearch" onkeydown="if(event.key==='Enter')doGlobalSearch()">
+          <input type="search" aria-label="Search articles" placeholder="Search transactions..." id="globalSearch" onkeydown="if(event.key==='Enter')doGlobalSearch()" autocomplete="off">
           <span class="kbd" aria-hidden="true">⌘K</span>
         </div>
         <button class="header-btn" aria-label="Toggle ambient glow" onclick="document.getElementById('bgGlow').style.opacity = document.getElementById('bgGlow').style.opacity === '0' ? '0.5' : '0'" title="Toggle ambient glow">🌓</button>
-        <button class="header-btn" aria-label="Settings" onclick="showConfig()" title="Settings">⚙</button>
+        <button class="header-btn" id="configToggle" aria-label="Open dashboard connection settings" aria-controls="configPanel" aria-expanded="false" onclick="showConfig()" title="Connection settings">⚙</button>
         <button class="header-btn" aria-label="Refresh dashboard" onclick="loadDashboard()" title="Refresh">↻</button>
         <button class="header-btn-primary" onclick="window.open('/','_self')">+ New Digest →</button>
       </div>
@@ -886,8 +917,14 @@
         <!-- Greeting -->
         <div class="greeting-section" id="section-overview">
           <div class="date-row" id="dateRow"></div>
-          <h2>Good morning, <span class="gold">Analyst</span>.</h2>
+          <h1>Good morning, <span class="gold">Analyst</span>.</h1>
         </div>
+
+        <div class="access-note" role="note">
+          <strong>Public read-only access</strong>
+          <span>This dashboard uses Supabase's public client key. Row Level Security keeps writes and private tables off the browser.</span>
+        </div>
+        <div id="partialLoadErrors" class="partial-load-errors" role="status" aria-live="polite" hidden></div>
 
         <!-- KPI Stats -->
         <div class="kpi-grid" id="kpiGrid"></div>
@@ -901,13 +938,14 @@
                 <div class="chart-value" id="sectorChartValue">—</div>
                 <div class="chart-change" id="sectorChartChange"></div>
               </div>
-              <div class="chart-tabs">
-                <button class="active" data-range="7">7d</button>
-                <button data-range="30">30d</button>
-                <button data-range="90">90d</button>
+              <div class="chart-tabs" role="tablist" aria-label="Sector activity range">
+                <button type="button" role="tab" aria-selected="true" class="active" data-range="7">7d</button>
+                <button type="button" role="tab" aria-selected="false" data-range="30">30d</button>
+                <button type="button" role="tab" aria-selected="false" data-range="90">90d</button>
               </div>
             </div>
-            <canvas id="sectorChart"></canvas>
+            <canvas id="sectorChart" role="img" aria-label="Bar chart showing article activity by sector" aria-describedby="sectorChartFallback"></canvas>
+            <p class="chart-fallback" id="sectorChartFallback">Loading sector activity chart data.</p>
           </div>
           <div>
             <div class="plans-card" style="margin-bottom:12px">
@@ -924,26 +962,27 @@
 
         <!-- Charts Grid -->
         <div class="charts-grid" id="section-stocks">
-          <div class="chart-card"><h3>📈 Top Stock Movers</h3><canvas id="stockChart"></canvas></div>
+          <div class="chart-card"><h3>📈 Top Stock Movers</h3><canvas id="stockChart" role="img" aria-label="Bar chart showing top stock movers by price change" aria-describedby="stockChartFallback"></canvas><p class="chart-fallback" id="stockChartFallback">Loading stock mover chart data.</p></div>
           <div class="chart-card" id="stockPriceCard">
             <h3>💹 Stock Price History <span class="badge" id="tickerBadge" style="font-size:9px;background:var(--bg-hover);padding:2px 6px;border-radius:2px;color:var(--text-muted);font-weight:500;letter-spacing:0;text-transform:none">top 5</span></h3>
             <div class="ticker-toggle" id="tickerToggle"></div>
-            <canvas id="stockPriceChart"></canvas>
+            <canvas id="stockPriceChart" role="img" aria-label="Line chart showing stock price history for selected tickers" aria-describedby="stockPriceChartFallback"></canvas>
+            <p class="chart-fallback" id="stockPriceChartFallback">Loading stock price history.</p>
           </div>
         </div>
 
         <div class="charts-grid">
-          <div class="chart-card"><h3>📅 Sector Trend Over Time</h3><canvas id="sectorTrendChart"></canvas></div>
-          <div class="chart-card"><h3>💸 Capex & AI Spending <span class="badge" id="capexBadge" style="font-size:9px;background:var(--bg-hover);padding:2px 6px;border-radius:2px;color:var(--text-muted);font-weight:500;letter-spacing:0;text-transform:none">from SEC filings</span></h3><canvas id="capexChart"></canvas></div>
+          <div class="chart-card"><h3>📅 Sector Trend Over Time</h3><canvas id="sectorTrendChart" role="img" aria-label="Line chart showing sector article activity over time" aria-describedby="sectorTrendChartFallback"></canvas><p class="chart-fallback" id="sectorTrendChartFallback">Loading sector trend chart data.</p></div>
+          <div class="chart-card"><h3>💸 Capex &amp; AI Spending <span class="badge" id="capexBadge" style="font-size:9px;background:var(--bg-hover);padding:2px 6px;border-radius:2px;color:var(--text-muted);font-weight:500;letter-spacing:0;text-transform:none">from SEC filings</span></h3><canvas id="capexChart" role="img" aria-label="Bar chart showing capex and AI revenue from SEC metrics" aria-describedby="capexChartFallback"></canvas><p class="chart-fallback" id="capexChartFallback">Loading capex and AI spending chart data.</p></div>
         </div>
 
         <div class="charts-grid">
-          <div class="chart-card"><h3>⭐ Feedback Pulse <span class="badge" id="feedbackBadge" style="font-size:9px;background:var(--bg-hover);padding:2px 6px;border-radius:2px;color:var(--text-muted);font-weight:500;letter-spacing:0;text-transform:none">over time</span></h3><canvas id="feedbackChart"></canvas></div>
-          <div class="chart-card card-ai"><h3>🔬 AI Token Usage</h3><canvas id="tokenChart"></canvas></div>
+          <div class="chart-card"><h3>⭐ Feedback Pulse <span class="badge" id="feedbackBadge" style="font-size:9px;background:var(--bg-hover);padding:2px 6px;border-radius:2px;color:var(--text-muted);font-weight:500;letter-spacing:0;text-transform:none">over time</span></h3><canvas id="feedbackChart" role="img" aria-label="Line chart showing feedback ratings and vote counts over time" aria-describedby="feedbackChartFallback"></canvas><p class="chart-fallback" id="feedbackChartFallback">Loading feedback chart data.</p></div>
+          <div class="chart-card card-ai"><h3>🔬 AI Token Usage</h3><canvas id="tokenChart" role="img" aria-label="Line chart showing daily AI token usage" aria-describedby="tokenChartFallback"></canvas><p class="chart-fallback" id="tokenChartFallback">Loading AI token usage chart data.</p></div>
         </div>
 
         <div class="charts-grid">
-          <div class="chart-card"><h3>⚡ Digest Run Performance</h3><canvas id="digestPerfChart"></canvas></div>
+          <div class="chart-card"><h3>⚡ Digest Run Performance</h3><canvas id="digestPerfChart" role="img" aria-label="Line chart showing digest articles, token usage, and duration" aria-describedby="digestPerfChartFallback"></canvas><p class="chart-fallback" id="digestPerfChartFallback">Loading digest performance chart data.</p></div>
           <div class="chart-card"><h3>📬 Delivery Performance</h3><div id="deliverySection" style="padding:4px 0"></div></div>
         </div>
 
@@ -971,25 +1010,25 @@
         <!-- Articles -->
         <div class="table-card" id="section-articles">
           <h3>📰 Latest Articles</h3>
-          <div class="filter-bar" style="margin-bottom:8px">
-            <span class="filter-label">Search</span>
-            <input class="filter-search" id="fullTextSearch" aria-label="Full-text search articles" placeholder="Full-text search articles..." style="width:220px" onkeydown="if(event.key==='Enter')doFullTextSearch()">
-            <button class="filter-pill" onclick="doFullTextSearch()" style="background:var(--gold);color:#0a0705;border-color:var(--gold);font-weight:600">🔍 Search DB</button>
+          <form class="filter-bar" id="articleSearchForm" role="search" style="margin-bottom:8px" onsubmit="event.preventDefault();doFullTextSearch()">
+            <label class="filter-label" for="fullTextSearch">Search articles</label>
+            <input class="filter-search" id="fullTextSearch" type="search" aria-label="Search all articles" aria-describedby="searchStatus" placeholder="Search all articles..." style="width:220px" autocomplete="off">
+            <button type="submit" class="filter-pill" style="background:var(--gold);color:#0a0705;border-color:var(--gold);font-weight:600">🔍 Search DB</button>
             <span id="searchStatus" style="font-size:10px;color:var(--text-muted)"></span>
-          </div>
+          </form>
           <div class="filter-bar" id="filterBar">
             <span class="filter-label">Sector</span>
             <div class="filter-group" id="sectorFilters"></div>
             <span class="filter-label">Impact</span>
             <div class="filter-group">
-              <button class="filter-pill impact-bullish" data-impact="Bullish" onclick="setFilter('impact','Bullish')">▲ Bullish</button>
-              <button class="filter-pill impact-bearish" data-impact="Bearish" onclick="setFilter('impact','Bearish')">▼ Bearish</button>
-              <button class="filter-pill impact-neutral" data-impact="Neutral" onclick="setFilter('impact','Neutral')">▬ Neutral</button>
+              <button type="button" class="filter-pill impact-bullish" aria-pressed="false" data-impact="Bullish" onclick="setFilter('impact','Bullish')">▲ Bullish</button>
+              <button type="button" class="filter-pill impact-bearish" aria-pressed="false" data-impact="Bearish" onclick="setFilter('impact','Bearish')">▼ Bearish</button>
+              <button type="button" class="filter-pill impact-neutral" aria-pressed="false" data-impact="Neutral" onclick="setFilter('impact','Neutral')">▬ Neutral</button>
             </div>
             <input class="filter-search" id="filterSearch" aria-label="Filter loaded articles" placeholder="Search articles..." oninput="onSearchChange()">
             <button class="filter-clear" id="filterClear" onclick="clearFilters()" style="display:none">✕ Clear</button>
           </div>
-          <table><thead><tr><th>Title</th><th>Category</th><th>Impact</th><th>Score</th><th>Stocks</th><th></th><th></th></tr></thead><tbody id="articlesBody"></tbody></table>
+          <table><thead><tr><th scope="col">Title</th><th scope="col">Category</th><th scope="col">Impact</th><th scope="col">Score</th><th scope="col">Stocks</th><th scope="col">Open</th></tr></thead><tbody id="articlesBody"></tbody></table>
           <div id="articlesCount" style="margin-top:8px;font-size:11px;color:var(--text-muted)"></div>
           <div id="paginationControls" style="margin-top:10px;display:flex;align-items:center;gap:8px">
             <button id="loadMoreBtn" onclick="loadMoreArticles()" style="background:var(--bg-hover);border:1px solid var(--border);color:var(--text-dim);padding:6px 14px;border-radius:var(--radius-sm);cursor:pointer;font-size:11px;font-weight:500;font-family:'Space Grotesk', sans-serif;display:none">⬇️ Load More</button>
@@ -1004,123 +1043,45 @@
 
   <div id="bgGlow" style="position:fixed;top:-40%;left:-20%;width:80%;height:80%;background:radial-gradient(ellipse,rgba(255,107,43,0.04) 0%,transparent 70%);pointer-events:none;z-index:0;opacity:0.5"></div>
 
-  <!-- ── Auth Gate ─────────────────────────────────────────────────────── -->
-  <div id="authGate" style="
-    display:none;position:fixed;inset:0;z-index:9999;
-    background:#0a0705;
-    align-items:center;justify-content:center;
-    font-family:'Space Grotesk', -apple-system, sans-serif;
-  ">
-    <div style="
-      width:100%;max-width:420px;
-      background:rgba(255,255,255,0.02);
-      border:1px solid rgba(255,107,43,0.15);
-      border-radius:8px;
-      padding:40px 36px 36px;
-      box-shadow:0 8px 40px rgba(0,0,0,0.6);
-    ">
-      <div style="font-family:'Space Grotesk', sans-serif;font-size:22px;font-weight:700;color:#ff6b2b;margin-bottom:4px">Goldirham Stack</div>
-      <div style="font-size:11px;color:rgba(244,239,233,0.4);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:28px">Analytics Dashboard</div>
-
-      <div style="font-size:13px;color:rgba(244,239,233,0.7);margin-bottom:20px;line-height:1.6">
-        Enter your Supabase project credentials to access the dashboard. These are stored locally in your browser and never sent anywhere else.
-      </div>
-
-      <label for="gateUrl" style="display:block;font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:rgba(244,239,233,0.45);margin-bottom:6px">Supabase URL</label>
-      <input id="gateUrl" type="url" placeholder="https://xxxxxxxxxxxx.supabase.co" spellcheck="false" style="
-        width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,107,43,0.15);
-        border-radius:4px;padding:10px 12px;font-size:13px;color:#f4efe9;
-        font-family:'IBM Plex Mono', monospace;margin-bottom:14px;outline:none;
-        transition:border-color 0.2s;
-      " onfocus="this.style.borderColor='rgba(255,107,43,0.5)'" onblur="this.style.borderColor='rgba(255,107,43,0.15)'" onkeydown="if(event.key==='Enter')document.getElementById('gateKey').focus()">
-
-      <label for="gateKey" style="display:block;font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:rgba(244,239,233,0.45);margin-bottom:6px">Supabase Anon Key</label>
-      <input id="gateKey" type="password" placeholder="eyJhbGciOiJIUzI1NiIs..." spellcheck="false" style="
-        width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,107,43,0.15);
-        border-radius:4px;padding:10px 12px;font-size:13px;color:#f4efe9;
-        font-family:'IBM Plex Mono', monospace;margin-bottom:20px;outline:none;
-        transition:border-color 0.2s;
-      " onfocus="this.style.borderColor='rgba(255,107,43,0.5)'" onblur="this.style.borderColor='rgba(255,107,43,0.15)'" onkeydown="if(event.key==='Enter')authGateSubmit()">
-
-      <div id="gateError" style="display:none;font-size:11px;color:#ef4444;margin-bottom:14px;padding:8px 12px;background:rgba(239,68,68,0.08);border-radius:4px;border:1px solid rgba(239,68,68,0.2)"></div>
-
-      <button onclick="authGateSubmit()" id="gateBtn" style="
-        width:100%;background:#ff6b2b;border:none;color:#0a0705;
-        padding:11px 0;border-radius:4px;font-size:13px;font-weight:700;
-        font-family:'Space Grotesk', sans-serif;cursor:pointer;letter-spacing:0.02em;
-        transition:background 0.2s;
-      " onmouseover="this.style.background='#ff8c4d'" onmouseout="this.style.background='#ff6b2b'">
-        Connect to Supabase
-      </button>
-
-      <div style="margin-top:16px;font-size:10px;color:rgba(244,239,233,0.25);text-align:center;line-height:1.6">
-        Find credentials in Supabase → Settings → API.<br>
-        Use the <b>anon</b> key (public), not the service key.
-      </div>
-    </div>
-  </div>
-
   <script>
     /* ══════════════════════════════════════════════════
        JavaScript — Goldirham Dashboard
        ══════════════════════════════════════════════════ */
 
-    let SUPABASE_URL = localStorage.getItem('supabase_url') || '';
-    let SUPABASE_ANON_KEY = localStorage.getItem('supabase_anon_key') || '';
-
-    // ─── Auth Gate ──
-    async function authGateSubmit() {
-      const urlVal = document.getElementById('gateUrl').value.trim().replace(/\/$/, '');
-      const keyVal = document.getElementById('gateKey').value.trim();
-      const errEl = document.getElementById('gateError');
-      const btn = document.getElementById('gateBtn');
-
-      errEl.style.display = 'none';
-      if (!urlVal || !keyVal) {
-        errEl.textContent = 'Both fields are required.';
-        errEl.style.display = 'block';
-        return;
-      }
-      if (!urlVal.startsWith('https://')) {
-        errEl.textContent = 'URL must start with https://';
-        errEl.style.display = 'block';
-        return;
-      }
-
-      btn.textContent = 'Connecting...';
-      btn.disabled = true;
-      btn.style.opacity = '0.6';
-
+    // Vercel generates this small config artifact at build time from deployment
+    // environment variables. It is intentionally absent from Git so client keys
+    // never become repository content; RLS remains the browser security boundary.
+    const DEFAULT_SUPABASE_CONFIG = Object.freeze(
+      typeof window !== 'undefined' && window.GOLDIRHAM_SUPABASE_CONFIG
+        ? window.GOLDIRHAM_SUPABASE_CONFIG
+        : { url: '', key: '' }
+    );
+    function isSafeClientKey(key) {
+      if (/^sb_publishable_[A-Za-z0-9_]+$/.test(key || '')) return true;
       try {
-        const res = await fetch(`${urlVal}/rest/v1/digest_runs?limit=1`, {
-          headers: { apikey: keyVal, Authorization: `Bearer ${keyVal}` },
-          signal: AbortSignal.timeout(8000),
-        });
-        if (!res.ok && res.status !== 406) {
-          throw new Error(`HTTP ${res.status} — check credentials`);
-        }
-        // Success — save and unlock
-        SUPABASE_URL = urlVal;
-        SUPABASE_ANON_KEY = keyVal;
-        localStorage.setItem('supabase_url', SUPABASE_URL);
-        localStorage.setItem('supabase_anon_key', SUPABASE_ANON_KEY);
-        document.getElementById('authGate').style.display = 'none';
-        loadDashboard();
-      } catch(e) {
-        errEl.textContent = e.message.includes('fetch') ? 'Could not reach Supabase. Check the URL and your internet connection.' : (e.message || 'Connection failed.');
-        errEl.style.display = 'block';
-        btn.textContent = 'Connect to Supabase';
-        btn.disabled = false;
-        btn.style.opacity = '1';
+        const part = String(key).split('.')[1];
+        if (!part) return false;
+        const normalized = part.replace(/-/g, '+').replace(/_/g, '/');
+        const payload = JSON.parse(atob(normalized + '='.repeat((4 - normalized.length % 4) % 4)));
+        return payload.role === 'anon';
+      } catch {
+        return false;
       }
     }
-
-    function showAuthGate() {
-      document.getElementById('authGate').style.display = 'flex';
-      // Pre-fill if we have partial values
-      if (SUPABASE_URL) document.getElementById('gateUrl').value = SUPABASE_URL;
-      if (SUPABASE_ANON_KEY) document.getElementById('gateKey').value = SUPABASE_ANON_KEY;
+    function isSafeSupabaseUrl(url) {
+      try { return new URL(url).protocol === 'https:'; } catch { return false; }
     }
+    function readSupabaseConfig() {
+      try {
+        const storedUrl = (localStorage.getItem('supabase_url') || '').trim().replace(/\/$/, '');
+        const storedKey = (localStorage.getItem('supabase_anon_key') || '').trim();
+        if (isSafeSupabaseUrl(storedUrl) && isSafeClientKey(storedKey)) return { url: storedUrl, key: storedKey };
+      } catch {}
+      return DEFAULT_SUPABASE_CONFIG;
+    }
+    const SUPABASE_CONFIG = readSupabaseConfig();
+    let SUPABASE_URL = SUPABASE_CONFIG.url;
+    let SUPABASE_ANON_KEY = SUPABASE_CONFIG.key;
     let charts = {};
     let stockPriceDataCache = [];
     let allArticlesCache = [];
@@ -1128,8 +1089,12 @@
     let searchDebounceTimer = null;
     let articlePage = 0;
     const ARTICLES_PAGE_SIZE = 20;
+    const ARTICLE_SELECT = 'id,title,url,source,impact,impact_score,effective_score,ranking_explanation,is_sec_filing,category,affected_stocks,summary,reason,bear_case,thumbs_up,thumbs_down,created_at';
     let allFetchedArticles = [];
     let hasMoreArticles = true;
+    let articleSearchQuery = '';
+    let articleSearchTotal = null;
+    let dashboardPartialErrors = [];
 
     let activeFilters = (() => {
       try { return JSON.parse(localStorage.getItem('savedFilters') || '{}'); }
@@ -1148,8 +1113,14 @@
       feedback: 'section-feedback',
     };
     function switchSection(id, el) {
-      document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
-      if (el) el.classList.add('active');
+      document.querySelectorAll('.sidebar-link').forEach(l => {
+        l.classList.remove('active');
+        l.removeAttribute('aria-current');
+      });
+      if (el) {
+        el.classList.add('active');
+        el.setAttribute('aria-current', 'location');
+      }
       const target = document.getElementById(SECTION_ANCHORS[id]);
       if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
@@ -1170,8 +1141,10 @@
       'M&A and Partnerships': '#f59e0b', 'Earnings & Guidance': '#d97706',
     };
 
-    Chart.defaults.font.family = "'Space Grotesk', sans-serif";
-    Chart.defaults.font.size = 11;
+    if (typeof Chart !== 'undefined') {
+      Chart.defaults.font.family = "'Space Grotesk', sans-serif";
+      Chart.defaults.font.size = 11;
+    }
 
     // ─── Date / Greeting ──
     function updateGreeting() {
@@ -1184,10 +1157,10 @@
       if (el2) el2.textContent = `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]}`;
       const h = now.getHours();
       const greet = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
-      document.querySelectorAll('.greeting-section h2, .header-greeting').forEach(el => {
+      document.querySelectorAll('.greeting-section h1, .header-greeting').forEach(el => {
         const inner = `Good ${greet}, <span class="gold">Analyst</span>.`;
         // the big heading gets the masked rise-in; the compact header one doesn't
-        el.innerHTML = el.tagName === 'H2' ? `<span class="rise">${inner}</span>` : inner;
+        el.innerHTML = el.tagName === 'H1' ? `<span class="rise">${inner}</span>` : inner;
       });
     }
     updateGreeting();
@@ -1201,25 +1174,38 @@
     // ─── Config ──
     function showConfig() {
       const panel = document.getElementById('configPanel');
-      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+      const open = panel.style.display === 'none';
+      panel.style.display = open ? 'block' : 'none';
+      document.getElementById('configToggle')?.setAttribute('aria-expanded', String(open));
+      if (!open) return;
       panel.innerHTML = `
         <div class="config-form">
-          <h2>⚙ Configuration</h2>
+          <h2>⚙ Connection settings</h2>
           <label for="cfgUrl">Supabase URL</label>
-          <input id="cfgUrl" value="${SUPABASE_URL}" placeholder="https://xxx.supabase.co" spellcheck="false">
+          <input id="cfgUrl" value="${escapeHtml(SUPABASE_URL)}" placeholder="https://xxx.supabase.co" spellcheck="false" autocomplete="url">
           <label for="cfgKey">Anon Public Key</label>
-          <input id="cfgKey" value="${SUPABASE_ANON_KEY}" placeholder="eyJhbGciOiJ..." spellcheck="false">
-          <button onclick="saveConfig()">Save & Reload</button>
-          <p class="note">Find these in Supabase Dashboard → Settings → API</p>
+          <input id="cfgKey" type="password" value="${escapeHtml(SUPABASE_ANON_KEY)}" placeholder="eyJhbGciOiJ..." spellcheck="false" autocomplete="off">
+          <p id="cfgError" class="note" role="alert" style="display:none;color:var(--danger)"></p>
+          <button type="button" onclick="saveConfig()">Save &amp; Reload</button>
+          <p class="note">Use only the public anon or publishable key. RLS protects the read-only dashboard; never enter a service-role key.</p>
         </div>
       `;
     }
     function saveConfig() {
-      SUPABASE_URL = document.getElementById('cfgUrl').value.trim();
-      SUPABASE_ANON_KEY = document.getElementById('cfgKey').value.trim();
+      const url = document.getElementById('cfgUrl').value.trim().replace(/\/$/, '');
+      const key = document.getElementById('cfgKey').value.trim();
+      const error = document.getElementById('cfgError');
+      if (!isSafeSupabaseUrl(url) || !isSafeClientKey(key)) {
+        error.textContent = 'Enter an HTTPS Supabase URL and a public anon or publishable key. Service-role keys are blocked.';
+        error.style.display = 'block';
+        return;
+      }
+      SUPABASE_URL = url;
+      SUPABASE_ANON_KEY = key;
       localStorage.setItem('supabase_url', SUPABASE_URL);
       localStorage.setItem('supabase_anon_key', SUPABASE_ANON_KEY);
       document.getElementById('configPanel').style.display = 'none';
+      document.getElementById('configToggle')?.setAttribute('aria-expanded', 'false');
       loadDashboard();
     }
 
@@ -1227,8 +1213,15 @@
     async function supabaseQuery(table, opts = {}) {
       if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return [];
       let url = `${SUPABASE_URL}/rest/v1/${table}?select=${opts.select || '*'}`;
-      if (opts.order) url += `&order=${opts.order}.${opts.ascending === false ? 'asc' : 'desc'}`;
+      if (opts.order) {
+        const order = opts.order.includes('.') || opts.order.includes(',')
+          ? opts.order
+          : `${opts.order}.${opts.ascending === false ? 'asc' : 'desc'}`;
+        url += `&order=${encodeURIComponent(order)}`;
+      }
       if (opts.limit) url += `&limit=${opts.limit}`;
+      if (opts.offset != null) url += `&offset=${Math.max(0, Number(opts.offset) || 0)}`;
+      if (opts.or) url += `&or=${encodeURIComponent(opts.or)}`;
       if (opts.range) {
         const col = opts.rangeColumn || 'date';
         url += `&${col}=gte.${opts.range}`;
@@ -1247,6 +1240,73 @@
         clearTimeout(timeout);
         console.error(`Supabase query error (${table}):`, e.message);
         throw e;
+      }
+    }
+
+    function normalizeSearchQuery(value) {
+      return String(value || '')
+        .replace(/[^a-z0-9\s._-]/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 80);
+    }
+    async function fetchArticlePage(query = '', offset = 0) {
+      const safeQuery = normalizeSearchQuery(query);
+      const safeOffset = Math.max(0, Number(offset) || 0);
+      const params = new URLSearchParams({
+        select: ARTICLE_SELECT,
+        order: 'impact_score.desc,created_at.desc,id.desc',
+        limit: String(ARTICLES_PAGE_SIZE + 1),
+        offset: String(safeOffset),
+      });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      try {
+        const url = safeQuery
+          ? `${SUPABASE_URL}/rest/v1/rpc/search_articles`
+          : `${SUPABASE_URL}/rest/v1/articles?${params.toString()}`;
+        const res = await fetch(url, {
+          method: safeQuery ? 'POST' : 'GET',
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            ...(safeQuery ? { 'Content-Type': 'application/json' } : {}),
+            Prefer: 'count=exact',
+          },
+          ...(safeQuery ? {
+            body: JSON.stringify({
+              p_query: safeQuery,
+              p_limit: ARTICLES_PAGE_SIZE,
+              p_offset: safeOffset,
+            }),
+          } : {}),
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const payload = await res.json();
+        if (safeQuery) {
+          const articles = Array.isArray(payload?.articles) ? payload.articles : [];
+          const total = Number(payload?.total);
+          return {
+            articles,
+            total: Number.isFinite(total) ? total : null,
+            hasMore: Number.isFinite(total) ? safeOffset + articles.length < total : articles.length === ARTICLES_PAGE_SIZE,
+          };
+        }
+
+        const rows = payload;
+        const page = Array.isArray(rows) ? rows : [];
+        const contentRange = res.headers.get('content-range') || '';
+        const totalPart = contentRange.split('/')[1];
+        const total = totalPart && totalPart !== '*' ? Number(totalPart) : null;
+        const articles = page.slice(0, ARTICLES_PAGE_SIZE);
+        return {
+          articles,
+          total: Number.isFinite(total) ? total : null,
+          hasMore: page.length > ARTICLES_PAGE_SIZE || (Number.isFinite(total) ? safeOffset + articles.length < total : page.length === ARTICLES_PAGE_SIZE),
+        };
+      } finally {
+        clearTimeout(timeout);
       }
     }
 
@@ -1278,6 +1338,17 @@
         bodyFont: { family: "'IBM Plex Mono', monospace", size: 11 },
         boxPadding: 6, usePointStyle: true,
       };
+    }
+    function setChartFallback(id, text) {
+      const fallback = document.getElementById(id);
+      if (fallback) fallback.textContent = text;
+      const canvas = fallback?.previousElementSibling;
+      if (canvas) canvas.setAttribute('aria-label', text);
+    }
+    function chartsUnavailable(id) {
+      if (typeof Chart !== 'undefined') return false;
+      setChartFallback(id, 'Charts are unavailable right now; use the accessible data summaries below.');
+      return true;
     }
 
     // ─── KPI Animate ──
@@ -1335,15 +1406,41 @@
     }
 
     // ─── Main Load ──
+    async function queryDashboardData(label, table, opts, errors) {
+      try {
+        return await supabaseQuery(table, opts);
+      } catch (error) {
+        errors.push({
+          label,
+          message: error?.name === 'AbortError' ? 'Request timed out' : (error?.message || 'Request failed'),
+        });
+        return [];
+      }
+    }
+    function renderPartialLoadErrors(errors) {
+      const el = document.getElementById('partialLoadErrors');
+      if (!el) return;
+      dashboardPartialErrors = errors;
+      if (!errors.length) {
+        el.hidden = true;
+        el.textContent = '';
+        return;
+      }
+      el.innerHTML = `<strong>Some dashboard data could not load.</strong><ul>${errors.map(error => `<li>${escapeHtml(error.label)}: ${escapeHtml(error.message)}</li>`).join('')}</ul>`;
+      el.hidden = false;
+    }
+    function updatePartialLoadError(label, message = '') {
+      const errors = dashboardPartialErrors.filter(error => error.label !== label);
+      if (message) errors.push({ label, message });
+      renderPartialLoadErrors(errors);
+    }
     async function loadDashboard() {
       const loading = document.getElementById('loading');
       const content = document.getElementById('content');
       const msg = document.getElementById('loadingMsg');
 
-      if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-        showAuthGate();
-        return;
-      }
+      if (document.hidden) return;
+      const preserveArticleSearch = Boolean(articleSearchQuery);
 
       loading.style.display = 'block';
       msg.textContent = 'Loading dashboard data...';
@@ -1357,27 +1454,29 @@
       }, 8000);
 
       try {
+        const partialErrors = [];
         const [digests, sectors, stocks, articles, feeds, capex, metrics, prices, deliveries, secFilings, theses, thesisHistory, rankingQuality] = await Promise.all([
-          supabaseQuery('digest_runs', { order: 'run_date', limit: 60, rangeColumn: 'run_date', range: rangeDate }).catch(() => []),
-          supabaseQuery('sector_activity', { select: 'date,sector,article_count,avg_impact_score', order: 'date', range: rangeDate }).catch(() => []),
-          supabaseQuery('stock_mentions', { order: 'mention_count', limit: 10, range: rangeDate }).catch(() => []),
-          supabaseQuery('articles', { order: 'impact_score', limit: 20 }).catch(() => []),
-          supabaseQuery('pipeline_health', { order: 'created_at', limit: 50 }).catch(() => []),
-          supabaseQuery('capex_tracking', { order: 'date', limit: 10 }).catch(() => []),
-          supabaseQuery('daily_metrics', { order: 'date', limit: 30, range: rangeDate }).catch(() => []),
-          supabaseQuery('stock_prices', { order: 'date', limit: 500, range: rangeDate }).catch(() => []),
-          supabaseQuery('delivery_metrics_daily', { order: 'run_date', limit: 100, range: rangeDate, rangeColumn: 'run_date' }).catch(() => []),
-          supabaseQuery('sec_filings', { order: 'filing_date', limit: 50, range: rangeDate, rangeColumn: 'filing_date' }).catch(() => []),
-          supabaseQuery('ticker_theses', { order: 'confidence', limit: 10 }).catch(() => []),
+          queryDashboardData('Digest runs', 'digest_runs', { order: 'run_date', limit: 60, rangeColumn: 'run_date', range: rangeDate }, partialErrors),
+          queryDashboardData('Sector activity', 'sector_activity', { select: 'date,sector,article_count,avg_impact_score', order: 'date', range: rangeDate }, partialErrors),
+          queryDashboardData('Stock mentions', 'stock_mentions', { order: 'mention_count', limit: 10, range: rangeDate }, partialErrors),
+          queryDashboardData('Articles', 'articles', { select: ARTICLE_SELECT, order: 'impact_score.desc,created_at.desc,id.desc', limit: ARTICLES_PAGE_SIZE }, partialErrors),
+          queryDashboardData('Pipeline health', 'pipeline_health', { order: 'created_at', limit: 50 }, partialErrors),
+          queryDashboardData('Capex tracking', 'capex_tracking', { order: 'date', limit: 10 }, partialErrors),
+          queryDashboardData('Daily metrics', 'daily_metrics', { order: 'date', limit: 30, range: rangeDate }, partialErrors),
+          queryDashboardData('Stock prices', 'stock_prices', { order: 'date', limit: 500, range: rangeDate }, partialErrors),
+          queryDashboardData('Delivery metrics', 'delivery_metrics_daily', { order: 'run_date', limit: 100, range: rangeDate, rangeColumn: 'run_date' }, partialErrors),
+          queryDashboardData('SEC filings', 'sec_filings', { order: 'filing_date', limit: 50, range: rangeDate, rangeColumn: 'filing_date' }, partialErrors),
+          queryDashboardData('Ticker theses', 'ticker_theses', { order: 'confidence', limit: 10 }, partialErrors),
           // v11 — up to ~10 tracked tickers × recent weeks; one batched fetch,
           // no per-ticker query loop. Sorted client-side (see renderThesesSection).
-          supabaseQuery('ticker_thesis_history', { limit: 100 }).catch(() => []),
-          supabaseQuery('ranking_quality_daily', { order: 'date', limit: 30 }).catch(() => []),
+          queryDashboardData('Thesis history', 'ticker_thesis_history', { limit: 100 }, partialErrors),
+          queryDashboardData('Ranking quality', 'ranking_quality_daily', { order: 'date', limit: 30 }, partialErrors),
         ]);
 
         clearTimeout(slowTimer);
         loading.style.display = 'none';
         content.style.display = 'block';
+        renderPartialLoadErrors(partialErrors);
         stockPriceDataCache = prices;
 
         const hasData = digests.length > 0 || articles.length > 0;
@@ -1391,9 +1490,15 @@
           `;
         }
 
-        allArticlesCache = articles;
-        allFetchedArticles = articles;
-        hasMoreArticles = articles.length === 20;
+        if (!preserveArticleSearch) {
+          articleSearchQuery = '';
+          articleSearchTotal = null;
+          allArticlesCache = articles;
+          allFetchedArticles = articles;
+          hasMoreArticles = articles.length === ARTICLES_PAGE_SIZE;
+        } else {
+          allArticlesCache = allFetchedArticles;
+        }
         allSectors = [...new Set(sectors.map(s => s.sector))];
 
         renderKPI(digests, sectors, metrics);
@@ -1421,7 +1526,14 @@
         const btn = document.getElementById('loadMoreBtn');
         const info = document.getElementById('paginationInfo');
         if (btn) { btn.style.display = hasMoreArticles ? 'inline-flex' : 'none'; btn.disabled = false; btn.textContent = '⬇️ Load More'; }
-        if (info) info.textContent = hasMoreArticles ? `Showing ${articles.length} articles` : `${articles.length} articles`;
+        if (info) {
+          if (preserveArticleSearch) {
+            const total = articleSearchTotal == null ? allFetchedArticles.length : articleSearchTotal;
+            info.textContent = hasMoreArticles ? `Showing ${allFetchedArticles.length} of ${total}` : `${allFetchedArticles.length} results`;
+          } else {
+            info.textContent = hasMoreArticles ? `Showing ${articles.length} articles` : `${articles.length} articles`;
+          }
+        }
 
         const glow = document.getElementById('bgGlow');
         glow.style.opacity = '0.3';
@@ -1434,11 +1546,12 @@
         document.getElementById('kpiGrid').innerHTML = `
           <div class="error-box">
             <p style="font-size:14px;margin-bottom:4px">❌ Connection Error</p>
-            <p style="font-size:11px;color:var(--text-dim);margin-bottom:10px">${e.message}</p>
+            <p style="font-size:11px;color:var(--text-dim);margin-bottom:10px">${escapeHtml(e.message || 'Unexpected dashboard error')}</p>
             <button onclick="loadDashboard()">Retry</button>
             <button onclick="showConfig()" style="margin-left:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border)">⚙ Fix Config</button>
           </div>
         `;
+        renderPartialLoadErrors([{ label: 'Dashboard', message: e.message || 'Unexpected dashboard error' }]);
       }
     }
 
@@ -1498,12 +1611,14 @@
 
     // ─── Charts ──
     function renderSectorChart(sectors) {
+      if (chartsUnavailable('sectorChartFallback')) return;
       if (charts.sector) charts.sector.destroy();
       const g = {};
       sectors.forEach(s => { if (!g[s.sector]) g[s.sector] = 0; g[s.sector] += s.article_count || 0; });
       const labels = Object.keys(g), data = Object.values(g);
-      if (!labels.length) return;
+      if (!labels.length) { setChartFallback('sectorChartFallback', 'No sector activity data is available for this range.'); return; }
       const total = data.reduce((s, v) => s + v, 0);
+      setChartFallback('sectorChartFallback', `${fmtNum(total)} articles across ${labels.length} sectors. Select a bar to filter the article list.`);
       const el = document.getElementById('sectorChartValue');
       if (el) el.textContent = fmtNum(total);
       const colors = Object.values(SECTOR_COLORS);
@@ -1529,9 +1644,11 @@
     }
 
     function renderStockChart(stocks) {
+      if (chartsUnavailable('stockChartFallback')) return;
       if (charts.stock) charts.stock.destroy();
       const top = stocks.slice(0, 10);
-      if (!top.length) return;
+      if (!top.length) { setChartFallback('stockChartFallback', 'No stock mover data is available for this range.'); return; }
+      setChartFallback('stockChartFallback', `${top.length} stock movers ranked by price change.`);
       const ctx = document.getElementById('stockChart').getContext('2d');
       const c = chartTextColor(), gc = chartGridColor();
       const prices = top.map(s => s.price_change_percent || 0);
@@ -1561,12 +1678,14 @@
     }
 
     function renderStockPriceChart(prices) {
+      if (chartsUnavailable('stockPriceChartFallback')) return;
       if (charts.stockPrice) charts.stockPrice.destroy();
-      if (!prices.length) return;
+      if (!prices.length) { setChartFallback('stockPriceChartFallback', 'No stock price history is available for this range.'); return; }
       const byTicker = {};
       prices.forEach(p => { if (!byTicker[p.ticker]) byTicker[p.ticker] = []; byTicker[p.ticker].push(p); });
       const tickers = Object.keys(byTicker).sort();
-      if (!tickers.length) return;
+      if (!tickers.length) { setChartFallback('stockPriceChartFallback', 'No ticker price history is available for this range.'); return; }
+      setChartFallback('stockPriceChartFallback', `${tickers.length} tickers across ${new Set(prices.map(p => p.date)).size} dates. Use the ticker buttons to change the lines.`);
       const toggleEl = document.getElementById('tickerToggle');
       const selectedTickers = JSON.parse(localStorage.getItem('selectedTickers') || '[]');
       const defaultTickers = tickers.map(t => ({ ticker: t, count: byTicker[t].length })).sort((a, b) => b.count - a.count).slice(0, 5).map(t => t.ticker);
@@ -1590,7 +1709,7 @@
       }
       document.getElementById('tickerBadge').textContent = `${activeTickers.length} shown`;
       const allDates = [...new Set(prices.map(p => p.date))].sort();
-      if (!allDates.length) return;
+      if (!allDates.length) { setChartFallback('stockPriceChartFallback', 'No dated stock prices are available for this range.'); return; }
       const datasets = [];
       activeTickers.forEach((ticker, i) => {
         const tickerPrices = byTicker[ticker] || [];
@@ -1629,13 +1748,15 @@
     }
 
     function renderSectorTrendChart(sectors) {
+      if (chartsUnavailable('sectorTrendChartFallback')) return;
       if (charts.sectorTrend) charts.sectorTrend.destroy();
-      if (!sectors.length) return;
+      if (!sectors.length) { setChartFallback('sectorTrendChartFallback', 'No sector trend data is available for this range.'); return; }
       const byDate = {};
       const allSectors = [...new Set(sectors.map(s => s.sector))].sort();
       sectors.forEach(s => { if (!byDate[s.date]) byDate[s.date] = {}; byDate[s.date][s.sector] = (byDate[s.date][s.sector] || 0) + (s.article_count || 0); });
       const dates = Object.keys(byDate).sort();
-      if (!dates.length) return;
+      if (!dates.length) { setChartFallback('sectorTrendChartFallback', 'No dated sector trend data is available for this range.'); return; }
+      setChartFallback('sectorTrendChartFallback', `${dates.length} dates across ${allSectors.length} sectors.`);
       const datasets = allSectors.map(sector => {
         const color = SECTOR_COLORS[sector] || '#ff6b2b';
         return { label: sector, data: dates.map(d => byDate[d][sector] || 0), backgroundColor: color + '22', borderColor: color, borderWidth: 1, fill: true, tension: 0.3, pointRadius: 0 };
@@ -1660,9 +1781,11 @@
     }
 
     function renderCapexChart(metrics) {
+      if (chartsUnavailable('capexChartFallback')) return;
       if (charts.capex) charts.capex.destroy();
       const sorted = (metrics || []).filter(m => (m.sec_capex_total || m.sec_ai_revenue_total || m.total_capex_announced)).sort((a, b) => a.date.localeCompare(b.date));
-      if (!sorted.length) return;
+      if (!sorted.length) { setChartFallback('capexChartFallback', 'No capex or AI spending metrics are available.'); return; }
+      setChartFallback('capexChartFallback', `${sorted.length} days of capex and AI revenue metrics from SEC data.`);
       const dates = sorted.map(m => fmtShortDate(m.date));
       const capexData = sorted.map(m => (m.sec_capex_total || m.total_capex_announced || 0));
       const aiRevData = sorted.map(m => (m.sec_ai_revenue_total || 0));
@@ -1694,9 +1817,10 @@
     }
 
     function renderFeedbackChart(metrics) {
+      if (chartsUnavailable('feedbackChartFallback')) return;
       if (charts.feedback) charts.feedback.destroy();
       const sorted = (metrics || []).filter(m => m.feedback_ratings).sort((a, b) => a.date.localeCompare(b.date));
-      if (!sorted.length) return;
+      if (!sorted.length) { setChartFallback('feedbackChartFallback', 'No feedback ratings are available yet.'); return; }
       const dates = sorted.map(m => fmtShortDate(m.date));
       const avgRatings = sorted.map(m => {
         try { const p = JSON.parse(m.feedback_ratings); if (p.ratings && p.ratings.length) return p.ratings.reduce((s, r) => s + r, 0) / p.ratings.length; } catch {} return null;
@@ -1705,7 +1829,8 @@
         try { const p = JSON.parse(m.feedback_ratings); return p.ratings ? p.ratings.length : 0; } catch { return 0; }
       });
       const valid = dates.map((d, i) => ({ date: d, avg: avgRatings[i], votes: voteCounts[i] })).filter(v => v.avg !== null);
-      if (valid.length < 2) return;
+      if (valid.length < 2) { setChartFallback('feedbackChartFallback', 'At least two feedback rating points are needed for this chart.'); return; }
+      setChartFallback('feedbackChartFallback', `${valid.reduce((s, v) => s + v.votes, 0)} votes across ${valid.length} dated rating points.`);
       const badge = document.getElementById('feedbackBadge');
       if (badge) badge.textContent = `${valid.reduce((s, v) => s + v.votes, 0)} votes`;
       const ctx = document.getElementById('feedbackChart').getContext('2d');
@@ -1735,9 +1860,11 @@
     }
 
     function renderDigestPerformanceChart(digests, metrics) {
+      if (chartsUnavailable('digestPerfChartFallback')) return;
       if (charts.digestPerf) charts.digestPerf.destroy();
-      if (!digests.length) return;
+      if (!digests.length) { setChartFallback('digestPerfChartFallback', 'No digest run performance data is available.'); return; }
       const sorted = [...digests].sort((a, b) => a.run_date.localeCompare(b.run_date));
+      setChartFallback('digestPerfChartFallback', `${sorted.length} digest runs. The chart compares articles, tokens, and duration.`);
       const dates = sorted.map(d => fmtShortDate(d.run_date));
       const ctx = document.getElementById('digestPerfChart').getContext('2d');
       const c = chartTextColor(), gc = chartGridColor();
@@ -1767,9 +1894,11 @@
     }
 
     function renderTokenChart(metrics) {
+      if (chartsUnavailable('tokenChartFallback')) return;
       if (charts.token) charts.token.destroy();
       const recent = (metrics || []).slice(-14);
-      if (!recent.length) return;
+      if (!recent.length) { setChartFallback('tokenChartFallback', 'No AI token usage metrics are available.'); return; }
+      setChartFallback('tokenChartFallback', `${recent.length} daily AI token usage points, showing the most recent two weeks.`);
       const ctx = document.getElementById('tokenChart').getContext('2d');
       const c = chartTextColor(), gc = chartGridColor();
       charts.token = new Chart(ctx, {
@@ -1797,7 +1926,7 @@
         // sector names come from the DB — carry them on a data attribute
         // rather than interpolating into an inline handler, and escape the
         // label so a name can never break out into markup
-        return `<button class="filter-pill ${active ? 'active' : ''}" data-sector="${escapeHtml(s)}" style="${active ? `background:${color};border-color:${color};color:#0a0705` : '--filter-color:' + color}">${active ? '✓ ' : ''}${escapeHtml(s)}</button>`;
+        return `<button type="button" class="filter-pill ${active ? 'active' : ''}" aria-pressed="${active}" data-sector="${escapeHtml(s)}" style="${active ? `background:${color};border-color:${color};color:#0a0705` : '--filter-color:' + color}">${active ? '✓ ' : ''}${escapeHtml(s)}</button>`;
       }).join('');
       // one delegated listener on the container, which is never replaced
       // (only its innerHTML is), so the 60s refresh can't stack handlers
@@ -1814,6 +1943,7 @@
       if (searchInput.value !== activeFilters.search) searchInput.value = activeFilters.search;
       document.querySelectorAll('.filter-pill.impact-bullish, .filter-pill.impact-bearish, .filter-pill.impact-neutral').forEach(btn => {
         btn.classList.toggle('active', activeFilters.impact === btn.dataset.impact);
+        btn.setAttribute('aria-pressed', String(activeFilters.impact === btn.dataset.impact));
       });
     }
 
@@ -1854,15 +1984,20 @@
     function toggleArticleExpand(idx) {
       const detailRow = document.getElementById('article-detail-' + idx);
       const chevron = document.getElementById('article-chevron-' + idx);
+      const row = document.getElementById('article-row-' + idx);
       if (!detailRow) return;
-      const isOpen = detailRow.style.display !== 'none';
-      document.querySelectorAll('[id^="article-detail-"]').forEach(el => { el.style.display = 'none'; });
+      const isOpen = !detailRow.hidden;
+      document.querySelectorAll('[id^="article-detail-"]').forEach(el => { el.hidden = true; el.style.display = 'none'; el.setAttribute('aria-hidden', 'true'); });
       document.querySelectorAll('[id^="article-chevron-"]').forEach(el => { el.style.transform = ''; });
       document.querySelectorAll('[id^="article-row-"]').forEach(el => { el.style.background = ''; });
+      document.querySelectorAll('[id^="article-row-"]').forEach(el => { el.setAttribute('aria-expanded', 'false'); });
       if (!isOpen) {
+        detailRow.hidden = false;
         detailRow.style.display = 'table-row';
+        detailRow.setAttribute('aria-hidden', 'false');
         chevron.style.transform = 'rotate(90deg)';
-        document.getElementById('article-row-' + idx).style.background = 'rgba(255,107,43,0.04)';
+        row.style.background = 'rgba(255,107,43,0.04)';
+        row.setAttribute('aria-expanded', 'true');
         _expandedArticleIdx = idx;
       } else {
         _expandedArticleIdx = null;
@@ -1873,11 +2008,12 @@
       const tbody = document.getElementById('articlesBody');
       const countEl = document.getElementById('articlesCount');
       if (!articles.length) {
-        tbody.innerHTML = '<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--text-dim)">' + (filtered ? 'No articles match your filters' : 'No articles yet — run the digest first') + '</td></tr>';
+        const emptyMessage = articleSearchQuery ? `No articles match "${escapeHtml(articleSearchQuery)}"` : (filtered ? 'No articles match your filters' : 'No articles yet - run the digest first');
+        tbody.innerHTML = `<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--text-dim)">${emptyMessage}</td></tr>`;
         if (countEl) countEl.textContent = '';
         return;
       }
-      const show = articles.slice(0, 20);
+      const show = articles.slice(0, ARTICLES_PAGE_SIZE);
       tbody.innerHTML = show.map((a, i) => {
         const isSec = a.is_sec_filing;
         const secBadge = isSec ? '<span style="font-size:11px" title="SEC Filing">\uD83C\uDFDB</span>' : '';
@@ -1898,17 +2034,18 @@
           ? `<span style="font-size:10px;color:var(--text-muted);margin-left:8px">👍 ${Number(a.thumbs_up)||0} · 👎 ${Number(a.thumbs_down)||0}</span>`
           : '';
 
-        const mainRow = `<tr id="article-row-${i}" style="cursor:pointer;transition:background 0.15s" onclick="toggleArticleExpand(${i})">` +
+        const articleTitle = escapeHtml(a.title || 'Untitled article');
+        const mainRow = `<tr id="article-row-${i}" class="article-row" tabindex="0" role="button" aria-expanded="false" aria-controls="article-detail-${i}" aria-label="Expand article details: ${articleTitle}" style="cursor:pointer;transition:background 0.15s" onclick="toggleArticleExpand(${i})" onkeydown="if(event.target===this&&(event.key==='Enter'||event.key===' ')){event.preventDefault();toggleArticleExpand(${i})}">` +
           `<td><span style="display:flex;align-items:center;gap:6px">` +
           `<span id="article-chevron-${i}" style="font-size:8px;color:var(--text-muted);transition:transform 0.2s;flex-shrink:0;user-select:none">&#9658;</span>` +
-          `${secBadge}<span style="color:var(--text)">${escapeHtml(a.title)}</span></span></td>` +
+          `${secBadge}<span style="color:var(--text)">${articleTitle}</span></span></td>` +
           `<td><span style="display:inline-flex;align-items:center;gap:4px"><span style="width:6px;height:6px;border-radius:1px;background:${SECTOR_COLORS[a.category] || 'var(--text-dim)'};display:inline-block;flex-shrink:0"></span>${escapeHtml(a.category || '—')}</span></td>` +
           `<td class="${sentimentClass(a.impact)}">${sentimentArrow(a.impact)} ${escapeHtml(a.impact || '—')}</td>` +
           `<td><span style="font-weight:600;font-family:'IBM Plex Mono', monospace">${escapeHtml(a.impact_score || '—')}</span><span style="color:var(--text-muted)">/10</span></td>` +
           `<td>${stocks}</td>` +
-          `<td style="text-align:right"><a href="${safeUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-size:10px;color:var(--gold)">&#128279;</a></td></tr>`;
+          `<td style="text-align:right"><a href="${safeUrl}" target="_blank" rel="noopener" aria-label="Open article in a new tab" title="Open article in a new tab" onclick="event.stopPropagation()" style="font-size:10px;color:var(--gold)">&#128279;</a></td></tr>`;
 
-        const detailRow = `<tr id="article-detail-${i}" style="display:none">` +
+        const detailRow = `<tr id="article-detail-${i}" aria-hidden="true" hidden style="display:none">` +
           `<td colspan="6" style="padding:0">` +
           `<div style="padding:12px 14px 14px 28px;background:rgba(255,107,43,0.03);border-top:1px solid var(--border-light);border-bottom:1px solid var(--border-light)">` +
           (summary ? `<div style="font-size:12px;color:var(--text-dim);margin-bottom:8px;line-height:1.6">${summary}</div>` : '') +
@@ -1916,14 +2053,23 @@
           rankingDetail +
           (bearCase ? `<div style="font-size:11px;color:#e0b257;font-style:italic;margin-bottom:10px;padding:6px 10px;background:rgba(224,178,87,0.06);border-left:2px solid rgba(224,178,87,0.4);border-radius:2px">⚠️ ${escapeHtml(bearCase)}</div>` : '') +
           `<div style="display:flex;align-items:center;gap:8px">` +
-          `<a href="${safeUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-size:11px;color:var(--gold);text-decoration:none">Read full article &#8594;</a>` +
+          `<a href="${safeUrl}" target="_blank" rel="noopener" aria-label="Read full article in a new tab" onclick="event.stopPropagation()" style="font-size:11px;color:var(--gold);text-decoration:none">Read full article &#8594;</a>` +
           thumbs +
           `</div>` +
           `</div></td></tr>`;
 
         return mainRow + detailRow;
       }).join('');
-      if (countEl && filtered) countEl.textContent = `Showing ${show.length} of ${articles.length} filtered from ${allArticlesCache.length} articles`;
+      if (countEl) {
+        if (articleSearchQuery) {
+          const total = articleSearchTotal == null ? allArticlesCache.length : articleSearchTotal;
+          countEl.textContent = `Showing ${show.length} of ${total} search results for "${articleSearchQuery}"`;
+        } else if (filtered) {
+          countEl.textContent = `Showing ${show.length} of ${articles.length} filtered from ${allArticlesCache.length} articles`;
+        } else {
+          countEl.textContent = `Showing ${show.length} articles`;
+        }
+      }
     }
 
     function exportCSV() {
@@ -2151,50 +2297,85 @@
     async function loadMoreArticles() {
       const btn = document.getElementById('loadMoreBtn');
       const info = document.getElementById('paginationInfo');
+      if (!hasMoreArticles || !btn) return;
       btn.disabled = true; btn.textContent = '⏳ Loading...';
-      articlePage++;
-      const offset = articlePage * ARTICLES_PAGE_SIZE;
+      const nextPage = articlePage + 1;
+      const offset = nextPage * ARTICLES_PAGE_SIZE;
       try {
-        const url = `${SUPABASE_URL}/rest/v1/articles?select=title,url,source,impact,impact_score,effective_score,ranking_explanation,category,affected_stocks,summary,reason,bear_case,thumbs_up,thumbs_down,created_at&order=impact_score.desc&limit=${ARTICLES_PAGE_SIZE}&offset=${offset}`;
-        const res = await fetch(url, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const newArticles = await res.json();
-        if (newArticles.length === 0) { hasMoreArticles = false; btn.style.display = 'none'; info.textContent = 'All articles loaded'; btn.disabled = false; btn.textContent = '⬇️ Load More'; return; }
-        const existingUrls = new Set(allFetchedArticles.map(a => a.url));
-        for (const a of newArticles) { if (!existingUrls.has(a.url)) { allFetchedArticles.push(a); existingUrls.add(a.url); } }
+        const result = await fetchArticlePage(articleSearchQuery, offset);
+        const existingArticles = new Set(allFetchedArticles.map(a => a.id ?? a.url));
+        for (const article of result.articles) {
+          const identity = article.id ?? article.url;
+          if (!existingArticles.has(identity)) { allFetchedArticles.push(article); existingArticles.add(identity); }
+        }
+        articlePage = nextPage;
+        articleSearchTotal = result.total ?? articleSearchTotal;
+        hasMoreArticles = result.hasMore;
         allArticlesCache = allFetchedArticles;
-        renderArticles(allFetchedArticles, false);
-        if (newArticles.length < ARTICLES_PAGE_SIZE) { hasMoreArticles = false; btn.style.display = 'none'; info.textContent = `${allFetchedArticles.length} articles — all loaded`; }
-        else info.textContent = `Showing ${allFetchedArticles.length} articles`;
-      } catch (e) { info.textContent = `Error: ${e.message}`; info.style.color = 'var(--danger)'; }
-      btn.disabled = false; btn.textContent = '⬇️ Load More';
+        applyFilters();
+        btn.style.display = hasMoreArticles ? 'inline-flex' : 'none';
+        const totalText = articleSearchTotal == null ? '' : ` of ${articleSearchTotal}`;
+        info.textContent = hasMoreArticles ? `Showing ${allFetchedArticles.length}${totalText}` : `Showing ${allFetchedArticles.length}${totalText} - all loaded`;
+        info.style.color = 'var(--text-muted)';
+        updatePartialLoadError('Article pagination');
+      } catch (e) {
+        info.textContent = `Error loading articles: ${e.message || 'Request failed'}`;
+        info.style.color = 'var(--danger)';
+        updatePartialLoadError('Article pagination', e.message || 'Request failed');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '⬇️ Load More';
+      }
     }
 
     async function doFullTextSearch() {
       const input = document.getElementById('fullTextSearch');
       const status = document.getElementById('searchStatus');
-      const query = input.value.trim();
-      articlePage = 0; hasMoreArticles = false; allFetchedArticles = [];
+      const query = normalizeSearchQuery(input.value);
+      articleSearchQuery = '';
+      articleSearchTotal = null;
+      articlePage = 0;
+      hasMoreArticles = false;
+      allFetchedArticles = [];
+      activeFilters.search = '';
+      saveFilters();
+      const localFilter = document.getElementById('filterSearch');
+      if (localFilter) localFilter.value = '';
       const loadBtn = document.getElementById('loadMoreBtn');
       if (loadBtn) { loadBtn.style.display = 'none'; loadBtn.disabled = false; loadBtn.textContent = '⬇️ Load More'; }
       const pagInfo = document.getElementById('paginationInfo');
       if (pagInfo) pagInfo.textContent = '';
-      if (!query || query.length < 2) { status.textContent = 'Type at least 2 characters'; status.style.color = 'var(--warn)'; return; }
+      if (!query) { status.textContent = 'Showing the latest articles'; status.style.color = 'var(--text-muted)'; loadDashboard(); return; }
+      if (query.length < 2) { status.textContent = 'Type at least 2 characters'; status.style.color = 'var(--warn)'; return; }
+      articleSearchQuery = query;
       status.textContent = '🔍 Searching...'; status.style.color = 'var(--text-dim)';
+      updatePartialLoadError('Article search');
+      updatePartialLoadError('Article pagination');
       try {
-        const searchUrl = `${SUPABASE_URL}/rest/v1/articles?select=title,url,source,impact,impact_score,effective_score,ranking_explanation,category,affected_stocks,summary,reason,bear_case,thumbs_up,thumbs_down,created_at&order=impact_score.desc&limit=25`;
-        const res = await fetch(searchUrl, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        let articles = await res.json();
-        const q = query.toLowerCase();
-        articles = articles.filter(a => (a.title || '').toLowerCase().includes(q) || (a.summary || '').toLowerCase().includes(q) || (a.source || '').toLowerCase().includes(q) || (a.category || '').toLowerCase().includes(q) || (a.affected_stocks || []).some(s => s && s.toLowerCase().includes(q)));
-        if (articles.length === 0) { status.textContent = '❌ No results found'; status.style.color = 'var(--danger)'; renderArticles([]); return; }
-        status.textContent = `✅ ${articles.length} results`; status.style.color = 'var(--lime)';
-        activeFilters.search = query; allArticlesCache = articles;
-        renderArticles(articles, true);
-        const countEl = document.getElementById('articlesCount');
-        if (countEl) countEl.textContent = `Search: ${articles.length} results for "${query}"`;
-      } catch (e) { status.textContent = `❌ Error: ${e.message}`; status.style.color = 'var(--danger)'; }
+        const result = await fetchArticlePage(articleSearchQuery, 0);
+        allFetchedArticles = result.articles;
+        allArticlesCache = allFetchedArticles;
+        articleSearchTotal = result.total;
+        hasMoreArticles = result.hasMore;
+        if (!allFetchedArticles.length) {
+          status.textContent = '❌ No results found';
+          status.style.color = 'var(--danger)';
+          renderArticles([], true);
+        } else {
+          const total = articleSearchTotal == null ? allFetchedArticles.length : articleSearchTotal;
+          status.textContent = `✅ ${total} result${total === 1 ? '' : 's'} across all articles`;
+          status.style.color = 'var(--lime)';
+          applyFilters();
+        }
+        if (loadBtn) loadBtn.style.display = hasMoreArticles ? 'inline-flex' : 'none';
+        if (pagInfo) pagInfo.textContent = hasMoreArticles ? `Showing ${allFetchedArticles.length} of ${articleSearchTotal ?? allFetchedArticles.length}` : `${allFetchedArticles.length} results`;
+        updatePartialLoadError('Article search');
+      } catch (e) {
+        status.textContent = `❌ Error: ${e.message || 'Search failed'}`;
+        status.style.color = 'var(--danger)';
+        renderArticles([], true);
+        updatePartialLoadError('Article search', e.message || 'Search failed');
+      }
     }
 
     function doGlobalSearch() {
@@ -2207,15 +2388,33 @@
     // ─── Chart tab listeners ──
     document.querySelectorAll('.chart-tabs button').forEach(btn => {
       btn.addEventListener('click', function() {
-        this.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+        this.parentElement.querySelectorAll('button').forEach(b => {
+          b.classList.remove('active');
+          b.setAttribute('aria-selected', 'false');
+        });
         this.classList.add('active');
+        this.setAttribute('aria-selected', 'true');
         loadDashboard();
       });
     });
 
     // ─── Init ──
+    let refreshTimer = null;
+    function startAutoRefresh() {
+      if (refreshTimer === null && !document.hidden) refreshTimer = setInterval(loadDashboard, 60000);
+    }
+    function stopAutoRefresh() {
+      if (refreshTimer !== null) {
+        clearInterval(refreshTimer);
+        refreshTimer = null;
+      }
+    }
     loadDashboard();
-    setInterval(loadDashboard, 60000);
+    startAutoRefresh();
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) stopAutoRefresh();
+      else { loadDashboard(); startAutoRefresh(); }
+    });
 
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
@@ -2358,8 +2557,9 @@
         if (top <= 160 && Math.abs(top) < Math.abs(bestTop)) { bestTop = top; best = i; }
       });
       if (best < 0 || !links[best] || links[best].classList.contains('active')) return;
-      links.forEach(function(l){ l.classList.remove('active'); });
+      links.forEach(function(l){ l.classList.remove('active'); l.removeAttribute('aria-current'); });
       links[best].classList.add('active');
+      links[best].setAttribute('aria-current', 'location');
       moveInd();
     }, { passive: true });
   })();

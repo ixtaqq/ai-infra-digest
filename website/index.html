@@ -415,7 +415,7 @@ footer a:hover{color:var(--lime)}
       <span class="mask l2"><span>AI Infrastructure</span></span>
       <span class="mask l3"><span>Intelligence</span></span>
     </h1>
-    <p class="lede">Collects <b>68 RSS feeds</b>, analyzes them with <b>two-tier AI routing</b>, extracts <b>SEC filings</b> from 35 companies via two-pass extraction, mines <b>earnings call transcripts</b> from 15 companies with guidance delta, and delivers a curated morning digest — straight to your Telegram and live analytics dashboard.</p>
+    <p class="lede">Collects <b>68 RSS feeds</b>, analyzes them with <b>two-tier AI routing</b>, extracts <b>SEC filings</b> from 35 companies via two-pass extraction, optionally mines <b>earnings call transcripts</b> from 15 companies with guidance delta, and delivers a curated morning digest — straight to your Telegram and live analytics dashboard.</p>
     <div class="cta-row">
       <a class="btn btn-orange" href="/dashboard/">🚀 View Live Dashboard</a>
       <a class="btn" href="https://t.me/ai_infra_digest_bot" target="_blank" rel="noopener">🤖 Try the Bot</a>
@@ -476,7 +476,7 @@ footer a:hover{color:var(--lime)}
         <span class="kicker">// 01 · THE BRIEF</span>
         <h2><span class="mask"><span>One digest.</span></span><span class="mask" style="--d:.15s"><span>Zero <span class="lime">noise</span>.</span></span></h2>
       </div>
-      <div class="bp" data-reveal style="--d:.1s"><div class="k">RELEVANCE GATE</div><p>Every article scored <b>1–10</b> for AI-infra relevance, then passed through a <b>semantic gate</b> (cosine &lt; 0.55 vs 20 canonical seeds) — off-topic filler never reaches you.</p></div>
+      <div class="bp" data-reveal style="--d:.1s"><div class="k">RELEVANCE GATE</div><p>Every article is scored <b>1–10</b> for AI-infra relevance. When optional embeddings are enabled, a semantic gate checks 20 canonical seeds too; otherwise the pipeline uses its lexical fallback.</p></div>
       <div class="bp" data-reveal style="--d:.25s"><div class="k">TRUST-WEIGHTED RANKING</div><p>Vote-learned source multipliers, editorial tiers (<b>1.2×</b> Reuters/WSJ, <b>0.8×</b> vendor PR), PR-wire dampening and 48h novelty decay decide the order.</p></div>
       <div class="bp" data-reveal style="--d:.4s"><div class="k">MULTI-CHANNEL</div><p>Telegram, Slack and Gmail fan out in parallel at <b>your preferred time</b> — Slack or email failures never block Telegram.</p></div>
     </div>
@@ -495,12 +495,12 @@ footer a:hover{color:var(--lime)}
       <div class="feat" data-reveal style="--d:.05s"><span class="tag">FEEDS</span><span class="ic" aria-hidden="true">📡</span><h3>RSS News Collection</h3><p>68 feeds across 10 sectors — NVIDIA and TSMC to Vertiv and Constellation Energy. Conditional GET caching, retry with jitter, auto-skip for dead feeds.</p></div>
       <div class="feat" data-reveal style="--d:.12s"><span class="tag">CORE</span><span class="ic" aria-hidden="true">🧠</span><h3>Two-Tier AI Routing</h3><p>Classification on a fast 8B model, synthesis on a strong 70B model. Saves <strong>40–60%</strong> on AI cost — about 3,000 tokens per day in total.</p></div>
       <div class="feat" data-reveal style="--d:.19s"><span class="tag">SEC</span><span class="ic" aria-hidden="true">🏛️</span><h3>SEC Two-Pass Extraction</h3><p>Free keyword pre-filter → fast-model flagging (~$0.0005) → strong-model extraction (~$0.01). Capex, AI revenue, margins and guidance from 35 companies.</p></div>
-      <div class="feat" data-reveal style="--d:.26s"><span class="tag">EDGE</span><span class="ic" aria-hidden="true">🎙️</span><h3>Earnings Transcript Mining</h3><p>Transcripts for 15 AI companies via Roic.ai. Topic segmentation then guidance extraction, with QoQ guidance delta and management tone.</p></div>
+      <div class="feat" data-reveal style="--d:.26s"><span class="tag">OPTIONAL</span><span class="ic" aria-hidden="true">🎙️</span><h3>Earnings Transcript Mining</h3><p>When a Roic.ai key is configured, transcripts for 15 AI companies receive topic segmentation, guidance extraction, QoQ delta, and management tone.</p></div>
       <div class="feat" data-reveal style="--d:.33s"><span class="tag">MARKET</span><span class="ic" aria-hidden="true">📊</span><h3>Stock &amp; Market Data</h3><p>Yahoo Finance snapshots for 30+ tickers, stored daily. Tracks price deltas and sector rotation for every mentioned stock.</p></div>
       <div class="feat" data-reveal style="--d:.4s"><span class="tag">LAYER</span><span class="ic" aria-hidden="true">📈</span><h3>Intelligence Layer</h3><p>Materializes <code>daily_derived_metrics</code> every run. Market Pulse surfaces WoW movers ≥ 20%; <code>/trends NVDA 30d</code> renders a Unicode sparkline.</p></div>
       <div class="feat" data-reveal style="--d:.47s"><span class="tag">TRUST</span><span class="ic" aria-hidden="true">⚖️</span><h3>Trust-Weighted Ranking</h3><p>👍/👎 votes learn per-source multipliers. Cosine-similarity corroboration boosts stories confirmed by several outlets; ⚠️ bear cases challenge the rest.</p></div>
-      <div class="feat" data-reveal style="--d:.54s"><span class="tag">SEMANTIC</span><span class="ic" aria-hidden="true">🔢</span><h3>Embeddings + pgvector</h3><p>OpenAI vectors in Supabase with an IVFFlat index. Same story, different headline now clusters correctly — and off-topic articles get gated out.</p></div>
-      <div class="feat" data-reveal style="--d:.61s"><span class="tag">SHIP</span><span class="ic" aria-hidden="true">🖥️</span><h3>Premium Live Dashboard</h3><p>Graphite + copper terminal UI. Auth gate, 6 charts, SEC filings table, full-text search, expandable rows with bear cases, auto-refresh every 60s.</p></div>
+      <div class="feat" data-reveal style="--d:.54s"><span class="tag">OPTIONAL</span><span class="ic" aria-hidden="true">🔢</span><h3>Embeddings + pgvector</h3><p>When an embedding key is configured, OpenAI vectors in Supabase enable semantic corroboration and relevance gating. Without one, URL/Jaccard fallbacks keep the pipeline running.</p></div>
+      <div class="feat" data-reveal style="--d:.61s"><span class="tag">SHIP</span><span class="ic" aria-hidden="true">🖥️</span><h3>Premium Live Dashboard</h3><p>Graphite + copper terminal UI. Public read-only deployment config, 6 charts, SEC filings table, full-table search, expandable rows with bear cases, auto-refresh every 60s.</p></div>
     </div>
     <div class="chips" data-reveal>
       <span class="chip" style="--d:.05s">Chips &amp; GPUs</span>
@@ -647,9 +647,9 @@ footer a:hover{color:var(--lime)}
         <span class="q">PHASE VIII</span><span class="st done">SHIPPED</span>
         <h4>Semantic Core</h4>
         <ul>
-          <li>Embeddings + pgvector — OpenAI vectors in Supabase, IVFFlat index for fast cosine search</li>
-          <li>Semantic corroboration — cosine similarity (0.85) replaces Jaccard</li>
-          <li>Semantic relevance gate — 20 canonical seeds, dropped at cosine &lt; 0.55</li>
+          <li>Optional embeddings + pgvector — OpenAI vectors in Supabase, IVFFlat index when configured</li>
+          <li>Semantic corroboration — cosine similarity (0.85) when vectors are available; Jaccard fallback otherwise</li>
+          <li>Optional semantic relevance gate — 20 canonical seeds, dropped at cosine &lt; 0.55 when enabled</li>
           <li>Security hardening — token redacted, <code>WEBHOOK_SECRET</code> required, RLS tightened</li>
         </ul>
       </div>
@@ -732,9 +732,9 @@ footer a:hover{color:var(--lime)}
         <div class="tline"><span class="comment"># Run the full pipeline</span></div>
         <div class="tline"><span class="prompt">$</span><span class="cmd">npm run dev</span></div>
         <div class="tline">&nbsp;</div>
-        <div class="tline"><span class="comment"># 241 unit tests, no credentials needed</span></div>
+        <div class="tline"><span class="comment"># 336 unit tests, no credentials needed</span></div>
         <div class="tline"><span class="prompt">$</span><span class="cmd">npm run test:unit</span></div>
-        <div class="tline"><span class="ok">  ✓ 241 unit tests passing <span class="caret" aria-hidden="true"></span></span></div>
+        <div class="tline"><span class="ok">  ✓ 336 unit tests passing <span class="caret" aria-hidden="true"></span></span></div>
       </div>
     </div>
     <div class="setup-cta" data-reveal>
@@ -1039,8 +1039,8 @@ var TICKS = [
   ['08:13', '📊 Derived metrics written to daily_derived_metrics'],
   ['08:14', '⚖️ Trust scores — editorial 1.2× · vendor PR 0.8×'],
   ['08:14', "⚠️ Bear cases — devil's advocate counter-arguments (score ≥ 7)"],
-  ['08:14', '🔢 Embeddings generated · semantic corroboration map rebuilt'],
-  ['08:15', '🎯 Semantic gate — off-topic articles dropped (cosine < 0.55)'],
+  ['08:14', '🔢 Optional embeddings · semantic corroboration when configured'],
+  ['08:15', '🎯 Relevance gate · lexical fallback or semantic gate when enabled'],
   ['08:15', '📊 Market Pulse — NVDA mentions +32% WoW · Datacenters +18% WoW'],
   ['08:16', 'Digest delivered to Telegram / Slack / Gmail + Supabase updated']
 ];
@@ -1063,8 +1063,8 @@ var terminalLines = [
   { id:'termLine4', text:'→ AI: synthesis pass — market outlook generated' },
   { id:'termLine5', text:'→ Earnings: 5 transcripts analyzed — guidance delta computed' },
   { id:'termLine6', text:'→ SEC: 5 new filings analyzed — 2 high-impact' },
-  { id:'termLine7', text:'→ Embeddings: vectors generated · cosine corroboration rebuilt' },
-  { id:'termLine8', text:'→ Semantic gate: off-topic articles dropped (cosine < 0.55)' },
+  { id:'termLine7', text:'→ Optional embeddings: cosine corroboration when configured' },
+  { id:'termLine8', text:'→ Relevance gate: lexical fallback or semantic gate when enabled' },
   { id:'termLine9', text:'✔ Digest delivered — Telegram · Slack · Gmail' }
 ];
 function typeLine(el, text, done){

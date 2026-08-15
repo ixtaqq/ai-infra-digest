@@ -37,6 +37,10 @@ deps — uses Node's `http`). It:
 Plus the usual `TELEGRAM_BOT_TOKEN` (and `AI_API_KEY` / `SUPABASE_*` if commands
 hit them).
 
+If you enable Gmail delivery, `SMTP_PASS` must be a Google App Password—not the
+normal Gmail account password. App Passwords require 2-Step Verification and are
+16 characters without spaces; see the SMTP settings table in `README.md`.
+
 ### Run it
 
 ```bash

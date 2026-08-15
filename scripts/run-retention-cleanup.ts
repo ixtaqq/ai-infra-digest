@@ -1,7 +1,7 @@
 /**
  * Invokes the cleanup_old_data() Supabase RPC (defined in
  * supabase/migrations/20260624120000_v4_indexes_retention.sql) to enforce the
- * 90-day/30-day/365-day retention policy documented in the README.
+ * table-specific retention policy documented in the README.
  *
  * The pg_cron schedule for this function ships commented-out in the migration
  * (pg_cron must be enabled manually in the Supabase dashboard), so this script

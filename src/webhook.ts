@@ -22,6 +22,7 @@
  * Run: npm run webhook   (dev)  /  node dist/webhook.js   (prod)
  */
 import http from "http";
+import { timingSafeEqual } from "node:crypto";
 import { logger } from "./utils/logger";
 import {
   enableWebhookMode,
@@ -38,6 +39,22 @@ export interface WebhookDecision {
   body: string;
   /** Parsed Telegram update to process — present only when the request is valid. */
   update?: unknown;
+}
+
+function hasValidSecret(
+  expected: string,
+  providedHeader: string | string[] | undefined,
+): boolean {
+  // Reject repeated or missing headers rather than choosing an ambiguous value.
+  if (!expected || typeof providedHeader !== "string") return false;
+
+  const expectedBytes = Buffer.from(expected, "utf8");
+  const providedBytes = Buffer.from(providedHeader, "utf8");
+
+  // timingSafeEqual throws when buffer lengths differ, so check the length first
+  // and only call it with equal-sized buffers.
+  if (expectedBytes.length !== providedBytes.length) return false;
+  return timingSafeEqual(expectedBytes, providedBytes);
 }
 
 /**
@@ -65,9 +82,8 @@ export function decideWebhook(opts: {
   }
 
   // Secret-token check (Telegram sends it back in this header when configured).
-  if (secret) {
-    const provided = Array.isArray(secretHeader) ? secretHeader[0] : secretHeader;
-    if (provided !== secret) {
+  if (secret !== undefined) {
+    if (!hasValidSecret(secret, secretHeader)) {
       return { status: 403, body: "forbidden" };
     }
   }
@@ -82,9 +98,8 @@ export function decideWebhook(opts: {
   return { status: 200, body: "ok", update };
 }
 
-function createServer(): http.Server {
+function createServer(secret: string): http.Server {
   const webhookPath = process.env.WEBHOOK_PATH || "/telegram/webhook";
-  const secret = process.env.WEBHOOK_SECRET || undefined;
 
   return http.createServer((req, res) => {
     const chunks: Buffer[] = [];
@@ -131,7 +146,8 @@ async function main(): Promise<void> {
   // (VPN, same cloud region, exploited box) even before WEBHOOK_URL is registered
   // with Telegram — an unauthenticated listener is never safe, so the secret is
   // required unconditionally rather than only once WEBHOOK_URL is set.
-  if (!process.env.WEBHOOK_SECRET) {
+  const secret = process.env.WEBHOOK_SECRET;
+  if (!secret) {
     throw new Error(
       "WEBHOOK_SECRET is required to start the webhook server. " +
         "Set it in your environment and configure it in @BotFather (Telegram → Bot → Edit Bot → Webhook Secret)."
@@ -146,9 +162,8 @@ async function main(): Promise<void> {
   const port = parseInt(process.env.PORT || "3000", 10);
   const webhookPath = process.env.WEBHOOK_PATH || "/telegram/webhook";
   const publicUrl = process.env.WEBHOOK_URL;
-  const secret = process.env.WEBHOOK_SECRET || undefined;
 
-  const server = createServer();
+  const server = createServer(secret);
   server.listen(port, async () => {
     logger.info(`Telegram webhook server listening on :${port}${webhookPath}`);
 

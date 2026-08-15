@@ -61,36 +61,37 @@ export function jaccardSimilarity(a: string, b: string): number {
 }
 
 function getCachePath(): string {
-  const dir = config.app.cacheDir;
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  return path.join(dir, "articles-cache.json");
+  return path.join(config.app.cacheDir, "articles-cache.json");
 }
 
 async function loadCache(): Promise<CacheData> {
   try {
     const cachePath = getCachePath();
-    if (fs.existsSync(cachePath)) {
-      const raw = await fs.promises.readFile(cachePath, "utf-8");
-      return JSON.parse(raw) as CacheData;
-    }
+    const raw = await fs.promises.readFile(cachePath, "utf-8");
+    return JSON.parse(raw) as CacheData;
   } catch (error) {
-    logger.warn("Failed to load article cache, starting fresh", {
-      error: (error as Error).message,
-    });
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      logger.warn("Failed to load article cache, starting fresh", {
+        error: (error as Error).message,
+      });
+    }
   }
   return { entries: [] };
 }
 
 async function saveCache(cache: CacheData): Promise<void> {
+  let tempPath = "";
   try {
     const cachePath = getCachePath();
-    await fs.promises.writeFile(cachePath, JSON.stringify(cache, null, 2), "utf-8");
+    tempPath = `${cachePath}.${process.pid}.tmp`;
+    await fs.promises.mkdir(config.app.cacheDir, { recursive: true });
+    await fs.promises.writeFile(tempPath, JSON.stringify(cache, null, 2), "utf-8");
+    await fs.promises.rename(tempPath, cachePath);
   } catch (error) {
     logger.warn("Failed to save article cache", {
       error: (error as Error).message,
     });
+    if (tempPath) await fs.promises.unlink(tempPath).catch(() => undefined);
   }
 }
 
@@ -180,19 +181,29 @@ export async function deduplicateArticles<T extends { url: string; title: string
   // Build set of seen URLs
   const seenUrls = new Set(cache.entries.map((e) => e.url));
   const seenTitles = cache.entries.map((e) => e.title);
+  const batchUrls = new Set<string>();
+  const batchTitles = new Set<string>();
 
-  // Filter new articles (URL dedup + Jaccard similarity check)
+  // Filter new articles (current-batch exact URL/title + cached Jaccard check)
   const SIMILARITY_THRESHOLD = 0.65;
   const newArticles = articles.filter((a) => {
-    if (!a.url) return true; // Keep articles without URLs
-
     // Exact URL match
-    if (seenUrls.has(a.url)) return false;
+    if (a.url && (seenUrls.has(a.url) || batchUrls.has(a.url))) return false;
+
+    // Exact title match within this batch
+    if (a.title && batchTitles.has(a.title)) return false;
+
+    if (!a.url) {
+      if (a.title) batchTitles.add(a.title);
+      return true; // Keep articles without URLs
+    }
 
     // Jaccard similarity check — are we covering the same story from a different source?
     const titleSim = seenTitles.some((stored) => jaccardSimilarity(a.title, stored) >= SIMILARITY_THRESHOLD);
     if (titleSim) return false;
 
+    batchUrls.add(a.url);
+    if (a.title) batchTitles.add(a.title);
     return true;
   });
 
@@ -208,7 +219,7 @@ export async function deduplicateArticles<T extends { url: string; title: string
 
   const skipped = articles.length - newArticles.length;
   if (skipped > 0) {
-    logger.info(`Dedup: skipped ${skipped} articles (URL match + Jaccard similarity)`);
+    logger.info(`Dedup: skipped ${skipped} articles (current-batch URL/title match + Jaccard similarity)`);
   }
 
   return newArticles;

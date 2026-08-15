@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { config } from "../config";
 import { collectEarningsTranscripts } from "../collector/earnings";
 import { collectArticles, DEAD_FEED_THRESHOLD, resetSkippedFeeds, skipFeed } from "../collector/rss";
@@ -37,7 +38,50 @@ import { supabase } from "../utils/supabase";
 import { getTrustScores } from "../utils/trust-scores";
 import type { GeneratedDigest } from "./types";
 
-const MAX_ARTICLES_FOR_AI = 35;
+const MIN_ALERT_SCORE = 8;
+const MIN_RELEVANCE_SCORE = 4;
+const ALERT_SCORE_MIN = 1;
+const ALERT_SCORE_MAX = 10;
+
+function clampAlertScore(value: unknown, fallback: number): number {
+  const numeric = typeof value === "number"
+    ? value
+    : typeof value === "string" && value.trim().length > 0
+      ? Number(value)
+      : Number.NaN;
+
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(ALERT_SCORE_MAX, Math.max(ALERT_SCORE_MIN, numeric));
+}
+
+function escapeAlertText(value: unknown, maxLength: number): string {
+  if (typeof value !== "string") return "";
+  return escapeHtml(value.slice(0, maxLength));
+}
+
+function safeAlertUrl(value: unknown): string {
+  if (typeof value !== "string" || value.trim().length === 0) return "";
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+    return escapeHtml(value.trim().slice(0, 2048));
+  } catch {
+    return "";
+  }
+}
+
+function alertContentHash(article: import("../processor/ai").ProcessedArticle): string {
+  const identity = [article.url, article.title, article.source]
+    .map((value) => (typeof value === "string" ? value.trim().toLowerCase() : ""))
+    .join("\n");
+  return createHash("sha256").update(identity).digest("hex");
+}
+
+function normalizedImpact(value: unknown): "Bullish" | "Bearish" | "Neutral" {
+  return value === "Bullish" || value === "Bearish" || value === "Neutral"
+    ? value
+    : "Neutral";
+}
 
 /**
  * Generate the daily digest ONCE — collect, dedup, AI process, SEC, earnings,
@@ -49,6 +93,7 @@ const MAX_ARTICLES_FOR_AI = 35;
 export async function generateDigest(): Promise<GeneratedDigest | null> {
   const startTime = Date.now();
   const runDate = todayInTimezone(config.app.timezone);
+  const maxArticlesForAI = config.app.maxArticlesForAI;
   const capabilities = getCapabilityReport(config);
   logger.info(`Capabilities: ${formatCapabilityReport(capabilities)}`);
 
@@ -159,15 +204,15 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
     let articlesToProcess: Article[];
     if (uniqueArticles.length === 0) {
       logger.info("All articles were duplicates; processing top articles anyway");
-      articlesToProcess = articles.slice(0, MAX_ARTICLES_FOR_AI);
+      articlesToProcess = articles.slice(0, maxArticlesForAI);
     } else {
-      articlesToProcess = uniqueArticles.slice(0, MAX_ARTICLES_FOR_AI);
+      articlesToProcess = uniqueArticles.slice(0, maxArticlesForAI);
     }
 
     logger.info(
       `Processing ${articlesToProcess.length}/${articles.length} articles ` +
         `(dedup skipped ${articles.length - uniqueArticles.length}, ` +
-        `capped at ${MAX_ARTICLES_FOR_AI})`
+        `capped at ${maxArticlesForAI})`
     );
 
     // ─── Step 2: AI Processing ───────────────────
@@ -192,19 +237,19 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
       throw error;
     });
 
-    // ─── Alert System: send instant alerts for high-impact articles ──
-    if (supabase.isConfigured()) {
-      await sendHighImpactAlerts(digest.articles);
-    }
-
     // ─── Step 2a0: Relevance Filter (v7.0) ───────────────────────────────────
     const beforeFilter = digest.articles.length;
     digest.articles = digest.articles.filter(
-      (a) => (a.relevanceScore ?? 10) >= 4
+      (a) => (a.relevanceScore ?? 10) >= MIN_RELEVANCE_SCORE
     );
     const dropped = beforeFilter - digest.articles.length;
     if (dropped > 0) {
       logger.info(`Relevance filter: dropped ${dropped} low-relevance articles (< 4/10)`);
+    }
+
+    // ─── Alert System: send instant alerts after relevance filtering ──
+    if (supabase.isConfigured()) {
+      await sendHighImpactAlerts(digest.articles);
     }
 
     // ─── Step 2d: Embeddings (v8.0) ──────────────────────────────────────────
@@ -216,9 +261,14 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
       for (const article of digest.articles) {
         article.embedding = embeddingsStage.value.get(article.url);
       }
-      // v8.1: rebuild corroboration map with semantic similarity now that embeddings exist
-      corroborationMap = buildCorroborationMap(articlesToProcess, embeddingsStage.value);
-      logger.info("Corroboration map rebuilt with semantic (cosine) similarity");
+      // v8.1: rebuild corroboration map with semantic similarity only when
+      // vectors were actually generated. An empty map means lexical fallback.
+      if (embeddingsStage.value.size > 0) {
+        corroborationMap = buildCorroborationMap(articlesToProcess, embeddingsStage.value);
+        logger.info("Corroboration map rebuilt with semantic (cosine) similarity");
+      } else {
+        logger.info("Embeddings unavailable; retaining lexical corroboration map");
+      }
 
       // Loud degradation: configured but produced zero vectors ⇒ Phase VIII is
       // silently off (almost always an OpenAI quota/429). Emit a structured error
@@ -474,9 +524,10 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
 
 /**
  * Query last 8 days of derived metrics and compute WoW deltas.
- * Returns a 2–4 line "Market Pulse" string, or undefined if <7 days of data.
+ * Returns a 2–4 line "Market Pulse" string, or undefined if fewer than 8 days
+ * of data are available for a valid current-vs-seven-days-ago comparison.
  */
-async function buildWhatChanged(): Promise<string | undefined> {
+export async function buildWhatChanged(): Promise<string | undefined> {
   try {
     const rows = await queryRecentDerivedMetrics();
     if (!rows.length) return undefined;
@@ -491,14 +542,14 @@ async function buildWhatChanged(): Promise<string | undefined> {
 
     // Need at least 7 days of history for a meaningful delta
     const uniqueDates = [...new Set(rows.map((r) => r.date))];
-    if (uniqueDates.length < 7) return undefined;
+    if (uniqueDates.length < 8) return undefined;
 
     const movers: { entity: string; entityType: string; pct: number; direction: "up" | "down" }[] = [];
 
     for (const [key, entityRows] of byEntity) {
-      if (entityRows.length < 2) continue;
+      if (entityRows.length < 8) continue;
       const today = entityRows[entityRows.length - 1];
-      const weekAgo = entityRows[Math.max(0, entityRows.length - 8)];
+      const weekAgo = entityRows[entityRows.length - 8];
       if (!weekAgo || weekAgo.date === today.date) continue;
       const delta = today.mention_count - weekAgo.mention_count;
       const pct = weekAgo.mention_count > 0 ? (delta / weekAgo.mention_count) * 100 : 0;
@@ -528,41 +579,74 @@ async function buildWhatChanged(): Promise<string | undefined> {
 }
 
 
-async function sendHighImpactAlerts(articles: import("../processor/ai").ProcessedArticle[]): Promise<void> {
-  const { default: TelegramBot } = await import("node-telegram-bot-api");
-  const bot = new TelegramBot(config.telegram.botToken, { polling: false });
-
-  const highImpact = articles.filter((a) => a.impactScore >= 8);
+export async function sendHighImpactAlerts(articles: import("../processor/ai").ProcessedArticle[]): Promise<void> {
+  const highImpact = articles
+    .map((article) => ({
+      article,
+      impactScore: clampAlertScore(article.impactScore, ALERT_SCORE_MIN),
+    }))
+    .filter(({ impactScore }) => impactScore >= MIN_ALERT_SCORE);
   if (highImpact.length === 0) return;
 
   const users = await supabase.getAllActiveUsers();
-  const optedIn = users.filter((u) => u.alerts_enabled);
+  const optedIn = users.filter((u) => u.alerts_enabled === true);
   if (optedIn.length === 0) {
     logger.info(`Alert system: ${highImpact.length} high-impact articles found, but no users opted in`);
     return;
   }
 
+  const { default: TelegramBot } = await import("node-telegram-bot-api");
+  const bot = new TelegramBot(config.telegram.botToken, { polling: false });
+
   logger.info(`Alert system: ${highImpact.length} high-impact articles for ${optedIn.length} users`);
 
-  for (const article of highImpact.slice(0, 5)) {
-    const emoji = article.impact === "Bullish" ? "🟢" : article.impact === "Bearish" ? "🔴" : "⚪";
+  for (const { article, impactScore } of highImpact.slice(0, 5)) {
+    const contentHash = alertContentHash(article);
+    const impact = normalizedImpact(article.impact);
+    const emoji = impact === "Bullish" ? "🟢" : impact === "Bearish" ? "🔴" : "⚪";
+    const title = escapeAlertText(article.title, 300) || "Untitled article";
+    const category = escapeAlertText(article.category, 100) || "Uncategorized";
+    const stocks = Array.isArray(article.affectedStocks)
+      ? article.affectedStocks
+          .filter((stock): stock is string => typeof stock === "string")
+          .slice(0, 5)
+          .map((stock) => escapeAlertText(stock, 30))
+          .filter(Boolean)
+          .join(", ")
+      : "";
+    const summary = typeof article.summary === "string"
+      ? article.summary.split(/(?:\r\n|\r|\n|\\n)/)[0] || article.summary.slice(0, 200)
+      : "";
+    const url = safeAlertUrl(article.url);
     const text =
       `🚨 <b>HIGH IMPACT ALERT</b>\n\n` +
-      `${emoji} <b>${escapeHtml(article.title)}</b>\n` +
-      `Impact: ${article.impact} (${article.impactScore}/10)\n` +
-      `Sector: ${article.category}\n` +
-      `Stocks: ${article.affectedStocks.slice(0, 5).join(", ") || "N/A"}\n\n` +
-      `📝 ${escapeHtml(article.summary.split("\\n")[0] || article.summary.slice(0, 200))}\n\n` +
-      `${article.url ? `<a href="${article.url}">Read full article</a>` : ""}`;
+      `${emoji} <b>${title}</b>\n` +
+      `Impact: ${impact} (${impactScore}/10)\n` +
+      `Sector: ${category}\n` +
+      `Stocks: ${stocks || "N/A"}\n\n` +
+      `📝 ${escapeAlertText(summary.slice(0, 200), 200)}\n\n` +
+      `${url ? `<a href="${url}">Read full article</a>` : ""}`;
 
     for (const user of optedIn) {
+      let claimed = false;
       try {
-        const minScore = user.alerts_min_score ?? 8;
-        if (article.impactScore < minScore) continue;
+        const minScore = clampAlertScore(user.alerts_min_score, MIN_ALERT_SCORE);
+        if (impactScore < minScore || !Number.isSafeInteger(user.chat_id)) continue;
+        claimed = await supabase.claimHighImpactAlert(user.chat_id, contentHash);
+        if (!claimed) continue;
         await bot.sendMessage(user.chat_id, text, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
-        logger.info(`Alert sent for article "${article.title.slice(0, 60)}..." to user ${user.chat_id}`);
-      } catch {
-        // Ignore per-user send errors
+        await supabase.logHighImpactAlert(user.chat_id, contentHash, "success");
+        const logTitle = typeof article.title === "string" ? article.title : "untitled";
+        logger.info(`Alert sent for article "${logTitle.slice(0, 60)}..." to user ${user.chat_id}`);
+      } catch (error) {
+        if (claimed) {
+          await supabase.logHighImpactAlert(
+            user.chat_id,
+            contentHash,
+            "failed",
+            (error as Error).message.slice(0, 300)
+          );
+        }
       }
     }
   }

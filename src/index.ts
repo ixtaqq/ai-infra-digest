@@ -2,6 +2,12 @@ import { logger } from "./utils/logger";
 import { startInteractiveBot } from "./sender/telegram";
 import { runPipeline } from "./pipeline/run";
 import { registerDigestCommands } from "./commands/register";
+import { flushMetrics } from "./utils/metrics";
+
+async function exitAfterMetrics(code: number): Promise<void> {
+  await flushMetrics();
+  process.exit(code);
+}
 
 async function main() {
   logger.info("🚀 AI Infrastructure Daily Digest — Starting");
@@ -13,9 +19,9 @@ async function main() {
 
   // Exit cleanly so the polling loop doesn't keep the process alive in CI
   if (success) {
-    process.exit(0);
+    await exitAfterMetrics(0);
   } else {
-    process.exit(1);
+    await exitAfterMetrics(1);
   }
 }
 
@@ -23,7 +29,10 @@ if (require.main === module) {
   registerDigestCommands();
   main().catch((error) => {
     logger.error(`Fatal error: ${(error as Error).message}`, { stack: (error as Error).stack });
-    process.exit(1);
+    exitAfterMetrics(1).catch((flushError) => {
+      logger.error(`Failed to flush metrics before exit: ${(flushError as Error).message}`);
+      process.exit(1);
+    });
   });
 }
 

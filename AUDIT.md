@@ -1,17 +1,20 @@
 # Codebase Audit Report — `ai-infra-digest`
 
-_Audit date: 2026-07-03_
+_Original audit date: 2026-07-03; remediation status reviewed: 2026-08-15_
+
+> The findings tables below preserve the original evidence and severity labels. The
+> remediation checklist in section 5 is the current status of those findings.
 
 ## 1. Executive Summary
 
-This is a well-engineered single-maintainer pipeline: strict TypeScript, pinned CI action SHAs, real test coverage on utility/business logic (116 tests), row-level security on Supabase, and a non-root Docker image. The core risk isn't sloppy code — it's an **undefined trust boundary**: content from untrusted RSS feeds flows into AI prompts and then into user-facing Telegram/email messages with sanitization only applied late (or not enforced at all), and several long-lived-process assumptions (module-level state, unbounded caches, TOCTOU checks) are safe under a single cron run but not under concurrency. `npm audit` reports **zero known CVEs** in current dependencies.
+This is a well-engineered single-maintainer pipeline: strict TypeScript, pinned CI action SHAs, real test coverage on utility/business logic, row-level security on Supabase, and a non-root Docker image. The original audit identified trust-boundary, concurrency, and operational gaps; the current remediation pass adds structured AI input framing, ingestion sanitization, atomic delivery claims, bounded retries/caches, workflow hardening, and boundary tests. `npm audit` reports **zero known CVEs** in current dependencies.
 
 **Findings by severity:** 🔴 Critical: 2 · 🟠 High: 4 · 🟡 Medium: 12 · ⚪ Low: 12 · **Total: 30**
 
-**Top 3 risks:**
-1. **Prompt injection from untrusted RSS content** (`src/processor/ai.ts:173-183`) — any feed source (including third-party Google News search feeds already in use) can inject instructions into the classification/synthesis prompt, corrupting output that later reaches subscribers.
-2. **Silent double-delivery of the daily digest** (`src/scheduler.ts:104-114`) — the idempotency check and the write that marks a user as delivered are separated by the entire digest-generation window, so overlapping runs can send duplicates.
-3. **Unbounded self-recursion on rate limiting** (`src/collector/earnings.ts:125-128`) — a persistently rate-limited upstream API causes indefinite recursion with no cap.
+**Original top 3 risks (now addressed in section 5):**
+1. **Prompt injection from untrusted RSS content** (`src/processor/ai.ts:173-183`) — now framed as structured data with explicit data-only instructions.
+2. **Silent double-delivery of the daily digest** (`src/scheduler.ts`) — now guarded by the service-role `claim_user_delivery` database function before send.
+3. **Unbounded self-recursion on rate limiting** (`src/collector/earnings.ts`) — now capped at two retries.
 
 ---
 
@@ -161,16 +164,17 @@ No copyleft (GPL/AGPL) licenses detected in the direct dependency tree.
 - [x] Introduce a zod schema for every AI JSON response shape (`processor/ai.ts`, `sec.ts`, `bear-cases.ts`, `thesis.ts`) — also applied to `processor/earnings.ts`, which had the identical unvalidated-cast bug (found while adding tests); shared `nullableFinancialNumber` helper extracted to `src/utils/ai-schema.ts`
 - [x] Sanitize/strip HTML tags from `article.contentSnippet` at collection time, not just at render — `stripHtmlTags()` added to `src/utils/escape.ts`, applied in `src/collector/rss.ts`
 - [x] Consolidate `escapeHtml()` into `src/utils/escape.ts` — only 2 real duplicates existed (`index.ts`, `formatter/telegram.ts`), not 3 as originally flagged; `sender/telegram.ts` never had its own copy
-- [x] Write unit tests (mocked responses) for `processor/ai.ts`, `sec.ts`, `earnings.ts`, `embeddings.ts`, `thesis.ts`, plus `collector/sec.ts` and `collector/earnings.ts` — 5 new test files, 50 new tests (116 → 166 total)
+- [x] Write unit tests (mocked responses) for `processor/ai.ts`, `sec.ts`, `earnings.ts`, `embeddings.ts`, `thesis.ts`, plus `collector/sec.ts` and `collector/earnings.ts` — current suite reports 381 passing tests
 - [x] Add `permissions:` blocks to all 5 GitHub workflows; standardize on Node 22
 - [x] Add failure-notification step to `daily-digest.yml`, `scheduled-delivery.yml`, `data-retention.yml`, `weekly-thesis.yml`
 - [x] Switch `fs.appendFileSync` in `src/utils/metrics.ts:91` to async
 - [x] Add TTL/prune loop to `src/onboarding.ts` sessions Map — `src/utils/trust-scores.ts`'s cache was re-checked and found to be permanently bounded to 2 keys (`source_trust`/`sector_trust`, always overwritten), not actually unbounded; no fix was needed there
 - [x] Consolidate the `node-telegram-bot-api` exports-field patch into a single reusable script — `npm ci` already runs the `package.json` postinstall script automatically, so the duplicate steps in `Dockerfile` and `daily-digest.yml` were simply redundant and removed
-- [ ] Document Gmail app-password requirement in `WEBHOOK_SETUP.md` / README SMTP section
-- [ ] Enable `pg_cron` for `cleanup_old_data()` or replace with an app-level scheduled call
+- [x] Document Gmail app-password requirement in `WEBHOOK_SETUP.md` / README SMTP section
+- [x] Replace optional `pg_cron` retention with the app-level scheduled call in `.github/workflows/data-retention.yml`
 
-All Immediate and Short-Term items are now complete except the two doc/DB-ops items above, which are Long-Term-adjacent and low-risk to leave open.
+All Immediate and Short-Term items are now complete. Retention is intentionally owned by the
+versioned GitHub Actions workflow rather than an untracked Supabase `pg_cron` setting.
 
 ---
 
