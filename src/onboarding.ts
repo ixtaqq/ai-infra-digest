@@ -3,7 +3,8 @@
  *
  * State machine: Welcome → DeliveryTime → Watchlist → MinScore → DigestLength → Done
  * State is held in-memory (ephemeral). If the server restarts mid-flow the
- * user just gets a clean /start again — no data loss, no broken state.
+ * user just gets a clean /start again — no delivery is enabled until the flow
+ * is completed.
  */
 
 import TelegramBot, { type InlineKeyboardMarkup, type Message, type CallbackQuery } from "node-telegram-bot-api";
@@ -47,7 +48,7 @@ const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 function getActiveSession(chatId: number): OnboardingState | undefined {
   const state = sessions.get(chatId);
   if (!state) return undefined;
-  if (Date.now() - state.startedAt > SESSION_TTL_MS) {
+  if (Date.now() - state.startedAt >= SESSION_TTL_MS) {
     sessions.delete(chatId);
     return undefined;
   }
@@ -63,7 +64,7 @@ function getActiveSession(chatId: number): OnboardingState | undefined {
 setInterval(() => {
   const now = Date.now();
   for (const [chatId, state] of sessions) {
-    if (now - state.startedAt > SESSION_TTL_MS) sessions.delete(chatId);
+    if (now - state.startedAt >= SESSION_TTL_MS) sessions.delete(chatId);
   }
 }, 10 * 60 * 1000).unref();
 
@@ -204,7 +205,7 @@ async function sendConfirmation(bot: TelegramBot, chatId: number, state: Onboard
       `• Min impact score: <code>${scoreStr}</code>\n` +
       `• Digest length: <code>${lengthStr}</code>\n\n` +
       `Your personalised digest will arrive daily at the time above.\n\n` +
-      `<i>Change anytime with /settings, /watchlist, or /alert threshold.</i>`,
+      `<i>Use /start to change digest preferences, /settings to view them, /watchlist to update tickers, or /stop to pause delivery.</i>`,
     {
       parse_mode: "HTML",
       reply_markup: {
@@ -246,25 +247,33 @@ async function beginOnboarding(
   firstName: string,
   username?: string
 ): Promise<void> {
-  // Upsert user immediately so they exist even if they abandon onboarding
+  // is_active is intentionally omitted: new rows use the database's false
+  // default, while an existing user's current delivery state is preserved if
+  // they open setup and abandon it. Completion explicitly activates below.
   await supabase.upsertUserPreferences({
     chat_id: chatId,
     username,
     first_name: firstName,
-    is_active: true,
   });
+  await supabase.recordProductEvent("onboarding_started", chatId);
 
   sessions.set(chatId, { step: "delivery_time", firstName, startedAt: Date.now() });
 
   await bot.sendMessage(
     chatId,
     `👋 <b>Welcome to Goldirham Stack!</b>\n\n` +
-      `I deliver daily AI infrastructure intelligence — chips, cloud, datacenters, power, and more — every morning.\n\n` +
-      `Let's personalise your digest in <b>4 quick steps</b>. You can go ◀ Back a step anytime, skip any step, and change everything later with /settings.`,
+      `I deliver daily AI infrastructure intelligence — chips, cloud, datacenters, power, and more — at the time you choose.\n\n` +
+      `Let's personalise your digest in <b>4 quick steps</b>. Finish setup to opt in; no daily digests are sent while setup is incomplete. You can go ◀ Back a step anytime or skip any step.\n\n` +
+      `<i>Privacy: I store your Telegram ID, preferences, command usage, and delivery history to run the service. Use /stop to pause or /delete_my_data to remove your private data.</i>`,
     { parse_mode: "HTML" }
   );
 
   await sendTimeStep(bot, chatId, firstName);
+}
+
+/** Cancel an in-progress onboarding flow without changing delivery preferences. */
+export function cancelOnboarding(chatId: number): void {
+  sessions.delete(chatId);
 }
 
 /** Start the onboarding flow for a new /start. */
@@ -388,9 +397,18 @@ export async function handleOnboardingCallback(
       ).catch(() => {});
     }
 
-    // Save all preferences to Supabase
-    await saveOnboardingPrefs(chatId, state);
-    await sendConfirmation(bot, chatId, state);
+    // Save all preferences to Supabase before confirming the opt-in.
+    const saved = await saveOnboardingPrefs(chatId, state);
+    if (saved) {
+      await sendConfirmation(bot, chatId, state);
+    } else {
+      await bot.sendMessage(
+        chatId,
+        `⚠️ <b>Setup wasn't saved</b>\n\n` +
+          `Delivery is still off. Please send /start to try onboarding again.`,
+        { parse_mode: "HTML" }
+      );
+    }
     sessions.delete(chatId);
     return true;
   }
@@ -434,9 +452,9 @@ export async function handleOnboardingText(
   return true;
 }
 
-async function saveOnboardingPrefs(chatId: number, state: OnboardingState): Promise<void> {
+async function saveOnboardingPrefs(chatId: number, state: OnboardingState): Promise<boolean> {
   try {
-    await supabase.upsertUserPreferences({
+    const saved = await supabase.upsertUserPreferences({
       chat_id: chatId,
       preferred_time: state.deliveryTime || "08:00",
       timezone: "Asia/Kuala_Lumpur",
@@ -444,9 +462,21 @@ async function saveOnboardingPrefs(chatId: number, state: OnboardingState): Prom
       min_impact_score: state.minScore || 0,
       digest_length: state.digestLength || "standard",
       is_active: true,
+      onboarding_completed_at: new Date().toISOString(),
+    });
+    if (!saved) {
+      logger.warn(`Onboarding save failed for ${chatId}: Supabase rejected preferences`);
+      return false;
+    }
+    await supabase.recordProductEvent("onboarding_completed", chatId, {
+      preferred_time: state.deliveryTime || "08:00",
+      watchlist_size: state.watchlist?.length || 0,
+      digest_length: state.digestLength || "standard",
     });
     logger.info(`Onboarding complete for ${chatId}: time=${state.deliveryTime}, tickers=${state.watchlist?.length || 0}, minScore=${state.minScore}, length=${state.digestLength}`);
+    return true;
   } catch (err) {
     logger.warn(`Onboarding save failed for ${chatId}: ${(err as Error).message}`);
+    return false;
   }
 }

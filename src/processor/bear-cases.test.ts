@@ -12,6 +12,7 @@ vi.mock("../utils/logger", () => ({
 
 import { parseResponse, generateBearCases } from "./bear-cases";
 import type { ProcessedArticle } from "./ai";
+import { logger } from "../utils/logger";
 
 function makeArticle(overrides: Partial<ProcessedArticle> = {}): ProcessedArticle {
   return {
@@ -49,6 +50,13 @@ describe("parseResponse", () => {
 
   it("returns [] when JSON parses but has no results array", () => {
     expect(parseResponse('{"answer":"yes"}')).toEqual([]);
+  });
+
+  it("logs a malformed AI article index instead of dropping it silently", () => {
+    vi.clearAllMocks();
+
+    expect(parseResponse('{"results":[{"index":"not-a-number","bearCase":"Nope"}]}')).toEqual([]);
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("invalid AI article index not-a-number"));
   });
 });
 
@@ -104,6 +112,7 @@ describe("generateBearCases index matching", () => {
     const result = await generateBearCases(articles);
     expect(result.bearCases.size).toBe(0);
     expect(result.deepDive).toBeUndefined();
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("invalid article index 5"));
   });
 
   it("returns empty result when no articles meet the impact threshold", async () => {

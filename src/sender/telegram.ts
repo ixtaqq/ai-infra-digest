@@ -2,7 +2,14 @@ import TelegramBot, { type Update, type Message, type InlineKeyboardButton } fro
 import { config } from "../config";
 import { logger } from "../utils/logger";
 import { emitCommandUsage } from "../utils/metrics";
-import { startOnboarding, handleOnboardingCallback, handleOnboardingText } from "../onboarding";
+import { supabase } from "../utils/supabase";
+import { NEWS_CATEGORIES } from "../processor/ai";
+import {
+  startOnboarding,
+  cancelOnboarding,
+  handleOnboardingCallback,
+  handleOnboardingText,
+} from "../onboarding";
 import { escapeHtml } from "../utils/escape";
 
 let bot: TelegramBot | null = null;
@@ -58,6 +65,103 @@ export type CommandHandler = (
 
 const handlers = new Map<string, CommandHandler>();
 
+type EditableSetting = "preferred_time" | "timezone" | "min_impact_score" | "digest_length" | "categories_enabled";
+
+const SETTING_ALIASES: Record<string, EditableSetting> = {
+  time: "preferred_time",
+  preferred_time: "preferred_time",
+  "preferred-time": "preferred_time",
+  timezone: "timezone",
+  tz: "timezone",
+  min: "min_impact_score",
+  score: "min_impact_score",
+  min_score: "min_impact_score",
+  "min-score": "min_impact_score",
+  min_impact_score: "min_impact_score",
+  length: "digest_length",
+  digest_length: "digest_length",
+  "digest-length": "digest_length",
+  categories: "categories_enabled",
+  category: "categories_enabled",
+};
+
+const DIGEST_LENGTHS = ["brief", "standard", "detailed"] as const;
+const CATEGORY_BY_NAME = new Map(
+  NEWS_CATEGORIES.map((category) => [category.toLowerCase(), category])
+);
+
+function settingsHelpText(): string {
+  return (
+    `⚙️ <b>Settings commands</b>\n\n` +
+    `• <code>/settings time 08:00</code> — Preferred delivery time\n` +
+    `• <code>/settings timezone Asia/Kuala_Lumpur</code> — IANA timezone\n` +
+    `• <code>/settings min_score 5</code> — Minimum impact score (0–10)\n` +
+    `• <code>/settings length standard</code> — brief, standard, or detailed\n` +
+    `• <code>/settings categories Chips &amp; GPUs, Datacenters</code> — Filter categories\n` +
+    `• <code>/settings categories all</code> — Enable all categories\n\n` +
+    `Use <code>/settings</code> without arguments to view your current settings.`
+  );
+}
+
+function isValidPreferredTime(value: string): boolean {
+  return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+}
+
+function isValidIanaTimezone(value: string): boolean {
+  if (!value || value.length > 100 || /\s/.test(value)) return false;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Returns null for invalid input; an empty array means all categories. */
+function parseCategories(value: string): string[] | null {
+  if (value.toLowerCase() === "all") return [];
+
+  const rawCategories = value.split(/[,;]/).map((category) => category.trim());
+  if (!rawCategories.length || rawCategories.some((category) => !category)) return null;
+
+  const categories: string[] = [];
+  for (const rawCategory of rawCategories) {
+    const category = CATEGORY_BY_NAME.get(rawCategory.toLowerCase());
+    if (!category || categories.includes(category)) return null;
+    categories.push(category);
+  }
+  return categories;
+}
+
+function parseSettingsArgs(args: string): { setting?: EditableSetting; value: string } {
+  const match = /^([^\s=]+)(?:=|\s+)?([\s\S]*)$/.exec(args.trim());
+  if (!match) return { value: "" };
+
+  const key = SETTING_ALIASES[match[1].toLowerCase()];
+  return { setting: key, value: match[2].trim() };
+}
+
+function formatSettings(prefs: NonNullable<Awaited<ReturnType<typeof supabase.getUserPreferences>>>): string {
+  const watchlist = prefs.watchlist?.length ? prefs.watchlist.join(", ") : "None set";
+  const categories = prefs.categories_enabled?.length ? prefs.categories_enabled.join(", ") : "All";
+  const deliveryCopies = [
+    prefs.delivery_email ? "Email" : null,
+    prefs.slack_webhook_url ? "Slack" : null,
+  ].filter(Boolean).join(", ") || "None";
+
+  return (
+    `⚙️ <b>Your Settings</b>\n\n` +
+    `• Watchlist: <code>${escapeHtml(watchlist)}</code>\n` +
+    `• Categories: ${escapeHtml(categories)}\n` +
+    `• Min impact score: ${escapeHtml(String(prefs.min_impact_score ?? 0))}/10\n` +
+    `• Preferred time: ${escapeHtml(prefs.preferred_time || "08:00")} ${escapeHtml(prefs.timezone || "Asia/Kuala_Lumpur")}\n` +
+    `• Digest length: ${escapeHtml(prefs.digest_length || "standard")}\n` +
+    `• Delivery copies: ${escapeHtml(deliveryCopies)}\n` +
+    `• Active: ${prefs.is_active ? "✅" : "❌"}\n\n` +
+    `${settingsHelpText()}`
+  );
+}
+
 /** Register a command handler (e.g., "digest", "sources"). */
 export function registerCommand(
   command: string,
@@ -96,6 +200,100 @@ function initCommands() {
     await startOnboarding(pollingBot, msg);
   });
 
+  // Handle /stop and /unsubscribe — explicit opt-out from scheduled delivery.
+  pollingBot.onText(/^\/(?:stop|unsubscribe)(@\w+)?$/, async (msg) => {
+    const chatId = msg.chat.id;
+    const command = (msg.text || "/stop")
+      .split(/\s+/)[0]
+      .replace(/^\//, "")
+      .replace(/@\w+$/, "")
+      .toLowerCase();
+    logCommandUse(command, chatId);
+    cancelOnboarding(chatId);
+
+    let deactivated = false;
+    try {
+      deactivated = await supabase.upsertUserPreferences({
+        chat_id: chatId,
+        is_active: false,
+      });
+    } catch (error) {
+      logger.warn(`Failed to stop delivery for ${chatId}: ${(error as Error).message}`);
+    }
+
+    await pollingBot.sendMessage(
+      chatId,
+      deactivated
+        ? `🛑 <b>Delivery stopped</b>\n\nYou won't receive scheduled digests. Send /resume to continue with your saved preferences, or /start to set up again.`
+        : `⚠️ I couldn't update your delivery status. Please try /stop again.`,
+      { parse_mode: "HTML" }
+    );
+  });
+
+  // Handle /resume — reactivate only after a previously completed onboarding.
+  pollingBot.onText(/^\/resume(@\w+)?$/, async (msg) => {
+    const chatId = msg.chat.id;
+    logCommandUse("resume", chatId);
+    cancelOnboarding(chatId);
+
+    let resumed = false;
+    try {
+      const prefs = await supabase.getUserPreferences(chatId);
+      if (prefs?.onboarding_completed_at) {
+        resumed = await supabase.upsertUserPreferences({
+          chat_id: chatId,
+          is_active: true,
+        });
+        if (resumed) {
+          await supabase.recordProductEvent("delivery_resumed", chatId);
+        }
+      }
+    } catch (error) {
+      logger.warn(`Failed to resume delivery for ${chatId}: ${(error as Error).message}`);
+    }
+
+    await pollingBot.sendMessage(
+      chatId,
+      resumed
+        ? `✅ <b>Delivery resumed</b>\n\nYour saved schedule and preferences are active again. Use /settings to review them.`
+        : `⚠️ I couldn't resume delivery. Send /start and complete setup to opt in.`,
+      { parse_mode: "HTML" }
+    );
+  });
+
+  // Handle /delete_my_data and /delete — remove private user data.
+  pollingBot.onText(/^\/(?:delete_my_data|delete)(@\w+)?(?:\s+([\s\S]*))?$/, async (msg, match) => {
+    const chatId = msg.chat.id;
+
+    // Do not record this command in command_usage: the usage row is private
+    // data and a fire-and-forget log could be inserted after deletion.
+    cancelOnboarding(chatId);
+
+    if (match?.[2]?.trim()) {
+      await pollingBot.sendMessage(
+        chatId,
+        "Usage: <code>/delete_my_data</code> (or <code>/delete</code>) without additional arguments.",
+        { parse_mode: "HTML" }
+      );
+      return;
+    }
+
+    let deleted = false;
+    try {
+      deleted = await supabase.deleteUserData(chatId);
+    } catch (error) {
+      logger.warn(`Failed to delete private data for ${chatId}: ${(error as Error).message}`);
+    }
+
+    await pollingBot.sendMessage(
+      chatId,
+      deleted
+        ? "✅ Your private data was deleted and scheduled delivery was disabled. Shared articles and digest data were not affected. Send /start anytime to set up again."
+        : "⚠️ I couldn't complete the private-data deletion. Please try again. Shared articles and digest data were not affected.",
+      { parse_mode: "HTML" }
+    );
+  });
+
   // Route callback queries — onboarding steps first, then other handlers
   pollingBot.on("callback_query", async (query) => {
     const handled = await handleOnboardingCallback(pollingBot, query);
@@ -129,9 +327,12 @@ function initCommands() {
       `• /watch <code>NVDA 130</code> — One-shot price ping (<code>off</code> to clear, <code>list</code> to view)\n` +
       `• /feedback N — Rate today's digest (1-5)\n` +
       `• /delivery — Configure personalized email or Slack copies\n` +
-      `• /settings — View your user preferences\n` +
+      `• /settings — View or edit your user preferences\n` +
+      `• /delete_my_data — Delete your private data (<code>/delete</code> also works)\n` +
       `• /watchlist <code>NVDA,AMD,AVGO</code> — Set your ticker watchlist\n` +
       `• /alert — Manage high-impact alerts\n` +
+      `• /stop — Stop scheduled digest delivery (<code>/unsubscribe</code> also works)\n` +
+      `• /resume — Resume delivery with your saved preferences\n` +
       `• /help — This message\n\n` +
       `<b>About:</b>\n` +
       `• Covers AI infra across 10 sectors (chips → power → data centers)\n` +
@@ -307,37 +508,69 @@ function initCommands() {
     }
   });
 
-  // Handle /settings
-  pollingBot.onText(/^\/settings(@\w+)?$/, async (msg) => {
+  // Handle /settings — bare command displays preferences; arguments update one field.
+  pollingBot.onText(/^\/settings(@\w+)?(?:\s+([\s\S]*))?$/, async (msg, match) => {
     const chatId = msg.chat.id;
     logCommandUse("settings", chatId);
-    const { supabase } = await import("../utils/supabase");
+    const args = match?.[2]?.trim() || "";
+
+    if (args) {
+      const { setting, value } = parseSettingsArgs(args);
+      let update: Parameters<typeof supabase.upsertUserPreferences>[0] | null = null;
+
+      if (setting === "preferred_time" && isValidPreferredTime(value)) {
+        update = { chat_id: chatId, preferred_time: value };
+      } else if (setting === "timezone" && isValidIanaTimezone(value)) {
+        update = { chat_id: chatId, timezone: value };
+      } else if (setting === "min_impact_score" && /^(?:10|[0-9])$/.test(value)) {
+        update = { chat_id: chatId, min_impact_score: Number(value) };
+      } else if (setting === "digest_length" && DIGEST_LENGTHS.includes(value as (typeof DIGEST_LENGTHS)[number])) {
+        update = { chat_id: chatId, digest_length: value as (typeof DIGEST_LENGTHS)[number] };
+      } else if (setting === "categories_enabled") {
+        const categories = parseCategories(value);
+        if (categories) update = { chat_id: chatId, categories_enabled: categories };
+      }
+
+      if (!update) {
+        await pollingBot.sendMessage(chatId, settingsHelpText(), { parse_mode: "HTML" });
+        return;
+      }
+
+      let saved = false;
+      try {
+        saved = await supabase.upsertUserPreferences(update);
+      } catch (error) {
+        logger.warn(`Failed to update settings for ${chatId}: ${(error as Error).message}`);
+      }
+
+      if (!saved) {
+        await pollingBot.sendMessage(chatId, "⚠️ Couldn't save that setting right now. Please try again.", { parse_mode: "HTML" });
+        return;
+      }
+
+      const confirmation =
+        update.preferred_time !== undefined
+          ? `✅ Preferred delivery time set to <code>${escapeHtml(update.preferred_time)}</code>.`
+          : update.timezone !== undefined
+            ? `✅ Timezone set to <code>${escapeHtml(update.timezone)}</code>.`
+            : update.min_impact_score !== undefined
+              ? `✅ Minimum impact score set to <b>${update.min_impact_score}/10</b>.`
+              : update.digest_length !== undefined
+                ? `✅ Digest length set to <b>${escapeHtml(update.digest_length)}</b>.`
+                : update.categories_enabled?.length
+                  ? `✅ Categories set to <b>${escapeHtml(update.categories_enabled.join(", "))}</b>.`
+                  : "✅ All categories enabled.";
+      await pollingBot.sendMessage(chatId, confirmation, { parse_mode: "HTML" });
+      return;
+    }
+
     const prefs = await supabase.getUserPreferences(chatId);
     if (prefs) {
-      const watchlist = prefs.watchlist?.length
-        ? prefs.watchlist.join(", ")
-        : "None set";
-      const cats = prefs.categories_enabled?.length
-        ? prefs.categories_enabled.join(", ")
-        : "All";
-      const deliveryCopies = [
-        prefs.delivery_email ? "Email" : null,
-        prefs.slack_webhook_url ? "Slack" : null,
-      ].filter(Boolean).join(", ") || "None";
-      const text =
-        `⚙️ <b>Your Settings</b>\n\n` +
-        `• Watchlist: <code>${watchlist}</code>\n` +
-        `• Categories: ${cats}\n` +
-        `• Min impact score: ${prefs.min_impact_score ?? 0}/10\n` +
-        `• Preferred time: ${prefs.preferred_time || "08:00"} ${prefs.timezone || "Asia/Kuala_Lumpur"}\n` +
-        `• Delivery copies: ${escapeHtml(deliveryCopies)}\n` +
-        `• Active: ${prefs.is_active ? "✅" : "❌"}\n\n` +
-        `<i>Use /watchlist NVDA,AMD,AVGO or /delivery to update preferences</i>`;
-      await pollingBot.sendMessage(chatId, text, { parse_mode: "HTML" });
+      await pollingBot.sendMessage(chatId, formatSettings(prefs), { parse_mode: "HTML" });
     } else {
       await pollingBot.sendMessage(
         chatId,
-        "ℹ️ No custom settings yet. Use /start to register.\n\nDefault settings:\n• Watchlist: None\n• Time: 08:00 MYT\n• All categories enabled",
+        "ℹ️ No custom settings yet. Use /start to register.\n\nDefault settings:\n• Watchlist: None\n• Time: 08:00 Asia/Kuala_Lumpur\n• Min impact score: 0/10\n• Digest length: standard\n• All categories enabled\n\n" + settingsHelpText(),
         { parse_mode: "HTML" }
       );
     }
@@ -388,7 +621,19 @@ function initCommands() {
   //
   // Commands with bespoke onText handlers above are skipped here so they don't
   // get double-handled (node-telegram-bot-api fires every matching onText).
-  const BESPOKE_COMMANDS = new Set(["start", "help", "digest", "settings", "watchlist", "feedback"]);
+  const BESPOKE_COMMANDS = new Set([
+    "start",
+    "stop",
+    "unsubscribe",
+    "resume",
+    "delete_my_data",
+    "delete",
+    "help",
+    "digest",
+    "settings",
+    "watchlist",
+    "feedback",
+  ]);
 
   pollingBot.onText(/^\/(\S+)([\s\S]*)$/, async (msg, match) => {
     const chatId = msg.chat.id;
@@ -452,7 +697,7 @@ async function upsertUser(msg: Message): Promise<void> {
       chat_id: msg.chat.id,
       username: msg.from?.username,
       first_name: msg.from?.first_name,
-      is_active: true,
+      is_active: false,
     });
   } catch {
     // Non-critical — fail silently
@@ -474,10 +719,6 @@ export async function sendAdminAlert(text: string): Promise<void> {
 }
 
 // ─── Article Validation Follow-Up ──────────────────────
-
-function escHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
 
 /**
  * Send a compact 👍/👎 validation message for the top-3 articles immediately
@@ -501,7 +742,7 @@ export async function sendValidationFollowUp(
 
   candidates.forEach((a, i) => {
     const id = articleIds.get(a.url)!;
-    const shortTitle = escHtml(a.title.length > 60 ? a.title.slice(0, 60) + "…" : a.title);
+    const shortTitle = escapeHtml(a.title.length > 60 ? a.title.slice(0, 60) + "…" : a.title);
     lines.push(`${i + 1}. ${shortTitle}`);
     keyboard.push([
       { text: `${i + 1} 👍`, callback_data: `va_${id}_up` },
@@ -675,20 +916,41 @@ export async function sendDigestMessage(
   return lastResult;
 }
 
-function splitMessage(text: string, maxLen: number): string[] {
+export function splitMessage(text: string, maxLen: number): string[] {
+  if (!Number.isInteger(maxLen) || maxLen < 1) {
+    throw new RangeError("maxLen must be a positive integer");
+  }
+
   const chunks: string[] = [];
   let current = "";
 
   for (const line of text.split("\n")) {
-    if (current.length + line.length + 1 > maxLen) {
-      chunks.push(current.trim());
-      current = "";
+    if (line.length > maxLen) {
+      if (current) {
+        chunks.push(current);
+        current = "";
+      }
+
+      let remaining = line;
+      while (remaining.length > maxLen) {
+        chunks.push(remaining.slice(0, maxLen));
+        remaining = remaining.slice(maxLen);
+      }
+      current = remaining;
+      continue;
     }
-    current += line + "\n";
+
+    const candidate = current ? `${current}\n${line}` : line;
+    if (candidate.length > maxLen) {
+      if (current) chunks.push(current);
+      current = line;
+    } else {
+      current = candidate;
+    }
   }
 
-  if (current.trim()) {
-    chunks.push(current.trim());
+  if (current) {
+    chunks.push(current);
   }
 
   return chunks;

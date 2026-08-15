@@ -9,6 +9,7 @@ WORKDIR /app
 # script (package.json) which patches node-telegram-bot-api's broken "exports"
 # field so require() resolves to "main" — no separate patch step needed here.
 COPY package.json package-lock.json ./
+COPY scripts/patch-node-telegram-bot-api.cjs ./scripts/patch-node-telegram-bot-api.cjs
 RUN npm ci
 
 # Build TypeScript -> dist/

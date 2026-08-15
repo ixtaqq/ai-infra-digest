@@ -12,7 +12,13 @@ vi.mock("../utils/logger", () => ({
 // resolve instantly so the retry-cap behavior can be tested at full speed.
 vi.mock("../utils/helpers", () => ({ sleep: vi.fn(() => Promise.resolve()) }));
 
-import { fetchTranscript, getLatestCompletedQuarter, getPreviousQuarter } from "./earnings";
+import {
+  collectEarningsTranscripts,
+  fetchTranscript,
+  getLatestCompletedQuarter,
+  getPreviousQuarter,
+} from "./earnings";
+import { sleep } from "../utils/helpers";
 
 function jsonResponse(status: number, body: unknown) {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -20,7 +26,10 @@ function jsonResponse(status: number, body: unknown) {
 
 describe("fetchTranscript", () => {
   beforeEach(() => vi.resetAllMocks());
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
 
   it("returns the transcript content on a successful response", async () => {
     vi.stubGlobal(
@@ -77,6 +86,79 @@ describe("fetchTranscript", () => {
     const result = await fetchTranscriptNoKey("NVDA", 2026, 1);
 
     expect(result).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("uses the latest endpoint and transcript alias when no quarter is provided", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-15T12:00:00Z"));
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, { transcript: "Latest call transcript." })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchTranscript("NVDA");
+
+    expect(result).toMatchObject({
+      ticker: "NVDA",
+      content: "Latest call transcript.",
+      year: 2026,
+      quarter: 1,
+      date: "2026-08-15",
+    });
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      "https://api.roic.ai/v2/company/earnings-calls/latest/NVDA?apikey=test-roic-key"
+    );
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({
+      headers: { Accept: "application/json" },
+    });
+  });
+
+  it("returns null for a successful response with no transcript content", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(jsonResponse(200, { date: "2026-04-15" })));
+
+    await expect(fetchTranscript("NVDA", 2026, 1)).resolves.toBeNull();
+  });
+});
+
+describe("collectEarningsTranscripts", () => {
+  beforeEach(() => vi.resetAllMocks());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it("enriches successful transcripts, records failures, and sorts newest first", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-15T12:00:00Z"));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { content: "NVIDIA call", date: "2026-04-15" }))
+      .mockResolvedValueOnce(new Response(null, { status: 500, statusText: "Server Error" }))
+      .mockResolvedValueOnce(jsonResponse(200, { content: "Unknown company call", date: "2026-06-15" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await collectEarningsTranscripts(["NVDA", "BROKEN", "ACME"]);
+
+    expect(result.totalFetched).toBe(2);
+    expect(result.failed).toEqual(["BROKEN"]);
+    expect(result.transcripts.map((transcript) => transcript.ticker)).toEqual(["ACME", "NVDA"]);
+    expect(result.transcripts[0].companyName).toBe("ACME");
+    expect(result.transcripts[1].companyName).toBe("NVIDIA Corporation");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(String(fetchMock.mock.calls[0][0])).toContain("year=2026&quarter=2");
+    expect(String(fetchMock.mock.calls[2][0])).toContain("year=2026&quarter=2");
+  });
+
+  it("does no work for an explicitly empty ticker list", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(collectEarningsTranscripts([])).resolves.toEqual({
+      transcripts: [],
+      totalFetched: 0,
+      failed: [],
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

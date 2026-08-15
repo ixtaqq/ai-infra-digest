@@ -35,15 +35,22 @@ function readFeedCache(): Map<string, FeedCacheEntry> {
 }
 
 function writeFeedCache(cache: Map<string, FeedCacheEntry>): void {
+  const tempFile = `${CACHE_FILE}.${process.pid}.tmp`;
   try {
     ensureCacheDir();
     fs.writeFileSync(
-      CACHE_FILE,
+      tempFile,
       JSON.stringify(Object.fromEntries(cache), null, 2),
       "utf-8"
     );
+    fs.renameSync(tempFile, CACHE_FILE);
   } catch {
     // Non-critical — cache miss just means full re-fetch
+    try {
+      if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+    } catch {
+      // Ignore temporary-file cleanup failures.
+    }
   }
 }
 
@@ -329,28 +336,28 @@ export async function fetchFeedWithStatus(
         };
       }
 
-      const result = await parserFor(feed.url).parseURL(feed.url);
-    const articles: Article[] = [];
+      const result = await parserFor(feed.url).parseString(httpResult.body || "");
+      const articles: Article[] = [];
 
-    for (const item of result.items) {
-      if (articles.length >= maxArticles) break;
-      const rawTitle = item.title?.trim();
-      if (!rawTitle) continue;
-      // Untrusted external input — strip markup here (in addition to escaping at
-      // render time) so it can never reach the AI prompt or storage with tags intact.
-      const title = stripHtmlTags(rawTitle);
-      const contentSnippet = stripHtmlTags(
-        item.contentSnippet?.trim() || item.content?.trim() || ""
-      );
-      articles.push({
-        title,
-        url: item.link || "",
-        summary: contentSnippet.slice(0, 500),
-        source: feed.name,
-        date: item.pubDate ? new Date(item.pubDate) : new Date(),
-        contentSnippet,
-      });
-    }
+      for (const item of result.items) {
+        if (articles.length >= maxArticles) break;
+        const rawTitle = item.title?.trim();
+        if (!rawTitle) continue;
+        // Untrusted external input — strip markup here (in addition to escaping at
+        // render time) so it can never reach the AI prompt or storage with tags intact.
+        const title = stripHtmlTags(rawTitle);
+        const contentSnippet = stripHtmlTags(
+          item.contentSnippet?.trim() || item.content?.trim() || ""
+        );
+        articles.push({
+          title,
+          url: item.link || "",
+          summary: contentSnippet.slice(0, 500),
+          source: feed.name,
+          date: item.pubDate ? new Date(item.pubDate) : new Date(),
+          contentSnippet,
+        });
+      }
 
     // Update cache with response headers
     const cache = readFeedCache();
@@ -370,7 +377,8 @@ export async function fetchFeedWithStatus(
       articles,
       response_time_ms: Date.now() - startTime,
     };
-  } catch (error) {      lastError = error instanceof Error ? error : new Error(String(error));
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
       if (attempt < maxRetries) {
         logger.warn(`RSS retry ${attempt + 1}/${maxRetries} for ${feed.name}: ${lastError.message}`);
         await rssBackoff(attempt);
@@ -407,6 +415,9 @@ export async function fetchFeedWithStatus(
 /** Feed names to skip (consistently failing). */
 export const SKIPPED_FEEDS = new Set<string>();
 
+/** Maximum number of feeds fetched at once to avoid an unbounded request burst. */
+export const RSS_FETCH_CONCURRENCY = 8;
+
 /** Mark a feed to be skipped on future runs (e.g., after repeated failures). */
 export function skipFeed(name: string): void {
   SKIPPED_FEEDS.add(name);
@@ -434,24 +445,37 @@ export async function collectArticles(
     allFeeds = allFeeds.filter((f) => !combinedSkip.has(f.name));
     logger.info(`Skipping ${combinedSkip.size} feeds: ${[...combinedSkip].slice(0, 10).join(", ")}${combinedSkip.size > 10 ? ` +${combinedSkip.size - 10} more` : ""}`);
   }
-  const settledFeedResults = await Promise.allSettled(
-    allFeeds.map((feed) => fetchFeedWithStatus(feed, config.app.maxArticlesPerSource))
+  const feedResults: FeedResult[] = new Array(allFeeds.length);
+  let nextFeed = 0;
+
+  async function feedWorker(): Promise<void> {
+    while (nextFeed < allFeeds.length) {
+      const index = nextFeed++;
+      const feed = allFeeds[index];
+      try {
+        feedResults[index] = await fetchFeedWithStatus(feed, config.app.maxArticlesPerSource);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn(`Unexpected feed failure for ${feed.name}: ${message}`);
+        feedResults[index] = {
+          name: feed.name,
+          url: feed.url,
+          status: "failed",
+          articlesFetched: 0,
+          articles: [],
+          error: message,
+          response_time_ms: 0,
+        };
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from(
+      { length: Math.min(RSS_FETCH_CONCURRENCY, allFeeds.length) },
+      () => feedWorker()
+    )
   );
-  const feedResults = settledFeedResults.map((result, index): FeedResult => {
-    if (result.status === "fulfilled") return result.value;
-    const feed = allFeeds[index];
-    const error = result.reason instanceof Error ? result.reason.message : String(result.reason);
-    logger.warn(`Unexpected feed failure for ${feed.name}: ${error}`);
-    return {
-      name: feed.name,
-      url: feed.url,
-      status: "failed",
-      articlesFetched: 0,
-      articles: [],
-      error,
-      response_time_ms: 0,
-    };
-  });
 
   let articles = feedResults.flatMap((r) => r.articles);
 

@@ -95,6 +95,8 @@ export interface UserPreferencesData {
   /** Optional private Slack Incoming Webhook for a personalized copy. */
   slack_webhook_url?: string | null;
   is_active?: boolean;
+  /** Set only after the user explicitly completes onboarding. */
+  onboarding_completed_at?: string | null;
   /** Controls article summary verbosity in the personalised digest */
   digest_length?: "brief" | "standard" | "detailed";
 }
@@ -130,6 +132,60 @@ function getConfig() {
   const url = config.app.supabaseUrl;
   const key = config.app.supabaseServiceKey;
   return url && key ? { url, key } : null;
+}
+
+export type ProductEventName =
+  | "onboarding_started"
+  | "onboarding_completed"
+  | "delivery_resumed"
+  | "delivery_succeeded"
+  | "delivery_failed";
+
+function parseRpcBoolean(data: unknown, keys: string[]): boolean {
+  if (typeof data === "boolean") return data;
+
+  const candidates = Array.isArray(data) ? data : [data];
+  for (const candidate of candidates) {
+    if (typeof candidate === "boolean") return candidate;
+    if (!candidate || typeof candidate !== "object") continue;
+    for (const key of keys) {
+      const value = (candidate as Record<string, unknown>)[key];
+      if (typeof value === "boolean") return value;
+    }
+  }
+
+  return false;
+}
+
+async function claimRpc(
+  rpc: string,
+  body: Record<string, unknown>,
+  resultKeys: string[],
+  label: string
+): Promise<boolean> {
+  const cfg = getConfig();
+  if (!cfg) return true;
+
+  try {
+    const response = await fetch(`${cfg.url}/rest/v1/rpc/${rpc}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: cfg.key,
+        Authorization: `Bearer ${cfg.key}`,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      logger.warn(`Supabase ${label}: ${response.status}`);
+      return false;
+    }
+
+    return parseRpcBoolean(await response.json(), resultKeys);
+  } catch (error) {
+    logger.warn(`Supabase ${label}: ${(error as Error).message}`);
+    return false;
+  }
 }
 
 async function supabaseFetch(
@@ -457,6 +513,47 @@ export const supabase = {
     }
   },
 
+  async recordProductEvent(
+    eventName: ProductEventName,
+    chatId: number,
+    properties: Record<string, unknown> = {}
+  ): Promise<boolean> {
+    if (!Number.isSafeInteger(chatId)) return false;
+    return supabaseFetch("POST", "product_events", {
+      event_name: eventName,
+      chat_id: chatId,
+      properties,
+    });
+  },
+
+  /** Disable delivery, then remove all rows owned by one Telegram chat. */
+  async deleteUserData(chatId: number): Promise<boolean> {
+    if (!Number.isSafeInteger(chatId)) return false;
+
+    const filter = `chat_id=eq.${encodeURIComponent(chatId)}`;
+    let success = await supabaseFetch(
+      "PATCH",
+      "user_preferences",
+      { is_active: false },
+      filter
+    );
+
+    for (const table of [
+      "user_preferences",
+      "user_delivery_log",
+      "alert_delivery_log",
+      "product_events",
+      "price_watches",
+      "command_usage",
+      "article_validations",
+    ]) {
+      const deleted = await supabaseFetch("DELETE", table, undefined, filter);
+      if (!deleted) success = false;
+    }
+
+    return success;
+  },
+
   async getUserPreferences(
     chatId: number
   ): Promise<UserPreferencesData | null> {
@@ -525,6 +622,7 @@ export const supabase = {
         run_date: runDate,
         status,
         details,
+        claimed_at: null,
       },
       "on_conflict=chat_id,run_date"
     );
@@ -532,43 +630,49 @@ export const supabase = {
 
   /**
    * Atomically reserve the (chat_id, run_date) delivery slot before sending.
-   * Inserts a placeholder row and relies on the table's UNIQUE(chat_id, run_date)
-   * constraint plus `resolution=ignore-duplicates` to make the reservation
-   * race-free at the database level: only the first caller for a given user+date
-   * gets a non-empty response back. Callers MUST NOT send the digest unless this
-   * returns true — this closes the TOCTOU gap where two overlapping scheduler
-   * runs both pass a read-only "already delivered?" check before either has
-   * written anything (the whole digest-generation pipeline runs in between).
+   * The database function allows failed rows to retry immediately and pending
+   * rows to be reclaimed after their lease expires, while a recent pending row
+   * remains unavailable to overlapping scheduler runs.
    */
   async claimUserDelivery(chatId: number, runDate: string): Promise<boolean> {
-    const cfg = getConfig();
-    if (!cfg) return true; // Not configured — nothing to guard against, let the caller proceed.
+    return claimRpc(
+      "claim_user_delivery",
+      { p_chat_id: chatId, p_run_date: runDate },
+      ["claimed", "claim_user_delivery"],
+      "claimUserDelivery"
+    );
+  },
 
-    try {
-      const response = await fetch(
-        `${cfg.url}/rest/v1/user_delivery_log?on_conflict=chat_id,run_date`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "apikey": cfg.key,
-            "Authorization": `Bearer ${cfg.key}`,
-            "Prefer": "return=representation,resolution=ignore-duplicates",
-          },
-          body: JSON.stringify({
-            chat_id: chatId,
-            run_date: runDate,
-            status: "failed", // Conservative placeholder — overwritten by logUserDelivery once the send resolves.
-            details: "claimed — send in progress",
-          }),
-        }
-      );
-      if (!response.ok) return true; // Fail open on infra errors — best-effort guard, not a hard gate.
-      const rows = (await response.json()) as unknown[];
-      return rows.length > 0; // Non-empty = we won the race and inserted a fresh row.
-    } catch {
-      return true; // Fail open — see above.
-    }
+  async claimHighImpactAlert(chatId: number, contentHash: string): Promise<boolean> {
+    if (!Number.isSafeInteger(chatId) || !/^[0-9a-f]{64}$/.test(contentHash)) return false;
+    return claimRpc(
+      "claim_high_impact_alert",
+      { p_chat_id: chatId, p_content_hash: contentHash },
+      ["claimed", "claim_high_impact_alert"],
+      "claimHighImpactAlert"
+    );
+  },
+
+  async logHighImpactAlert(
+    chatId: number,
+    contentHash: string,
+    status: "success" | "failed",
+    details?: string
+  ): Promise<boolean> {
+    if (!Number.isSafeInteger(chatId) || !/^[0-9a-f]{64}$/.test(contentHash)) return false;
+    return supabaseFetch(
+      "POST",
+      "alert_delivery_log",
+      {
+        chat_id: chatId,
+        content_hash: contentHash,
+        status,
+        details,
+        claimed_at: null,
+        updated_at: new Date().toISOString(),
+      },
+      "on_conflict=chat_id,content_hash"
+    );
   },
 
   /**

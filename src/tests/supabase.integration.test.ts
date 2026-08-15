@@ -285,6 +285,59 @@ describe("Supabase Integration", () => {
     });
   });
 
+  describe("delivery claim state", () => {
+    it("claims a delivery through the retryable RPC", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => [{ claim_user_delivery: true }],
+      });
+
+      const { supabase } = await import("../utils/supabase");
+      const claimed = await supabase.claimUserDelivery(12345, "2026-08-15");
+
+      expect(claimed).toBe(true);
+      const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit];
+      expect(url).toContain("/rest/v1/rpc/claim_user_delivery");
+      expect(JSON.parse(String(options.body))).toEqual({
+        p_chat_id: 12345,
+        p_run_date: "2026-08-15",
+      });
+    });
+
+    it("fails closed when the claim is unavailable or already held", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => [{ claim_user_delivery: false }],
+      });
+
+      const { supabase } = await import("../utils/supabase");
+      await expect(supabase.claimUserDelivery(12345, "2026-08-15")).resolves.toBe(false);
+
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 503 });
+      await expect(supabase.claimUserDelivery(12345, "2026-08-15")).resolves.toBe(false);
+    });
+
+    it("clears the claim timestamp when recording the final delivery state", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 201 });
+
+      const { supabase } = await import("../utils/supabase");
+      await expect(
+        supabase.logUserDelivery(12345, "2026-08-15", "success", "slack:success")
+      ).resolves.toBe(true);
+
+      const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit];
+      expect(url).toContain("user_delivery_log?on_conflict=chat_id,run_date");
+      expect(JSON.parse(String(options.body))).toMatchObject({
+        chat_id: 12345,
+        run_date: "2026-08-15",
+        status: "success",
+        claimed_at: null,
+      });
+    });
+  });
+
   describe("getAllPriceWatches", () => {
     it("should return parsed rows on success", async () => {
       mockFetch.mockResolvedValueOnce({

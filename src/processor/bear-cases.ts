@@ -107,8 +107,22 @@ export function parseResponse(text: string): BearCaseRow[] {
 
   const rows: BearCaseRow[] = [];
   for (const raw of outer.data.results) {
+    const rawIndex =
+      raw && typeof raw === "object" && "index" in raw
+        ? (raw as { index?: unknown }).index
+        : undefined;
+    const numericIndex =
+      typeof rawIndex === "number"
+        ? rawIndex
+        : typeof rawIndex === "string" && rawIndex.trim()
+          ? Number(rawIndex)
+          : Number.NaN;
     const row = BearCaseRowSchema.safeParse(raw);
-    if (row.success) rows.push(row.data);
+    if (row.success) {
+      rows.push(row.data);
+    } else if (!Number.isInteger(numericIndex)) {
+      logger.warn(`bear-cases: invalid AI article index ${String(rawIndex)}`);
+    }
   }
   return rows;
 }
@@ -183,9 +197,13 @@ export async function generateBearCases(
       // Match by 1-based index into the prompt's article list — robust against
       // the model mangling/truncating long URLs (e.g. Google News redirect links)
       // when asked to echo them back verbatim.
+      if (!Number.isInteger(row.index) || row.index < 1 || row.index > qualifying.length) {
+        logger.warn(`bear-cases: invalid article index ${row.index}; expected an integer from 1 to ${qualifying.length}`);
+        continue;
+      }
       const article = qualifying[row.index - 1];
       if (!article) {
-        logger.warn(`bear-cases: received out-of-range index ${row.index} (only ${qualifying.length} qualifying articles)`);
+        logger.warn(`bear-cases: invalid article index ${row.index}; expected an integer from 1 to ${qualifying.length}`);
         continue;
       }
       if (!row.bearCase) continue;

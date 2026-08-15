@@ -1,8 +1,11 @@
 import dotenv from "dotenv";
 import path from "path";
-import { parsePositiveFloat } from "./utils/helpers";
 
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
+
+const DEFAULT_BUDGET_DAILY_USD = 0.5;
+const DEFAULT_BUDGET_MONTHLY_USD = 5.0;
+const DEFAULT_MAX_ARTICLES_FOR_AI = 35;
 
 export interface Config {
   telegram: {
@@ -29,6 +32,8 @@ export interface Config {
     timezone: string;
     cacheDir: string;
     maxArticlesPerSource: number;
+    /** Maximum number of deduplicated articles sent to the AI per run. */
+    maxArticlesForAI: number;
     supabaseUrl?: string;
     supabaseServiceKey?: string;
     roicAiApiKey?: string;
@@ -52,6 +57,23 @@ function requireEnv(name: string): string {
     );
   }
   return val;
+}
+
+function parseBudgetUsd(raw: string | undefined, fallback: number): number {
+  const value = raw?.trim();
+  if (!value) return fallback;
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+
+  // Invalid negative caps fail closed instead of disabling the budget gate.
+  return Math.max(0, parsed);
+}
+
+function parsePositiveInteger(raw: string | undefined, fallback: number): number {
+  const parsed = Number(raw?.trim());
+  if (!Number.isInteger(parsed) || parsed < 1) return fallback;
+  return Math.min(parsed, 100);
 }
 
 function loadConfig(): Config {
@@ -97,6 +119,7 @@ function loadConfig(): Config {
       timezone: process.env.TZ || "Asia/Kuala_Lumpur",
       cacheDir: path.resolve(__dirname, "../.cache"),
       maxArticlesPerSource: 5,
+      maxArticlesForAI: parsePositiveInteger(process.env.MAX_ARTICLES_FOR_AI, DEFAULT_MAX_ARTICLES_FOR_AI),
       supabaseUrl: process.env.SUPABASE_URL || undefined,
       supabaseServiceKey: process.env.SUPABASE_SERVICE_KEY || undefined,
       roicAiApiKey: process.env.ROIC_AI_API_KEY || undefined,
@@ -104,8 +127,8 @@ function loadConfig(): Config {
       smtpUser: process.env.SMTP_USER || undefined,
       smtpPass: process.env.SMTP_PASS || undefined,
       digestEmailTo: process.env.DIGEST_EMAIL_TO || undefined,
-      budgetDailyUsd: parsePositiveFloat(process.env.AI_BUDGET_DAILY_USD, 0.5),
-      budgetMonthlyUsd: parsePositiveFloat(process.env.AI_BUDGET_MONTHLY_USD, 5.0),
+      budgetDailyUsd: parseBudgetUsd(process.env.AI_BUDGET_DAILY_USD, DEFAULT_BUDGET_DAILY_USD),
+      budgetMonthlyUsd: parseBudgetUsd(process.env.AI_BUDGET_MONTHLY_USD, DEFAULT_BUDGET_MONTHLY_USD),
     },
   };
 }

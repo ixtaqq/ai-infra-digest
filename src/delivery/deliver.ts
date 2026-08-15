@@ -11,14 +11,43 @@ import { emitDigestDelivery, emitError } from "../utils/metrics";
 import { isTriggered } from "../utils/price-watch";
 import { supabase } from "../utils/supabase";
 import type { UserPreferencesData } from "../utils/supabase";
+import { todayInTimezone } from "../utils/helpers";
 import { personalizeDigest } from "./personalization";
+
+function deliveryLatenessSeconds(
+  preferredTime = "08:00",
+  timezone = "Asia/Kuala_Lumpur",
+  now = new Date()
+): number {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(now);
+    const hour = Number(parts.find((part) => part.type === "hour")?.value || 0);
+    const minute = Number(parts.find((part) => part.type === "minute")?.value || 0);
+    const [preferredHour = 8, preferredMinute = 0] = preferredTime.split(":").map(Number);
+    return Math.max(0, (hour * 60 + minute - preferredHour * 60 - preferredMinute) * 60);
+  } catch (error) {
+    logger.warn(
+      `Could not calculate delivery lateness for timezone "${timezone}": ${(error as Error).message}`
+    );
+    return 0;
+  }
+}
 
 export async function deliverDigest(
   generated: GeneratedDigest,
   targetChatId?: number,
-  userPrefs?: UserPreferencesData
+  userPrefs?: UserPreferencesData,
+  deliveryDate?: string
 ): Promise<SendResult> {
-  const { runDate, digest, stockPrices, startTime, secExtracts, earningsAnalyses } = generated;
+  const { digest, stockPrices, startTime, secExtracts, earningsAnalyses } = generated;
+  const runDate = targetChatId
+    ? deliveryDate || todayInTimezone(userPrefs?.timezone || "Asia/Kuala_Lumpur")
+    : generated.runDate;
   const personalization = userPrefs ? personalizeDigest(digest, userPrefs) : undefined;
   const isPersonalized = personalization?.applied ?? false;
   const messageToSend = isPersonalized
@@ -48,16 +77,32 @@ export async function deliverDigest(
       return { success: false, error: "already delivered for this run date" };
     }
 
-    sendResult = await sendDigestMessageToUser(targetChatId, messageToSend);
+    try {
+      sendResult = await sendDigestMessageToUser(targetChatId, messageToSend);
+    } catch (error) {
+      sendResult = { success: false, error: (error as Error).message };
+    }
 
     const copyResults: string[] = [];
-    if (sendResult.success && userPrefs?.slack_webhook_url) {
-      const delivered = await sendSlackDigest(messageToSend, userPrefs.slack_webhook_url);
-      copyResults.push(`slack:${delivered ? "success" : "failed"}`);
-    }
-    if (sendResult.success && userPrefs?.delivery_email) {
-      const delivered = await sendEmailDigest(messageToSend, userPrefs.delivery_email);
-      copyResults.push(`email:${delivered ? "success" : "failed"}`);
+    if (sendResult.success) {
+      const [slackResult, emailResult] = await Promise.allSettled([
+        userPrefs?.slack_webhook_url
+          ? sendSlackDigest(messageToSend, userPrefs.slack_webhook_url)
+          : Promise.resolve(false),
+        userPrefs?.delivery_email
+          ? sendEmailDigest(messageToSend, userPrefs.delivery_email)
+          : Promise.resolve(false),
+      ]);
+      if (userPrefs?.slack_webhook_url) {
+        copyResults.push(
+          `slack:${slackResult.status === "fulfilled" && slackResult.value ? "success" : "failed"}`
+        );
+      }
+      if (userPrefs?.delivery_email) {
+        copyResults.push(
+          `email:${emailResult.status === "fulfilled" && emailResult.value ? "success" : "failed"}`
+        );
+      }
     }
 
     if (supabase.isConfigured()) {
@@ -67,6 +112,19 @@ export async function deliverDigest(
         runDate,
         sendResult.success ? "success" : "failed",
         details
+      );
+      await supabase.recordProductEvent(
+        sendResult.success ? "delivery_succeeded" : "delivery_failed",
+        targetChatId,
+        {
+          run_date: runDate,
+          preferred_time: userPrefs?.preferred_time || "08:00",
+          timezone: userPrefs?.timezone || "Asia/Kuala_Lumpur",
+          lateness_seconds: deliveryLatenessSeconds(
+            userPrefs?.preferred_time,
+            userPrefs?.timezone
+          ),
+        }
       );
     }
   } else {

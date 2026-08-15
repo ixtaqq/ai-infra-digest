@@ -3,7 +3,7 @@ name: Weekly Data Retention Cleanup
 on:
   schedule:
     # Sunday 3:00 AM UTC — prunes articles (90d), pipeline_health (30d),
-    # ai_usage (90d), user_delivery_log (90d), capex_tracking (365d)
+    # ai_usage/delivery/alert logs (90d), product events (180d), capex (365d)
     - cron: "0 3 * * 0"
   workflow_dispatch: # Allow manual trigger for testing
 

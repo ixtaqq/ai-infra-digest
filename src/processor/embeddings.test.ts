@@ -62,6 +62,14 @@ describe("generateEmbeddings", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("returns an empty map without calling fetch for an empty article list", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(generateEmbeddings([])).resolves.toEqual(new Map());
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("maps returned vectors back to article URLs by index", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(embeddingResponse([[0.1, 0.2], [0.3, 0.4]])));
 
@@ -71,6 +79,58 @@ describe("generateEmbeddings", () => {
     expect(result.size).toBe(2);
     expect(result.get(articles[0].url)).toEqual([0.1, 0.2]);
     expect(result.get(articles[1].url)).toEqual([0.3, 0.4]);
+  });
+
+  it("sends batches with the configured model and maps all successful batches", async () => {
+    const articles = makeArticles(25);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(embeddingResponse(Array.from({ length: 20 }, (_, index) => [index])))
+      .mockResolvedValueOnce(embeddingResponse(Array.from({ length: 5 }, (_, index) => [index + 20])));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await generateEmbeddings(articles);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const firstRequest = JSON.parse(String(fetchMock.mock.calls[0][1].body));
+    const secondRequest = JSON.parse(String(fetchMock.mock.calls[1][1].body));
+    expect(firstRequest).toEqual({
+      model: "text-embedding-3-small",
+      input: articles.slice(0, 20).map((article) => `${article.title} ${article.summary}`),
+    });
+    expect(secondRequest.input).toHaveLength(5);
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer test-embed-key",
+      },
+    });
+    expect(result.size).toBe(25);
+    expect(result.get(articles[24].url)).toEqual([24]);
+  });
+
+  it("ignores API vector indexes that do not map to the current batch", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: [
+              { index: 0, embedding: [0.1] },
+              { index: 99, embedding: [9.9] },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+    );
+
+    const articles = makeArticles(1);
+    const result = await generateEmbeddings(articles);
+
+    expect(result.size).toBe(1);
+    expect(result.get(articles[0].url)).toEqual([0.1]);
   });
 
   it("trips the circuit breaker on a persistent 429 and skips remaining batches", async () => {

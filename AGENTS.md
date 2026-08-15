@@ -13,7 +13,7 @@ Conventions and setup state for this repo. Read before making changes.
 - **Email**: `nodemailer` via Gmail SMTP (requires App Password, not account password)
 - **DB**: Supabase (Postgres + pgvector), managed via **Supabase CLI**, migrations in `supabase/migrations/`
 - **Validation**: `zod` — all AI JSON responses parsed through zod schemas (coerces type-confused fields)
-- **Tests**: Vitest — 241 unit tests offline, integration tests need live credentials
+- **Tests**: Vitest — 336 unit tests offline; integration-labelled mocked suites run under `npm test`
 - **CI**: GitHub Actions — `ci.yml` (lint + unit tests), `codeql.yml` (security scan)
 - **Cron**: GitHub Actions — daily digest, per-user scheduled delivery (every 30 min), weekly thesis snapshots, weekly data retention
 - **Website**: static HTML (`website/index.html` landing page, `website/dashboard/index.html` dashboard) — vanilla JS, Chart.js, no build step, no framework
@@ -27,7 +27,7 @@ cp .env.example .env        # fill in real values — .env.example must stay pla
 npm run dev                 # run pipeline once (polling mode) — real Telegram send + AI spend
 npm run scheduler           # per-user delivery check
 npm run webhook             # webhook server (tsx, local dev)
-npm run test:unit           # 241 unit tests, offline, no credentials needed
+npm run test:unit           # 336 unit tests, offline, no credentials needed
 npm test                    # all tests, incl. integration (needs live credentials)
 npm run lint                # tsc --noEmit (main) + tsc -p tsconfig.scripts.json (scripts)
 ```

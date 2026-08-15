@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 
 vi.mock("./utils/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -28,29 +28,41 @@ vi.mock("./config", () => {
   };
 });
 
-beforeAll(() => {
-  vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
-});
-
 afterEach(() => vi.restoreAllMocks());
 
-describe("isTimeMatch", () => {
-  it("matches exact time", async () => {
-    const { isTimeMatch } = await import("./scheduler");
-    // Stub getCurrentTimeInTimezone by controlling Date
-    vi.setSystemTime(new Date("2026-01-01T08:00:00+08:00"));
-    expect(isTimeMatch("08:00", "Asia/Kuala_Lumpur")).toBe(true);
+describe("isDeliveryDue", () => {
+  it("is due at the preferred local time", async () => {
+    const { isDeliveryDue } = await import("./scheduler");
+    expect(
+      isDeliveryDue("08:00", "Asia/Kuala_Lumpur", new Date("2026-01-01T00:00:00Z"))
+    ).toBe(true);
   });
 
-  it("matches time within +1 minute window", async () => {
-    const { isTimeMatch } = await import("./scheduler");
-    vi.setSystemTime(new Date("2026-01-01T08:01:00+08:00"));
-    expect(isTimeMatch("08:00", "Asia/Kuala_Lumpur")).toBe(true);
+  it("stays due when a cron run is delayed", async () => {
+    const { isDeliveryDue } = await import("./scheduler");
+    expect(
+      isDeliveryDue("08:00", "Asia/Kuala_Lumpur", new Date("2026-01-01T00:45:00Z"))
+    ).toBe(true);
   });
 
-  it("does not match time outside window", async () => {
-    const { isTimeMatch } = await import("./scheduler");
-    vi.setSystemTime(new Date("2026-01-01T08:05:00+08:00"));
-    expect(isTimeMatch("08:00", "Asia/Kuala_Lumpur")).toBe(false);
+  it("is not due before the preferred local time", async () => {
+    const { isDeliveryDue } = await import("./scheduler");
+    expect(
+      isDeliveryDue("08:00", "Asia/Kuala_Lumpur", new Date("2025-12-31T23:59:00Z"))
+    ).toBe(false);
+  });
+
+  it("does not carry a late-night schedule across the local midnight", async () => {
+    const { isDeliveryDue } = await import("./scheduler");
+    expect(
+      isDeliveryDue("23:00", "Asia/Kuala_Lumpur", new Date("2026-01-01T16:30:00Z"))
+    ).toBe(false);
+  });
+});
+
+describe("getDeliveryDate", () => {
+  it("uses the user's local calendar date", async () => {
+    const { getDeliveryDate } = await import("./scheduler");
+    expect(getDeliveryDate("Asia/Kuala_Lumpur", new Date("2026-01-01T16:30:00Z"))).toBe("2026-01-02");
   });
 });

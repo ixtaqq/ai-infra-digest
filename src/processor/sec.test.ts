@@ -16,6 +16,8 @@ vi.mock("../utils/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+vi.mock("../utils/helpers", () => ({ sleep: vi.fn(() => Promise.resolve()) }));
+
 import { analyzeSECFilings, formatSECExtract } from "./sec";
 import type { SECFiling } from "../collector/sec";
 
@@ -44,6 +46,30 @@ function chatCompletionResponse(content: string) {
     }),
     { status: 200, headers: { "content-type": "application/json" } }
   );
+}
+
+function extractionPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    capex: null,
+    capexGuidance: null,
+    capexSource: "",
+    aiRevenue: null,
+    aiRevenueGrowthPct: null,
+    aiRevenueSource: "",
+    grossMargin: null,
+    operatingMargin: null,
+    marginSource: "",
+    inventory: null,
+    inventoryTurnover: null,
+    inventorySource: "",
+    revenueGuidance: null,
+    epsGuidance: null,
+    guidanceText: "",
+    impactScore: 5,
+    impactRationale: "r",
+    keyTakeaways: [],
+    ...overrides,
+  };
 }
 
 describe("analyzeSECFilings", () => {
@@ -98,6 +124,9 @@ describe("analyzeSECFilings", () => {
     // Metadata is merged in by the caller, not the AI response
     expect(extract.ticker).toBe("NVDA");
     expect(extract.formType).toBe("8-K");
+    expect(extract.accessionNumber).toBe("0001045810-26-000123");
+    expect(extract.primaryDocumentUrl).toBe("https://sec.gov/filing/1");
+    expect(extract.items).toEqual(["2.02"]);
 
     // formatSECExtract must not throw now that capex is a real number
     expect(() => formatSECExtract(extract)).not.toThrow();
@@ -174,5 +203,84 @@ describe("analyzeSECFilings", () => {
     const result = await analyzeSECFilings([makeFiling()], 1);
     expect(result.extracts).toHaveLength(1);
     expect(result.extracts[0].capex).toBeNull();
+  });
+
+  it("sorts filings by processing priority and respects maxFilings", async () => {
+    const filings = [
+      makeFiling({ ticker: "TENK", formType: "10-K", accessionNumber: "10-k" }),
+      makeFiling({ ticker: "EIGHTK", formType: "8-K", accessionNumber: "8-k" }),
+      makeFiling({ ticker: "TENQ", formType: "10-Q", accessionNumber: "10-q" }),
+    ];
+    const fetchMock = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      const request = JSON.parse(String(init?.body));
+      const prompt = request.messages[1].content as string;
+      if (prompt.startsWith("Does this SEC filing")) {
+        return chatCompletionResponse(JSON.stringify({ hasFinancialData: true, reason: "numbers" }));
+      }
+      const formType = prompt.match(/Form type: ([^\n]+)/)![1];
+      return chatCompletionResponse(JSON.stringify(extractionPayload({ impactScore: formType === "8-K" ? 8 : 6 })));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await analyzeSECFilings(filings, 2);
+
+    expect(result.extracts.map((extract) => extract.formType)).toEqual(["8-K", "10-Q"]);
+    expect(result.extracts.map((extract) => extract.ticker)).toEqual(["EIGHTK", "TENQ"]);
+    expect(result.totalTokens).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).model).toBe("fast-model");
+    expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body)).model).toBe("strong-model");
+  });
+
+  it("defaults to extracting when the Pass 1 flag response cannot be parsed", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(chatCompletionResponse("not valid json"))
+      .mockResolvedValueOnce(chatCompletionResponse(JSON.stringify(extractionPayload({ capex: 125 }))));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await analyzeSECFilings([makeFiling()], 1);
+
+    expect(result.extracts).toHaveLength(1);
+    expect(result.extracts[0].capex).toBe(125);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("formatSECExtract", () => {
+  it("renders populated financial fields, growth direction, takeaways, and impact", () => {
+    const formatted = formatSECExtract({
+      ...makeFiling(),
+      capex: 500,
+      capexGuidance: 650,
+      capexSource: "capex source",
+      aiRevenue: 1200,
+      aiRevenueGrowthPct: -4.5,
+      aiRevenueSource: "revenue source",
+      grossMargin: 72.25,
+      operatingMargin: 31.5,
+      marginSource: "margin source",
+      inventory: 900,
+      inventoryTurnover: 2.4,
+      inventorySource: "inventory source",
+      revenueGuidance: 8000,
+      epsGuidance: 2.35,
+      guidanceText: "guidance",
+      impactScore: 9,
+      impactRationale: "Material capex increase",
+      keyTakeaways: ["Capex increased", "Margins softened", "Third takeaway is omitted"],
+    });
+
+    expect(formatted).toContain("$500M");
+    expect(formatted).toContain("$650M");
+    expect(formatted).toContain("(-4.5% YoY)");
+    expect(formatted).toContain("72.3%");
+    expect(formatted).toContain("31.5%");
+    expect(formatted).toContain("$900M");
+    expect(formatted).toContain("$8000M");
+    expect(formatted).toContain("$2.35");
+    expect(formatted).toContain("Capex increased • Margins softened");
+    expect(formatted).toContain("HIGH IMPACT");
+    expect(formatted).not.toContain("Third takeaway is omitted");
   });
 });

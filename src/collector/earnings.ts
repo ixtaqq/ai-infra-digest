@@ -102,63 +102,67 @@ export async function fetchTranscript(
     return null;
   }
 
-  try {
-    let url: string;
-    if (year && quarter) {
-      url = `${ROIC_BASE_URL}/company/earnings-calls/transcript/${ticker}?apikey=${apiKey}&year=${year}&quarter=${quarter}`;
-    } else {
-      url = `${ROIC_BASE_URL}/company/earnings-calls/latest/${ticker}?apikey=${apiKey}`;
-    }
+  let url: string;
+  if (year && quarter) {
+    url = `${ROIC_BASE_URL}/company/earnings-calls/transcript/${ticker}?apikey=${apiKey}&year=${year}&quarter=${quarter}`;
+  } else {
+    url = `${ROIC_BASE_URL}/company/earnings-calls/latest/${ticker}?apikey=${apiKey}`;
+  }
 
-    await rateLimitRoic();
+  const firstAttempt = Math.max(0, retryCount);
+  for (let attempt = firstAttempt; attempt <= MAX_RATE_LIMIT_RETRIES; attempt++) {
+    try {
+      await rateLimitRoic();
 
-    const response = await fetch(url, {
-      headers: {
-        "Accept": "application/json",
-        "User-Agent": "AI-Infra-Digest/3.1 (earnings transcript analysis; contact: ai-infra@example.com)",
-      },
-    });
+      const response = await fetch(url, {
+        headers: {
+          "Accept": "application/json",
+          "User-Agent": "AI-Infra-Digest/3.1 (earnings transcript analysis; contact: ai-infra@example.com)",
+        },
+      });
 
-    if (!response.ok) {
-      if (response.status === 404) {
-        logger.debug(`No transcript found for ${ticker} Q${quarter} ${year}`);
-        return null;
-      }
-      // Rate limit handling
-      if (response.status === 429) {
-        if (retryCount >= MAX_RATE_LIMIT_RETRIES) {
-          logger.warn(`Roic.ai rate limited on ${ticker} — max retries (${MAX_RATE_LIMIT_RETRIES}) exceeded, giving up`);
+      if (!response.ok) {
+        if (response.status === 404) {
+          logger.debug(`No transcript found for ${ticker} Q${quarter} ${year}`);
           return null;
         }
-        logger.warn(`Roic.ai rate limited on ${ticker}, waiting 60s... (retry ${retryCount + 1}/${MAX_RATE_LIMIT_RETRIES})`);
-        await sleep(62000);
-        return fetchTranscript(ticker, year, quarter, retryCount + 1);
+        if (response.status === 429) {
+          if (attempt >= MAX_RATE_LIMIT_RETRIES) {
+            logger.warn(`Roic.ai rate limited on ${ticker} — max retries (${MAX_RATE_LIMIT_RETRIES}) exceeded, giving up`);
+            return null;
+          }
+          logger.warn(`Roic.ai rate limited on ${ticker}, waiting 60s... (retry ${attempt + 1}/${MAX_RATE_LIMIT_RETRIES})`);
+          await sleep(62000);
+          continue;
+        }
+        throw new Error(`Roic.ai HTTP ${response.status}: ${response.statusText}`);
       }
-      throw new Error(`Roic.ai HTTP ${response.status}: ${response.statusText}`);
-    }
 
-    const data = (await response.json()) as Record<string, unknown>;
+      const data = (await response.json()) as Record<string, unknown>;
 
-    // Normalise response: some endpoints return { symbol, content, date, ... }
-    const content = (data.content || data.transcript || "") as string;
-    if (!content) {
-      logger.debug(`Empty transcript for ${ticker}`);
+      // Normalise response: some endpoints return { symbol, content, date, ... }
+      const content = (data.content || data.transcript || "") as string;
+      if (!content) {
+        logger.debug(`Empty transcript for ${ticker}`);
+        return null;
+      }
+
+      return {
+        ticker,
+        companyName: "", // Will be filled in by the caller
+        year: (data.year as number) || year || new Date().getFullYear(),
+        quarter: (data.quarter as number) || quarter || 1,
+        date: (data.date as string) || new Date().toISOString().split("T")[0],
+        content,
+        rawResponse: JSON.stringify(data).slice(0, 500),
+      };
+    } catch (error) {
+      logger.warn(`Earnings transcript fetch failed for ${ticker}: ${(error as Error).message}`);
       return null;
     }
-
-    return {
-      ticker,
-      companyName: "", // Will be filled in by the caller
-      year: (data.year as number) || year || new Date().getFullYear(),
-      quarter: (data.quarter as number) || quarter || 1,
-      date: (data.date as string) || new Date().toISOString().split("T")[0],
-      content,
-      rawResponse: JSON.stringify(data).slice(0, 500),
-    };
-  } catch (error) {
-    logger.warn(`Earnings transcript fetch failed for ${ticker}: ${(error as Error).message}`);
-    return null;
   }
+
+  return null;
 }
 
 // ─── Determine Recent Quarter ─────────────────────────

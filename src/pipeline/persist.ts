@@ -9,6 +9,144 @@ import { supabase } from "../utils/supabase";
 import type { GeneratedDigest } from "./types";
 import type { TrendingItem } from "./trending";
 
+const SEC_FORM_TYPES = new Set(["8-K", "10-K", "10-Q", "10-K/A", "10-Q/A", "8-K/A"]);
+
+interface SecFilingRow {
+  date: string;
+  ticker: string;
+  company_name: string;
+  form_type: string;
+  filing_date: string;
+  accession_number: string;
+  primary_document_url: string | null;
+  items: string[];
+  capex: number | null;
+  capex_guidance: number | null;
+  capex_source: string | null;
+  ai_revenue: number | null;
+  ai_revenue_growth_pct: number | null;
+  ai_revenue_source: string | null;
+  gross_margin: number | null;
+  operating_margin: number | null;
+  margin_source: string | null;
+  inventory: number | null;
+  inventory_turnover: number | null;
+  inventory_source: string | null;
+  revenue_guidance: number | null;
+  eps_guidance: number | null;
+  guidance_text: string | null;
+  impact_score: number | null;
+  impact_rationale: string | null;
+  key_takeaways: string[];
+}
+
+function nullableFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function nullableText(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function normalizeImpactScore(value: unknown): number | null {
+  const score = nullableFiniteNumber(value);
+  return score === null ? null : Math.min(10, Math.max(1, Math.round(score)));
+}
+
+function normalizeSecExtract(runDate: string, extract: GeneratedDigest["secExtracts"][number]): SecFilingRow | null {
+  const ticker = nullableText(extract.ticker);
+  const companyName = nullableText(extract.companyName);
+  const formType = nullableText(extract.formType);
+  const filingDate = nullableText(extract.filingDate);
+  const accessionNumber = nullableText(extract.accessionNumber);
+
+  if (
+    !ticker ||
+    !companyName ||
+    !formType ||
+    !SEC_FORM_TYPES.has(formType) ||
+    !filingDate ||
+    !accessionNumber
+  ) {
+    return null;
+  }
+
+  return {
+    date: runDate,
+    ticker,
+    company_name: companyName,
+    form_type: formType,
+    filing_date: filingDate,
+    accession_number: accessionNumber,
+    primary_document_url: nullableText(extract.primaryDocumentUrl),
+    items: stringArray(extract.items),
+    capex: nullableFiniteNumber(extract.capex),
+    capex_guidance: nullableFiniteNumber(extract.capexGuidance),
+    capex_source: nullableText(extract.capexSource),
+    ai_revenue: nullableFiniteNumber(extract.aiRevenue),
+    ai_revenue_growth_pct: nullableFiniteNumber(extract.aiRevenueGrowthPct),
+    ai_revenue_source: nullableText(extract.aiRevenueSource),
+    gross_margin: nullableFiniteNumber(extract.grossMargin),
+    operating_margin: nullableFiniteNumber(extract.operatingMargin),
+    margin_source: nullableText(extract.marginSource),
+    inventory: nullableFiniteNumber(extract.inventory),
+    inventory_turnover: nullableFiniteNumber(extract.inventoryTurnover),
+    inventory_source: nullableText(extract.inventorySource),
+    revenue_guidance: nullableFiniteNumber(extract.revenueGuidance),
+    eps_guidance: nullableFiniteNumber(extract.epsGuidance),
+    guidance_text: nullableText(extract.guidanceText),
+    impact_score: normalizeImpactScore(extract.impactScore),
+    impact_rationale: nullableText(extract.impactRationale),
+    key_takeaways: stringArray(extract.keyTakeaways),
+  };
+}
+
+export async function persistSecFilings(
+  runDate: string,
+  secExtracts: GeneratedDigest["secExtracts"]
+): Promise<void> {
+  if (!supabase.isConfigured() || secExtracts.length === 0) return;
+
+  const rowsByKey = new Map<string, SecFilingRow>();
+  for (const extract of secExtracts) {
+    const row = normalizeSecExtract(runDate, extract);
+    if (row) rowsByKey.set(`${row.ticker}:${row.accession_number}`, row);
+  }
+  const rows = [...rowsByKey.values()];
+  if (rows.length === 0) return;
+
+  const url = config.app.supabaseUrl;
+  const key = config.app.supabaseServiceKey;
+  if (!url || !key) return;
+
+  try {
+    const response = await fetch(
+      `${url}/rest/v1/sec_filings?on_conflict=ticker,accession_number`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: key,
+          Authorization: `Bearer ${key}`,
+          Prefer: "return=minimal,resolution=merge-duplicates",
+        },
+        body: JSON.stringify(rows),
+      }
+    );
+    if (!response.ok && response.status !== 201) {
+      logger.warn(`Supabase sec_filings upsert: ${response.status}`);
+      return;
+    }
+    logger.info(`Supabase: stored ${rows.length} SEC filing extracts`);
+  } catch (error) {
+    logger.warn(`Supabase sec_filings upsert: ${(error as Error).message}`);
+  }
+}
+
 export async function persistDigestMetrics(
   generated: GeneratedDigest,
   status: "success" | "failed",
@@ -143,6 +281,8 @@ export async function persistDigestMetrics(
       previous_close: Math.round(price.previousClose * 100) / 100,
     }))
   );
+
+  await persistSecFilings(runDate, secExtracts);
 
   const healthyFeeds = feedStatuses.filter((feed) => feed.status === "success").length;
   const failingFeeds = feedStatuses.filter((feed) => feed.status === "failed").length;
