@@ -27,7 +27,7 @@ CREATE TABLE digest_runs (
   articles_processed INT DEFAULT 0,
   batches_run INT DEFAULT 0,
   ai_provider TEXT DEFAULT 'groq',
-  ai_model TEXT DEFAULT 'llama-3.3-70b-versatile',
+  ai_model TEXT DEFAULT 'openai/gpt-oss-120b',
   total_tokens_used INT DEFAULT 0,
   duration_seconds NUMERIC(10,1) DEFAULT 0,
   error_message TEXT,

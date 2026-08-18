@@ -4,6 +4,7 @@ import type { RankingExplanation } from "../utils/ranking";
 import { config } from "../config";
 import { logger } from "../utils/logger";
 import { sleep } from "../utils/helpers";
+import { isRetryableStatus } from "../utils/retry";
 import type { Article } from "../collector/rss";
 
 // ─── AI Infrastructure News Categories ───────────────
@@ -117,7 +118,7 @@ function createClient(): OpenAI {
     apiKey: config.ai.apiKey,
     baseURL: config.ai.baseUrl,
     timeout: 180000,
-    maxRetries: 2,
+    maxRetries: 0,
     fetch: globalThis.fetch,
   });
 }
@@ -129,7 +130,7 @@ function createFallbackClient(): OpenAI | null {
     apiKey: fb.apiKey,
     baseURL: fb.baseUrl,
     timeout: 180000,
-    maxRetries: 2,
+    maxRetries: 0,
     fetch: globalThis.fetch,
   });
 }
@@ -389,6 +390,13 @@ async function callAI(client: OpenAI, prompt: string, model?: string): Promise<C
       return await callAIOnce(client, prompt, activeModel, useJsonMode);
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
+      const status = "status" in lastError && typeof lastError.status === "number"
+        ? lastError.status
+        : undefined;
+      if (status !== undefined && !isRetryableStatus(status)) {
+        logger.warn(`AI call failed with non-retryable HTTP ${status}: ${lastError.message}`);
+        break;
+      }
       if (attempt < maxRetries) {
         logger.warn(`AI call attempt ${attempt + 1}/${maxRetries + 1} failed: ${lastError.message}. Retrying...`);
         await backoff(attempt);
@@ -428,7 +436,7 @@ async function processBatch(
   totalBatches: number
 ): Promise<BatchResult> {
   const prompt = buildBatchPrompt(batch, batchNum, totalBatches);
-  // Classification uses the fast/cheap model (llama-3.1-8b-instant)
+  // Classification uses the fast/cheap model (openai/gpt-oss-20b)
   const { content, usage } = await callAI(client, prompt, config.ai.fastModel);
   const parsed = extractJSON(content) as { articles?: unknown } | null;
 
@@ -534,7 +542,7 @@ export async function processArticles(
 
   try {
     const synthesisPrompt = buildSynthesisPrompt(allBatchResults);
-    // Synthesis uses the strong model (llama-3.3-70b-versatile) for higher quality
+    // Synthesis uses the strong model (openai/gpt-oss-120b) for higher quality
     const synthesisResult = await callAI(client, synthesisPrompt, config.ai.model);
     totalTokens += synthesisResult.usage.totalTokens;
     totalPromptTokens += synthesisResult.usage.promptTokens;

@@ -349,7 +349,7 @@ describe("processArticles", () => {
     expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
-  it("uses the configured fallback provider after the primary exhausts retries", async () => {
+  it("uses the configured fallback provider without retrying non-retryable primary errors", async () => {
     configMock.config.ai.fallback = {
       apiKey: "fallback-key",
       model: "fallback-strong",
@@ -389,10 +389,12 @@ describe("processArticles", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await processArticles([makeArticle()]);
+    const primaryCalls = fetchMock.mock.calls.filter(([url]) => String(url).startsWith("https://api.test"));
     const fallbackCalls = fetchMock.mock.calls.filter(([url]) => String(url).startsWith("https://fallback.test"));
 
     expect(result.articles[0].title).toBe("Fallback classification");
     expect(result.summary).toBe("fallback summary");
+    expect(primaryCalls).toHaveLength(2);
     expect(fallbackCalls).toHaveLength(2);
     expect(JSON.parse(String(fallbackCalls[0]?.[1]?.body)).model).toBe("fallback-fast");
     expect(JSON.parse(String(fallbackCalls[1]?.[1]?.body)).model).toBe("fallback-strong");

@@ -48,8 +48,8 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           AI_PROVIDER: ${{ vars.AI_PROVIDER || 'groq' }}
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
-          AI_MODEL: ${{ vars.AI_MODEL || 'llama-3.3-70b-versatile' }}
-          AI_FAST_MODEL: ${{ vars.AI_FAST_MODEL || 'llama-3.1-8b-instant' }}
+          AI_MODEL: ${{ vars.AI_MODEL || 'openai/gpt-oss-120b' }}
+          AI_FAST_MODEL: ${{ vars.AI_FAST_MODEL || 'openai/gpt-oss-20b' }}
           AI_BASE_URL: ${{ vars.AI_BASE_URL }}
           AI_FALLBACK_PROVIDER: ${{ vars.AI_FALLBACK_PROVIDER }}
           AI_FALLBACK_API_KEY: ${{ secrets.AI_FALLBACK_API_KEY }}

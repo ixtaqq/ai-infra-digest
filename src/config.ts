@@ -15,8 +15,8 @@ export interface Config {
   ai: {
     provider: "groq" | "openai" | "openrouter" | "custom";
     apiKey: string;
-    model: string;              // Strong model for synthesis (default: llama-3.3-70b-versatile)
-    fastModel: string;          // Fast/cheap model for classification (default: llama-3.1-8b-instant)
+    model: string;              // Strong model for synthesis (default: openai/gpt-oss-120b)
+    fastModel: string;          // Fast/cheap model for classification (default: openai/gpt-oss-20b)
     baseUrl?: string;
     embeddingApiKey: string;
     embeddingModel: string;
@@ -101,8 +101,8 @@ function loadConfig(): Config {
     ai: {
       provider,
       apiKey: requireEnv("AI_API_KEY"),
-      model: process.env.AI_MODEL || "llama-3.3-70b-versatile",
-      fastModel: process.env.AI_FAST_MODEL || "llama-3.1-8b-instant",
+      model: process.env.AI_MODEL || "openai/gpt-oss-120b",
+      fastModel: process.env.AI_FAST_MODEL || "openai/gpt-oss-20b",
       baseUrl: baseUrls[provider] || process.env.AI_BASE_URL,
       embeddingApiKey: process.env.OPENAI_EMBEDDING_API_KEY || process.env.OPENAI_API_KEY || "",
       embeddingModel: "text-embedding-3-small",

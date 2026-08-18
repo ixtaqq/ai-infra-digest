@@ -38,7 +38,7 @@ The production status above describes the current GitHub Actions secret configur
 
 ### 🤖 AI Processing
 - **Multi-provider**: Groq (default), OpenAI, OpenRouter, or custom endpoints
-- **Two-tier model routing** — fast/cheap model (llama-3.1-8b-instant) for classification; strong model (llama-3.3-70b-versatile) for synthesis — saves **40–60% on AI costs**
+- **Two-tier model routing** — fast model (openai/gpt-oss-20b) for classification; strong model (openai/gpt-oss-120b) for synthesis
 - **Dynamic batch sizing** — 5–15 articles/batch, targeting ~4 batches
 - **Batch processing** with exponential backoff (full-jitter, up to 3 attempts)
 - **Anchored impact rubric** — 1–10 scale with tier anchors: 1–3 routine, 4–6 notable, 7–8 significant surprise, 9–10 market-moving; scores ≥ 8 require a justification sentence
@@ -265,8 +265,8 @@ Step 1c: Dedup (URL match + Jaccard; optional cosine similarity when embeddings 
       ▼
 Step 2: AI Processor (two-tier routing)
       ├── Cache check: SHA-256(article URLs) → .ai-cache/ (23h TTL)
-      ├── Classification: Fast Model (llama-3.1-8b-instant)
-      ├── Synthesis: Strong Model (llama-3.3-70b-versatile)
+      ├── Classification: Fast Model (openai/gpt-oss-20b)
+      ├── Synthesis: Strong Model (openai/gpt-oss-120b)
       └── SEC Two-Pass: keyword filter → fast flag → strong extract
       │
       ▼
@@ -346,8 +346,8 @@ cp .env.example .env
 | `TELEGRAM_CHAT_ID` | ✅ | — | Your Telegram chat/user ID |
 | `AI_API_KEY` | ✅ | — | API key for your AI provider |
 | `AI_PROVIDER` | ❌ | `groq` | `groq`, `openai`, `openrouter`, `custom` |
-| `AI_MODEL` | ❌ | `llama-3.3-70b-versatile` | Strong model for synthesis & SEC extraction |
-| `AI_FAST_MODEL` | ❌ | `llama-3.1-8b-instant` | Fast model for classification & SEC flagging |
+| `AI_MODEL` | ❌ | `openai/gpt-oss-120b` | Strong model for synthesis & SEC extraction |
+| `AI_FAST_MODEL` | ❌ | `openai/gpt-oss-20b` | Fast model for classification & SEC flagging |
 | `AI_FALLBACK_PROVIDER` | ❌ | — | Secondary provider tried only if the primary fails after all retries (`openai`, `groq`, `openrouter`, `custom`) |
 | `AI_FALLBACK_API_KEY` | ❌ | — | API key for the fallback provider — set this to enable failover |
 | `AI_FALLBACK_MODEL` | ❌ | `gpt-4o-mini` | Strong model on the fallback provider |
