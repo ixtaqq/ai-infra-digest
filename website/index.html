@@ -555,8 +555,8 @@ footer a:hover{color:var(--lime)}
     </div>
     <div class="feat-grid">
       <div class="feat" data-reveal style="--d:.05s"><span class="tag">FEEDS</span><span class="ic" aria-hidden="true">📡</span><h3>RSS News Collection</h3><p>68 feeds across 10 sectors — NVIDIA and TSMC to Vertiv and Constellation Energy. Conditional GET caching, retry with jitter, auto-skip for dead feeds.</p></div>
-      <div class="feat" data-reveal style="--d:.12s"><span class="tag">CORE</span><span class="ic" aria-hidden="true">🧠</span><h3>Two-Tier AI Routing</h3><p>Classification on a fast 8B model, synthesis on a strong 70B model. Saves <strong>40–60%</strong> on AI cost — about 3,000 tokens per day in total.</p></div>
-      <div class="feat" data-reveal style="--d:.19s"><span class="tag">SEC</span><span class="ic" aria-hidden="true">🏛️</span><h3>SEC Two-Pass Extraction</h3><p>Free keyword pre-filter → fast-model flagging (~$0.0005) → strong-model extraction (~$0.01). Capex, AI revenue, margins and guidance from 35 companies.</p></div>
+      <div class="feat" data-reveal style="--d:.12s"><span class="tag">CORE</span><span class="ic" aria-hidden="true">🧠</span><h3>Two-Tier AI Routing</h3><p>GPT-OSS 20B handles classification; GPT-OSS 120B handles synthesis. Permanent provider errors fail fast, while rate limits and server faults retain bounded retries.</p></div>
+      <div class="feat" data-reveal style="--d:.19s"><span class="tag">SEC</span><span class="ic" aria-hidden="true">🏛️</span><h3>SEC Two-Pass Extraction</h3><p>Keyword pre-filter → fast-model flagging → strong-model extraction. Capex, AI revenue, margins and guidance from 35 companies are persisted for research.</p></div>
       <div class="feat" data-reveal style="--d:.26s"><span class="tag">OPTIONAL</span><span class="ic" aria-hidden="true">🎙️</span><h3>Earnings Transcript Mining</h3><p>When a Roic.ai key is configured, transcripts for 15 AI companies receive topic segmentation, guidance extraction, QoQ delta, and management tone.</p></div>
       <div class="feat" data-reveal style="--d:.33s"><span class="tag">MARKET</span><span class="ic" aria-hidden="true">📊</span><h3>Stock &amp; Market Data</h3><p>Yahoo Finance snapshots for 30+ tickers, stored daily. Tracks price deltas and sector rotation for every mentioned stock.</p></div>
       <div class="feat" data-reveal style="--d:.4s"><span class="tag">LAYER</span><span class="ic" aria-hidden="true">📈</span><h3>Intelligence Layer</h3><p>Materializes <code>daily_derived_metrics</code> every run. Market Pulse surfaces WoW movers ≥ 20%; <code>/trends NVDA 30d</code> renders a Unicode sparkline.</p></div>
@@ -589,7 +589,7 @@ footer a:hover{color:var(--lime)}
     <div class="pipe" data-reveal>
       <div class="pipe-line" aria-hidden="true"></div>
       <div class="step" data-reveal style="--d:.1s"><div class="node" style="--pd:0s" aria-hidden="true">📡</div><div class="no">STAGE 01</div><h4>COLLECT<span>.</span></h4><p><b>68 feeds</b> + SEC EDGAR + transcripts</p></div>
-      <div class="step" data-reveal style="--d:.25s"><div class="node" style="--pd:.4s" aria-hidden="true">🧠</div><div class="no">STAGE 02</div><h4>ANALYZE<span>.</span></h4><p>two-tier routing · <b>40–60% cheaper</b></p></div>
+      <div class="step" data-reveal style="--d:.25s"><div class="node" style="--pd:.4s" aria-hidden="true">🧠</div><div class="no">STAGE 02</div><h4>ANALYZE<span>.</span></h4><p>GPT-OSS 20B + <b>120B synthesis</b></p></div>
       <div class="step" data-reveal style="--d:.4s"><div class="node" style="--pd:.8s" aria-hidden="true">🏛️</div><div class="no">STAGE 03</div><h4>EXTRACT<span>.</span></h4><p>two-pass SEC · <b>35 companies</b></p></div>
       <div class="step" data-reveal style="--d:.55s"><div class="node" style="--pd:1.2s" aria-hidden="true">📈</div><div class="no">STAGE 04</div><h4>MATERIALIZE<span>.</span></h4><p>derived metrics · <b>WoW movers</b></p></div>
       <div class="step" data-reveal style="--d:.7s"><div class="node" style="--pd:1.6s" aria-hidden="true">📨</div><div class="no">STAGE 05</div><h4>DELIVER<span>.</span></h4><p>Telegram · Slack · Gmail · <b>&lt;$2/mo</b></p></div>
@@ -628,7 +628,7 @@ footer a:hover{color:var(--lime)}
     </div>
     <div class="tech" data-reveal>
       <span class="t">📘 TypeScript</span>
-      <span class="t">🧠 Two-Tier AI (8B + 70B)</span>
+      <span class="t">🧠 Two-Tier AI (GPT-OSS 20B + 120B)</span>
       <span class="t">💬 Telegram Bot API</span>
       <span class="t">📬 Slack + Gmail</span>
       <span class="t">📊 Supabase</span>
@@ -647,7 +647,7 @@ footer a:hover{color:var(--lime)}
     <div class="sec-head" data-reveal>
       <span class="kicker">// 05 · ROADMAP</span>
       <h2><span class="mask"><span>Shipping in <span class="lime">public</span>.</span></span></h2>
-      <p>Thirteen phases shipped. Every candidate is diagnosed for real demand before a line of code gets written.</p>
+      <p>Eighteen phases shipped. The current focus is dependable delivery, measurable quality and operational clarity.</p>
     </div>
     <div class="road" data-reveal>
 
@@ -656,7 +656,7 @@ footer a:hover{color:var(--lime)}
         <h4>Foundation + Intelligence</h4>
         <ul>
           <li>RSS feeds · conditional GET caching · Jaccard dedup</li>
-          <li>Two-tier AI routing — 8B classification + 70B synthesis, 40–60% cheaper</li>
+          <li>Two-tier AI routing — separate classification and synthesis models</li>
           <li>SEC EDGAR two-pass extraction for 35 companies</li>
           <li>Earnings transcript mining with QoQ guidance delta · Yahoo Finance for 30+ tickers</li>
         </ul>
@@ -756,13 +756,55 @@ footer a:hover{color:var(--lime)}
         </ul>
       </div>
 
-      <div class="ri now" data-reveal style="--d:.55s">
-        <span class="q">PHASE XIII</span><span class="st wip">LATEST</span>
+      <div class="ri" data-reveal style="--d:.55s">
+        <span class="q">PHASE XIII</span><span class="st done">SHIPPED</span>
         <h4>Intelligence Connections</h4>
         <ul>
           <li>Persisted <code>corroboration_count</code>, <code>grounding_text</code>, <code>effective_score</code> — enabling historical confidence-trend analysis</li>
           <li>Fixed a second bug in the same path: <code>is_sec_filing</code> was dropped before the insert</li>
           <li><code>/thesis</code> now grounded in the same per-article coverage <code>/coverage</code> shows</li>
+        </ul>
+      </div>
+
+      <div class="ri" data-reveal style="--d:.6s">
+        <span class="q">PHASE XIV &amp; XV</span><span class="st done">SHIPPED</span>
+        <h4>Correctness + Maintainability</h4>
+        <ul>
+          <li>Per-feed failure isolation · capability reports · credential-safe preflight checks</li>
+          <li>Pipeline split into focused generation, persistence, delivery and orchestration modules</li>
+          <li>Telegram commands grouped by domain behind one regression-tested dispatcher</li>
+        </ul>
+      </div>
+
+      <div class="ri" data-reveal style="--d:.65s">
+        <span class="q">PHASE XVI &amp; XVII</span><span class="st done">SHIPPED</span>
+        <h4>Explainability + Private Delivery</h4>
+        <ul>
+          <li>Auditable ranking explanations persisted with each article and exposed in the dashboard</li>
+          <li>Personalized Telegram, email and Slack copies share one filtered delivery result</li>
+          <li>Private destinations remain service-role protected; public metrics expose aggregates only</li>
+        </ul>
+      </div>
+
+      <div class="ri" data-reveal style="--d:.7s">
+        <span class="q">PHASE XVIII</span><span class="st done">SHIPPED</span>
+        <h4>Reliability Completion</h4>
+        <ul>
+          <li>Late scheduled jobs deliver by due-and-undelivered semantics instead of a narrow time window</li>
+          <li>Retryable delivery leases · idempotent alerts · persisted SEC filings</li>
+          <li>Consent-safe onboarding · <code>/stop</code> · <code>/resume</code> · <code>/delete_my_data</code></li>
+          <li>Indexed server-side article search and durable GitHub Actions caches</li>
+        </ul>
+      </div>
+
+      <div class="ri now" data-reveal style="--d:.75s">
+        <span class="q">CURRENT UPDATE · AUG 18</span><span class="st wip">LIVE</span>
+        <h4>Provider Model Recovery</h4>
+        <ul>
+          <li>Replaced retired Groq Llama models with supported GPT-OSS 20B and 120B production models</li>
+          <li>HTTP 401/404 configuration failures now stop immediately instead of burning through retries</li>
+          <li>Rate limits and server errors still retry; configured fallback providers remain available</li>
+          <li>336 offline unit tests and strict TypeScript checks passing</li>
         </ul>
       </div>
 
