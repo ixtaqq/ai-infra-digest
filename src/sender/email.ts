@@ -63,3 +63,31 @@ export async function sendEmailDigest(
     return false;
   }
 }
+
+export async function sendEmailVerification(
+  recipient: string,
+  code: string
+): Promise<boolean> {
+  const { smtpUser, smtpPass } = config.app;
+  if (!smtpUser || !smtpPass || !recipient || !/^\d{6}$/.test(code)) return false;
+
+  const transporter = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false,
+    auth: { user: smtpUser, pass: smtpPass },
+  });
+
+  try {
+    await transporter.sendMail({
+      from: `"AI Infra Digest" <${smtpUser}>`,
+      to: recipient,
+      subject: "Verify your AI Infra Digest email",
+      text: `Your verification code is ${code}. It expires in 15 minutes.`,
+    });
+    return true;
+  } catch (error) {
+    logger.warn(`Email verification delivery failed: ${(error as Error).message}`);
+    return false;
+  }
+}

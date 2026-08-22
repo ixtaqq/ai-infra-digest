@@ -788,6 +788,10 @@
       .header-date { font-size: 8px; }
       .header-btn-primary { padding: 4px 12px; font-size: 10px; }
       .plan-name { min-width: 56px; font-size: 11px; }
+      .header { padding: 0 10px; }
+      .header-right { gap: 6px; }
+      .live-chip, .ambient-toggle, .header-btn-primary { display: none; }
+      .amb { width: 320px; height: 320px; }
     }
 
     /* ─── Accessibility ── */
@@ -838,7 +842,7 @@
   <!-- ─── Sidebar ── -->
   <aside class="sidebar">
     <div class="sidebar-logo"><span class="spark" aria-hidden="true">✦</span>Goldirham</div>
-    <div class="sidebar-sub">Studio · <span class="accent">v18.2</span></div>
+    <div class="sidebar-sub">Studio · <span class="accent">v19.0</span></div>
 
     <nav class="sidebar-nav" aria-label="Dashboard sections">
       <span class="sidebar-ind" id="sidebarInd" aria-hidden="true"></span>
@@ -884,10 +888,10 @@
           <input type="search" aria-label="Search articles" placeholder="Search transactions..." id="globalSearch" onkeydown="if(event.key==='Enter')doGlobalSearch()" autocomplete="off">
           <span class="kbd" aria-hidden="true">⌘K</span>
         </div>
-        <button class="header-btn" aria-label="Toggle ambient glow" onclick="document.getElementById('bgGlow').style.opacity = document.getElementById('bgGlow').style.opacity === '0' ? '0.5' : '0'" title="Toggle ambient glow">🌓</button>
+        <button class="header-btn ambient-toggle" aria-label="Toggle ambient glow" onclick="document.getElementById('bgGlow').style.opacity = document.getElementById('bgGlow').style.opacity === '0' ? '0.5' : '0'" title="Toggle ambient glow">🌓</button>
         <button class="header-btn" id="configToggle" aria-label="Open dashboard connection settings" aria-controls="configPanel" aria-expanded="false" onclick="showConfig()" title="Connection settings">⚙</button>
         <button class="header-btn" aria-label="Refresh dashboard" onclick="loadDashboard()" title="Refresh">↻</button>
-        <button class="header-btn-primary" onclick="window.open('/','_self')">+ New Digest →</button>
+        <button class="header-btn-primary" onclick="window.open('/','_self')">Back to site →</button>
       </div>
       <span class="scroll-prog" id="scrollProg" aria-hidden="true"></span>
     </header>
@@ -1456,11 +1460,11 @@
       try {
         const partialErrors = [];
         const [digests, sectors, stocks, articles, feeds, capex, metrics, prices, deliveries, secFilings, theses, thesisHistory, rankingQuality] = await Promise.all([
-          queryDashboardData('Digest runs', 'digest_runs', { order: 'run_date', limit: 60, rangeColumn: 'run_date', range: rangeDate }, partialErrors),
+          queryDashboardData('Digest runs', 'digest_runs', { select: 'id,run_date,status,articles_collected,articles_processed,batches_run,total_tokens_used,duration_seconds,created_at,capabilities,degraded_stages', order: 'run_date', limit: 60, rangeColumn: 'run_date', range: rangeDate }, partialErrors),
           queryDashboardData('Sector activity', 'sector_activity', { select: 'date,sector,article_count,avg_impact_score', order: 'date', range: rangeDate }, partialErrors),
           queryDashboardData('Stock mentions', 'stock_mentions', { order: 'mention_count', limit: 10, range: rangeDate }, partialErrors),
           queryDashboardData('Articles', 'articles', { select: ARTICLE_SELECT, order: 'impact_score.desc,created_at.desc,id.desc', limit: ARTICLES_PAGE_SIZE }, partialErrors),
-          queryDashboardData('Pipeline health', 'pipeline_health', { order: 'created_at', limit: 50 }, partialErrors),
+          queryDashboardData('Pipeline health', 'pipeline_health', { select: 'id,digest_run_id,feed_name,status,articles_fetched,response_time_ms,created_at', order: 'created_at', limit: 50 }, partialErrors),
           queryDashboardData('Capex tracking', 'capex_tracking', { order: 'date', limit: 10 }, partialErrors),
           queryDashboardData('Daily metrics', 'daily_metrics', { order: 'date', limit: 30, range: rangeDate }, partialErrors),
           queryDashboardData('Stock prices', 'stock_prices', { order: 'date', limit: 500, range: rangeDate }, partialErrors),
@@ -2101,7 +2105,7 @@
           <span style="font-size:11px;display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:var(--danger);display:inline-block"></span>${failing} failing</span>
           <span style="font-size:11px;color:var(--text-dim)">${entries.length} total feeds</span>
         </div>
-        ${entries.slice(0, 40).map(f => `<div class="feed-row"><span class="feed-status ${f.status === 'success' ? 'success' : f.status === 'failed' ? 'failed' : ''}"></span><span style="flex:1;font-weight:500">${escapeHtml(f.feed_name)}</span><span style="color:var(--text-muted);font-size:10px;font-family:'IBM Plex Mono', monospace">${Number(f.articles_fetched) || 0}</span>${f.status === 'failed' ? `<span style="color:var(--danger);font-size:10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml((f.error_message || '').slice(0, 50))}</span>` : ''}</div>`).join('')}
+        ${entries.slice(0, 40).map(f => `<div class="feed-row"><span class="feed-status ${f.status === 'success' ? 'success' : f.status === 'failed' ? 'failed' : ''}"></span><span style="flex:1;font-weight:500">${escapeHtml(f.feed_name)}</span><span style="color:var(--text-muted);font-size:10px;font-family:'IBM Plex Mono', monospace">${Number(f.articles_fetched) || 0}</span>${f.status === 'failed' ? '<span style="color:var(--danger);font-size:10px">Unavailable</span>' : ''}</div>`).join('')}
       `;
     }
 

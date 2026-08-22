@@ -78,7 +78,7 @@ The production status above describes the current GitHub Actions secret configur
 
 ### 📬 Multi-Channel Delivery
 
-Digest delivered in parallel to up to three channels after each pipeline run. Slack and email failures are non-fatal — Telegram always delivers.
+Telegram is the claimed primary delivery. Optional Slack and verified-email copies send only after Telegram succeeds; copy failures are non-fatal and cannot cause a duplicate Telegram retry.
 
 | Channel | Config | Notes |
 |---------|--------|-------|
@@ -115,7 +115,8 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 | `/thesis NVDA` | Bull/bear thesis for a ticker — last 6 weekly snapshots with confidence deltas (no arg: top 5 by confidence) |
 | `/feedback 5` | Rate today's digest (1–5) with optional comment |
 | `/delivery` | Configure opt-in personalized email or Slack copies |
-| `/delivery email you@example.com` | Send the same personalized digest to email after Telegram succeeds |
+| `/delivery email you@example.com` | Send a 6-digit ownership-verification code before enabling email copies |
+| `/delivery email verify 123456` | Verify the pending address and enable personalized email copies |
 | `/delivery slack WEBHOOK_URL` | Send the same personalized digest to a private Slack Incoming Webhook |
 | `/settings` | View or edit your user preferences |
 | `/settings time 08:00` | Set preferred delivery time; also supports `timezone`, `min_score`, `length`, and `categories` |
@@ -123,7 +124,7 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 | `/resume` | Resume delivery with saved preferences after completed onboarding |
 | `/delete_my_data` | Delete private user rows and disable delivery; `/delete` is an alias |
 | `/watchlist NVDA,AMD,AVGO` | Set your ticker watchlist |
-| `/alert on` | Enable instant high-impact alerts (score 8+) |
+| `/alert on` | Enable high-impact alerts (score 8+) during editorial runs |
 | `/alert off` | Disable alerts |
 | `/alert threshold 9` | Set minimum impact score for alerts |
 | `/watch NVDA 130` | One-shot price watch — notified once when NVDA crosses $130, then it clears |
@@ -131,7 +132,7 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 | `/watch list` | Show your active price watches |
 
 ### ⏰ Scheduled Delivery (Per-User, Fan-Out)
-- **Generate once, deliver to all** — RSS crawl + AI runs a single time per cron tick regardless of user count; the formatted digest is fanned out per user (no redundant AI cost)
+- **Publish once, deliver to all** — the daily editorial workflow performs RSS + AI once and stores an immutable canonical publication; the delivery cron only loads and personalizes that edition (no AI keys or redundant AI cost)
 - **Real personalization at delivery** — each user's copy is filtered from the shared bundle using their stored preferences:
   - `min_impact_score` — drops articles below their threshold
   - `categories_enabled` — keeps only their selected sectors
@@ -149,7 +150,7 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 - **`enableWebhookMode()`** — switches bot from polling to `processUpdate` before startup
 - **Secret token validation** — rejects requests without matching `X-Telegram-Bot-Api-Secret-Token` header; `WEBHOOK_SECRET` is required unconditionally to start the server (not just once `WEBHOOK_URL` is set) — an unauthenticated listener is never safe, regardless of whether the webhook has been registered with Telegram yet
 - **Auto-registers webhook** on startup when `WEBHOOK_URL` is set
-- **`Dockerfile`** — multi-stage build, runs `dist/webhook.js`, exposes port 3000
+- **`Dockerfile`** — reproducible Node 22 build, runs `dist/webhook.js` as the unprivileged `node` user, exposes port 3000
 - Deploy to Render/Railway/Fly.io — see **`WEBHOOK_SETUP.md`**
 
 ### 📊 Dashboard
@@ -179,10 +180,10 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 - **`article_validations` table** — one row per user per article (`UNIQUE(article_id, chat_id)`); double-vote silently ignored with "Already rated!" toast
 - **Aggregate counters** — `thumbs_up` / `thumbs_down` columns on `articles` table updated atomically after each new vote
 - **`insertArticles()` returns IDs** — Supabase `return=representation` gives `{id, url}[]` back; IDs flow through `persistDigestMetrics()` → `sendValidationFollowUp()` without changing the fan-out architecture
-- **Fan-out safe** — validation follow-up sent independently to each user in the scheduler loop after the single `persistDigestMetrics()` call; never blocks digest delivery
+- **Fan-out safe** — validation follow-up uses the article identity map stored with the canonical publication; never triggers a second persistence pass or blocks digest delivery
 
 ### 🗄️ Database (Supabase)
-- **22 tables**: `digest_runs`, `articles`, `sector_activity`, `stock_mentions`, `pipeline_health`, `capex_tracking`, `ai_usage`, `daily_metrics`, `stock_prices`, `user_preferences`, `user_delivery_log`, `sec_filings`, `earnings_transcripts`, `daily_derived_metrics`, `article_validations`, `ticker_theses`, `ticker_thesis_history`, `price_watches`, `command_usage`, `delivery_metrics_daily`, `alert_delivery_log`, `product_events`
+- **24 tables**: the 22 editorial, market, delivery, and product tables listed in prior releases plus immutable `digest_publications` and private `delivery_email_verifications`
 - Managed with **Supabase CLI** — migrations in `supabase/migrations/`
 - `digest_runs` tracks both models (`ai_model` + `ai_fast_model`)
 - `articles` has `is_sec_filing` boolean, `thumbs_up` / `thumbs_down` aggregate validation counters, `bear_case TEXT` (skeptical counter-argument for high-impact articles), an optional `embedding vector(1536)` from OpenAI `text-embedding-3-small`, and `corroboration_count` / `grounding_text` / `effective_score` (v14 — persists ranking/grounding data that used to be computed in-memory each run and discarded afterward)
@@ -213,7 +214,7 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 - **Structured error events** — AI 429, Yahoo Finance failures, Supabase errors all emit `ErrorEvent` with recovery suggestions
 
 ### 🧪 Testing & CI
-- **336 passing unit tests** with **Vitest** in the offline CI gate (`npm run test:unit`, 44 test files):
+- **362 passing unit tests** with **Vitest** in the offline CI gate (`npm run test:unit`, 50 test files):
   - Deduplication + cosine similarity: 9 unit tests (`cosineSimilarity` — identical, orthogonal, mismatched length, zero vectors; `deduplicateArticles` — 5 cases, now async)
   - Keyword matching: 13 unit tests
   - Stock price fetching: 3 unit tests
@@ -302,19 +303,24 @@ Step 3c: buildWhatChanged() — query last 8 days, compute WoW movers (≥20%)
 Step 3: generateDigest() → GeneratedDigest bundle (format once, includes whatChanged)
       │
       ▼
-Step 4: Fan-out delivery loop
+Step 4: persistDigestMetrics() — writes editorial data to Supabase ONCE
+      ├── digest_runs, articles (returns {id,url}[]), sector_activity, stock_prices, daily_metrics
+      └── Records prompt/schema versions and signal-quality metrics
+      │
+      ▼
+Step 5: Publish immutable digest_publications row
+      ├── One edition per publication_date
+      └── Stores the serialized bundle + article identity map
+      │
+      ▼
+Step 6: Fan-out delivery loop (scheduler reads publications; never generates)
       ├── For each user: applyUserFilter(bundle, userPrefs) → re-format → send
       │     applies: min_impact_score, categories_enabled, watchlist boost, digest_length trim
       │     whatChanged Market Pulse block injected in header when ≥7 days history available
       └── Default chat: send shared pre-formatted message (zero overhead)
       │
       ▼
-Step 5: persistDigestMetrics() — writes to Supabase ONCE per generation
-      ├── digest_runs, articles (returns {id,url}[]), sector_activity, stock_prices, daily_metrics
-      └── Returns Map<url,id> for validation follow-up
-      │
-      ▼
-Step 6: sendValidationFollowUp() — per user, after persist
+Step 7: sendValidationFollowUp() — per user, using the publication article map
       ├── Top-3 articles by impact score → 👍/👎 inline keyboard
       └── va_* callback handler records vote → article_validations + thumbs counter
 ```
@@ -381,7 +387,8 @@ npm run scheduler    # Run per-user delivery check
 npm run webhook      # Start webhook server (tsx, local dev)
 npm run preflight    # Validate local configuration without network calls
 npm run preflight:network # Read-only authentication checks; sends nothing
-npm run test:unit    # Run 336 unit tests (offline, no credentials needed)
+npm run test:unit    # Run 362 unit tests (offline, no credentials needed)
+npm run verify:website # Check dashboard layout at 320/768/1024/1440px in headless Edge/Chrome
 npm test             # Run the full suite, including mocked integration-labelled tests
 
 # Backfill historical derived metrics (run once after first pipeline runs)
@@ -462,7 +469,7 @@ This command requires the local Supabase/Docker stack but does not require Supab
 
 ### Scheduled Per-User Delivery
 
-`.github/workflows/scheduled-delivery.yml` — runs **every 10 minutes** with overlapping runs serialized. It queries active users, finds those whose `preferred_time` is due and not successfully delivered for their local date, generates once, and fans out. Delayed GitHub cron ticks remain eligible because due state is date-based rather than a narrow clock window.
+`.github/workflows/scheduled-delivery.yml` — runs **every 10 minutes** with overlapping runs serialized. It queries active users, finds those whose `preferred_time` is due and not successfully delivered for their local date, then fans out the current canonical editorial edition. The editorial date and each user's local delivery slot are deliberately separate, so cross-timezone users receive the same edition without duplicate delivery. The workflow receives no AI or embedding credentials and waits when the current edition is not ready. Delayed cron ticks remain eligible because due state is date-based rather than a narrow clock window.
 
 ### Data Retention
 
@@ -474,7 +481,7 @@ This command requires the local Supabase/Docker stack but does not require Supab
 
 ### CI
 
-`.github/workflows/ci.yml` — runs on every push and PR to `main`. Executes `tsc --noEmit` (type gate) then unit tests (336 tests, no credentials needed, fast).
+`.github/workflows/ci.yml` — runs on every push and PR to `main`. Executes `tsc --noEmit` (type gate) then unit tests (362 tests, no credentials needed, fast).
 
 ### CodeQL
 
@@ -617,7 +624,7 @@ ai-infra-digest/
 │       ├── metrics.test.ts                   # v13 — emitCommandUsage() event-shape tests
 │       ├── retry.ts                          # withRetry<T> + tryStage<T> utilities
 │       ├── stocks.ts                         # Yahoo Finance price fetcher
-│       └── supabase.ts                       # Supabase REST CRUD (22 tables); article/SEC persistence; retryable delivery and alert claims; private product events
+│       └── supabase.ts                       # Supabase REST access; canonical publications; article/SEC persistence; retryable delivery and alert claims; private product events
 ├── supabase-schema.sql                       # Historical schema reference snapshot — migrations/ is canonical, see header note
 ├── vitest.config.ts
 ├── package.json
@@ -713,7 +720,7 @@ Tom's Hardware, ServeTheHome, Ars Technica, TechCrunch, The Verge, Seeking Alpha
   - **Scheduler tolerance** — the original `isTimeMatch` ±2 minute window was superseded by date-based due delivery, so a late cron tick cannot permanently miss a user
   - **Seed embedding cache** — `embedSeeds()` persists to `.cache/seed-embeddings.json` keyed by SHA-256 of seed list + model; eliminates one OpenAI API call per pipeline run after the first
   - **+8 new unit tests** (cosine similarity × 4, scheduler `isTimeMatch` × 3) — total unit suite now **55 tests**
-- **v9.1 (channels)** — Slack + Gmail delivery — digest fans out to Telegram, Slack (Incoming Webhook, HTML→mrkdwn), and Gmail (nodemailer SMTP) in parallel; `Promise.allSettled` keeps Slack/email failures non-fatal; `scripts/test-email.ts` for fast credential verification without a full pipeline run
+- **v9.1 (channels)** — Slack + Gmail delivery — introduced optional external copies; the current v17.1 semantics send them only after the claimed Telegram delivery succeeds, with copy failures remaining non-fatal; `scripts/test-email.ts` verifies credentials without a full pipeline run
 - **v9.1 (grounding)** — Cross-source grounding — `attachGroundingNotes()` matches each article's `affectedStocks[]` against same-run SEC extracts, earnings analyses, and stock prices; emits a compact one-liner per article (e.g. `📊 NVDA: 8-K Jun-20 (score 9/10) | capex $500M`); zero extra Supabase calls; +4 unit tests
 - **v9.2** — Daily Deep-Dive — the single highest-scoring article per run gets a full `🔬 DAILY DEEP-DIVE` thesis block: bull case (🟢), bear case (🔴), and a one-sentence context note (📊) connecting the story to related financials; generated by extending the existing bear-case AI pass with two extra JSON fields — no additional API round-trip; total unit suite now **59 tests**
 - **v9.3** — Security + reliability audit fixes:
@@ -797,4 +804,4 @@ remains rejected; see `TODOS.md`.
 
 ---
 
-Built with ❤️ — Powered by Llama 3.3 70B (strong) + Llama 3.1 8B (fast) via Groq · Optional embeddings via OpenAI `text-embedding-3-small` when configured.
+Built with ❤️ — Provider-agnostic two-tier AI routing via Groq, OpenAI, OpenRouter, or a compatible custom endpoint · Optional embeddings when configured.

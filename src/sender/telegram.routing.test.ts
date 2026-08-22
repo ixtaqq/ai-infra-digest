@@ -209,11 +209,12 @@ describe("command routing seam", () => {
     }
   });
 
-  it("replies with the error message when a handler throws", async () => {
+  it("returns a generic error when a handler throws", async () => {
     spies.get("sec")!.mockRejectedValueOnce(new Error("boom"));
     await simulate("/sec NVDA");
     const sent = h.sendMessage.mock.calls.map((c) => String(c[1]));
-    expect(sent.some((t) => t.includes("boom"))).toBe(true);
+    expect(sent.some((t) => t.includes("try again later"))).toBe(true);
+    expect(sent.some((t) => t.includes("boom"))).toBe(false);
   });
 });
 

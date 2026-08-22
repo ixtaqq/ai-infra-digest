@@ -1,4 +1,6 @@
 import { config } from "../config";
+import { createHash, randomInt } from "node:crypto";
+import { sendEmailVerification } from "../sender/email";
 import { registerCommand } from "../sender/telegram";
 import { escapeHtml } from "../utils/escape";
 import { todayInTimezone } from "../utils/helpers";
@@ -28,6 +30,7 @@ export function registerPreferenceCommands(): void {
         `Slack: ${slack}\n\n` +
         `<b>Commands:</b>\n` +
         `• <code>/delivery email you@example.com</code>\n` +
+        `• <code>/delivery email verify 123456</code>\n` +
         `• <code>/delivery email off</code>\n` +
         `• <code>/delivery slack WEBHOOK_URL</code>\n` +
         `• <code>/delivery slack off</code>\n\n` +
@@ -36,6 +39,16 @@ export function registerPreferenceCommands(): void {
     }
 
     if (channel === "email") {
+      const verificationMatch = value.match(/^verify\s+(\d{6})$/i);
+      if (verificationMatch) {
+        const verified = await supabase.verifyDeliveryEmail(
+          ctx.chatId,
+          emailVerificationHash(ctx.chatId, verificationMatch[1])
+        );
+        return verified
+          ? "Email destination verified. Daily copies are now enabled."
+          : "That verification code is invalid or expired. Request a new code with <code>/delivery email you@example.com</code>.";
+      }
       if (value.toLowerCase() === "off") {
         const ok = await supabase.upsertUserPreferences({ chat_id: ctx.chatId, delivery_email: null });
         return ok ? "Email copy disabled." : "Could not update email delivery.";
@@ -43,11 +56,25 @@ export function registerPreferenceCommands(): void {
       if (!isValidEmail(value)) {
         return "Enter a valid email address, or use <code>/delivery email off</code>.";
       }
-      const ok = await supabase.upsertUserPreferences({ chat_id: ctx.chatId, delivery_email: value });
-      if (!ok) return "Could not save the email destination.";
-      return config.app.smtpUser && config.app.smtpPass
-        ? `Email copies enabled for <b>${escapeHtml(maskEmail(value))}</b>.`
-        : `Email destination saved for <b>${escapeHtml(maskEmail(value))}</b>, but SMTP is not configured on the server yet.`;
+      if (!config.app.smtpUser || !config.app.smtpPass) {
+        return "Email verification is unavailable because SMTP is not configured on the server.";
+      }
+
+      const email = value.toLowerCase();
+      const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+      const expiresAt = new Date(Date.now() + 15 * 60_000).toISOString();
+      const created = await supabase.createEmailVerification(
+        ctx.chatId,
+        email,
+        emailVerificationHash(ctx.chatId, code),
+        expiresAt
+      );
+      if (!created) return "Could not start email verification. Please try again later.";
+
+      const sent = await sendEmailVerification(email, code);
+      return sent
+        ? `A verification code was sent to <b>${escapeHtml(maskEmail(email))}</b>. Use <code>/delivery email verify 123456</code> within 15 minutes.`
+        : "The verification email could not be delivered. Check the address and try again later.";
     }
 
     if (channel === "slack") {
@@ -279,6 +306,10 @@ export function isValidSlackWebhook(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+export function emailVerificationHash(chatId: number, code: string): string {
+  return createHash("sha256").update(`${chatId}:${code}`).digest("hex");
 }
 
 function maskEmail(value: string): string {

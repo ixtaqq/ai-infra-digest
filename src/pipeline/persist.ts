@@ -1,6 +1,14 @@
 import { config } from "../config";
 import { NEWS_CATEGORIES } from "../processor/ai";
+import {
+  AI_ANALYSIS_SCHEMA_VERSION,
+  AI_PROMPT_VERSION,
+} from "../processor/versions";
 import type { DigestResult } from "../processor/ai";
+import {
+  assessSignalQuality,
+  evaluateSignalQuality,
+} from "../evaluation/signal-quality";
 import { sendDigestMessage } from "../sender/telegram";
 import { getRolling30DaySpend } from "../utils/budget";
 import { degradedCapabilities } from "../utils/capabilities";
@@ -165,6 +173,12 @@ export async function persistDigestMetrics(
     ]),
   ];
 
+  const qualityMetrics = evaluateSignalQuality(digest);
+  const qualityAssessment = assessSignalQuality(qualityMetrics);
+  if (!qualityAssessment.passed) {
+    logger.warn(`Signal quality baseline: ${qualityAssessment.issues.join("; ")}`);
+  }
+
   const digestRunId = await supabase.createDigestRun({
     run_date: runDate,
     status,
@@ -179,6 +193,9 @@ export async function persistDigestMetrics(
     error_message: status === "success" ? undefined : errorMessage,
     capabilities: generated.capabilities,
     degraded_stages: degradedCapabilities(generated.capabilities),
+    prompt_version: AI_PROMPT_VERSION,
+    analysis_schema_version: AI_ANALYSIS_SCHEMA_VERSION,
+    quality_metrics: { ...qualityMetrics, baselinePassed: qualityAssessment.passed },
   });
 
   let articleIds = new Map<string, number>();
@@ -202,6 +219,7 @@ export async function persistDigestMetrics(
         grounding_text: article.groundingNote,
         effective_score: article.effectiveScore,
         ranking_explanation: article.rankingExplanation,
+        source_identity_verified: article.sourceIdentityVerified,
       }))
     );
     articleIds = new Map(inserted.filter((row) => row.url).map((row) => [row.url, row.id]));

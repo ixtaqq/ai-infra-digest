@@ -28,14 +28,6 @@ jobs:
           cache: "npm"
           cache-dependency-path: package-lock.json
 
-      - name: Restore digest caches
-        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
-        with:
-          path: .cache
-          key: digest-cache-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}
-          restore-keys: |
-            digest-cache-${{ runner.os }}-${{ github.ref_name }}-
-
       - name: Install dependencies
         run: npm ci
 
@@ -46,22 +38,10 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          AI_PROVIDER: ${{ vars.AI_PROVIDER || 'groq' }}
-          AI_API_KEY: ${{ secrets.AI_API_KEY }}
-          AI_MODEL: ${{ vars.AI_MODEL || 'openai/gpt-oss-120b' }}
-          AI_FAST_MODEL: ${{ vars.AI_FAST_MODEL || 'openai/gpt-oss-20b' }}
-          AI_BASE_URL: ${{ vars.AI_BASE_URL }}
-          AI_FALLBACK_PROVIDER: ${{ vars.AI_FALLBACK_PROVIDER }}
-          AI_FALLBACK_API_KEY: ${{ secrets.AI_FALLBACK_API_KEY }}
-          AI_FALLBACK_MODEL: ${{ vars.AI_FALLBACK_MODEL }}
-          AI_FALLBACK_FAST_MODEL: ${{ vars.AI_FALLBACK_FAST_MODEL }}
-          AI_FALLBACK_BASE_URL: ${{ vars.AI_FALLBACK_BASE_URL }}
-          OPENAI_EMBEDDING_API_KEY: ${{ secrets.OPENAI_EMBEDDING_API_KEY }}
-          ROIC_AI_API_KEY: ${{ secrets.ROIC_AI_API_KEY }}
-          AI_BUDGET_DAILY_USD: ${{ vars.AI_BUDGET_DAILY_USD || '0.50' }}
-          AI_BUDGET_MONTHLY_USD: ${{ vars.AI_BUDGET_MONTHLY_USD || '5.00' }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
           TZ: Asia/Kuala_Lumpur
         run: node dist/scheduler.js
 

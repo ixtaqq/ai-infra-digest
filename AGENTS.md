@@ -13,9 +13,9 @@ Conventions and setup state for this repo. Read before making changes.
 - **Email**: `nodemailer` via Gmail SMTP (requires App Password, not account password)
 - **DB**: Supabase (Postgres + pgvector), managed via **Supabase CLI**, migrations in `supabase/migrations/`
 - **Validation**: `zod` — all AI JSON responses parsed through zod schemas (coerces type-confused fields)
-- **Tests**: Vitest — 336 unit tests offline; integration-labelled mocked suites run under `npm test`
+- **Tests**: Vitest — 362 unit tests offline; integration-labelled mocked suites run under `npm test`
 - **CI**: GitHub Actions — `ci.yml` (lint + unit tests), `codeql.yml` (security scan)
-- **Cron**: GitHub Actions — daily digest, per-user scheduled delivery (every 30 min), weekly thesis snapshots, weekly data retention
+- **Cron**: GitHub Actions — daily digest, per-user scheduled delivery (every 10 min), weekly thesis snapshots, weekly data retention
 - **Website**: static HTML (`website/index.html` landing page, `website/dashboard/index.html` dashboard) — vanilla JS, Chart.js, no build step, no framework
 - **Website hosting**: Vercel (project `goldirham-stack`, team `aizattaqq-s-projects`)
 
@@ -27,7 +27,7 @@ cp .env.example .env        # fill in real values — .env.example must stay pla
 npm run dev                 # run pipeline once (polling mode) — real Telegram send + AI spend
 npm run scheduler           # per-user delivery check
 npm run webhook             # webhook server (tsx, local dev)
-npm run test:unit           # 336 unit tests, offline, no credentials needed
+npm run test:unit           # 362 unit tests, offline, no credentials needed
 npm test                    # all tests, incl. integration (needs live credentials)
 npm run lint                # tsc --noEmit (main) + tsc -p tsconfig.scripts.json (scripts)
 ```
@@ -43,7 +43,7 @@ Website preview locally: `.claude/launch.json` has a `website` config (`npx serv
 - **Local `.env`**: filled with real Telegram bot token, Groq AI key, Supabase URL + service key. `SUPABASE_ANON_KEY` is NOT in `.env` (only service key) — dashboard auth gate needs the anon/public key separately, entered client-side in browser localStorage, never committed.
 - **GitHub repo**: `ixtaqq/ai-infra-digest`, all required Actions secrets configured (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `AI_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, plus `SLACK_WEBHOOK_URL`, `SMTP_USER`, `SMTP_PASS`, `DIGEST_EMAIL_TO`, `WEBHOOK_SECRET`, `WEBHOOK_URL`).
 - **Daily digest cron**: `daily-digest.yml` active, running successfully daily (8 AM MYT / midnight UTC).
-- **Per-user scheduled delivery**: `scheduled-delivery.yml` active, runs every 30 min.
+- **Per-user scheduled delivery**: `scheduled-delivery.yml` active, runs every 10 min and fans out the current canonical editorial edition; each user's local date remains the idempotent delivery slot.
 - **gh CLI**: installed (via winget) and authenticated as `ixtaqq`.
 - **Website**: deployed to Vercel at **https://goldirham-stack.vercel.app** — landing page + `/dashboard/` route both live. Deployed via `npx vercel deploy --prod` from `website/`, project linked with `vercel link --project goldirham-stack --scope aizattaqq-s-projects`. Prefer the CLI over the Vercel MCP tool for deploys — the MCP `deploy_to_vercel` tool requires inlining full file contents through the LLM context (expensive, error-prone for multi-file sites); the CLI reads straight from disk.
 - **Email delivery**: currently broken — `SMTP_PASS` in `.env`/GitHub secrets is not a valid Gmail App Password (535-5.7.8 auth error). Telegram delivery unaffected (Slack/email failures are non-fatal).

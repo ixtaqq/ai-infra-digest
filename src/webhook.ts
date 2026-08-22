@@ -41,6 +41,36 @@ export interface WebhookDecision {
   update?: unknown;
 }
 
+export class SlidingWindowRateLimiter {
+  private readonly requests = new Map<string, number[]>();
+
+  constructor(
+    private readonly limit: number,
+    private readonly windowMs: number,
+    private readonly maxKeys = 1000
+  ) {}
+
+  allow(key: string, now = Date.now()): boolean {
+    const cutoff = now - this.windowMs;
+    if (!this.requests.has(key) && this.requests.size >= this.maxKeys) {
+      for (const [client, times] of this.requests) {
+        if (times.every((time) => time <= cutoff)) this.requests.delete(client);
+      }
+      if (this.requests.size >= this.maxKeys) return false;
+    }
+
+    const recent = (this.requests.get(key) || []).filter((time) => time > cutoff);
+    if (recent.length >= this.limit) {
+      this.requests.set(key, recent);
+      return false;
+    }
+    recent.push(now);
+    this.requests.set(key, recent);
+
+    return true;
+  }
+}
+
 function hasValidSecret(
   expected: string,
   providedHeader: string | string[] | undefined,
@@ -69,8 +99,9 @@ export function decideWebhook(opts: {
   secret?: string;
   secretHeader?: string | string[];
   rawBody: string;
+  rateLimited?: boolean;
 }): WebhookDecision {
-  const { method, url, webhookPath, secret, secretHeader, rawBody } = opts;
+  const { method, url, webhookPath, secret, secretHeader, rawBody, rateLimited } = opts;
 
   // Health check
   if (method === "GET" && (url === "/" || url === "/health")) {
@@ -82,10 +113,12 @@ export function decideWebhook(opts: {
   }
 
   // Secret-token check (Telegram sends it back in this header when configured).
-  if (secret !== undefined) {
-    if (!hasValidSecret(secret, secretHeader)) {
-      return { status: 403, body: "forbidden" };
-    }
+  if (!secret || !hasValidSecret(secret, secretHeader)) {
+    return { status: 403, body: "forbidden" };
+  }
+
+  if (rateLimited) {
+    return { status: 429, body: "too many requests" };
   }
 
   let update: unknown;
@@ -100,24 +133,26 @@ export function decideWebhook(opts: {
 
 function createServer(secret: string): http.Server {
   const webhookPath = process.env.WEBHOOK_PATH || "/telegram/webhook";
+  const rateLimiter = new SlidingWindowRateLimiter(120, 60_000);
 
   return http.createServer((req, res) => {
     const chunks: Buffer[] = [];
-    let tooLarge = false;
+    let bodyBytes = 0;
+    let responded = false;
     req.on("data", (c: Buffer) => {
+      if (responded) return;
+      bodyBytes += c.length;
       chunks.push(c);
       // Guard against oversized bodies (Telegram updates are tiny).
-      if (chunks.reduce((n, b) => n + b.length, 0) > 1_000_000) {
-        tooLarge = true;
+      if (bodyBytes > 1_000_000) {
+        responded = true;
+        res.writeHead(413);
+        res.end("payload too large");
         req.destroy();
       }
     });
     req.on("end", () => {
-      if (tooLarge) {
-        res.writeHead(413);
-        res.end("payload too large");
-        return;
-      }
+      if (responded) return;
       const decision = decideWebhook({
         method: req.method,
         url: req.url,
@@ -125,6 +160,7 @@ function createServer(secret: string): http.Server {
         secret,
         secretHeader: req.headers["x-telegram-bot-api-secret-token"],
         rawBody: Buffer.concat(chunks).toString("utf8"),
+        rateLimited: !rateLimiter.allow(req.socket.remoteAddress || "unknown"),
       });
 
       if (decision.update !== undefined) {

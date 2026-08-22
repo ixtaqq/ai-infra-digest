@@ -20,41 +20,22 @@ beforeEach(() => {
 });
 
 describe("deleteUserData boundary", () => {
-  it("deactivates the user and deletes only chat-owned private rows", async () => {
+  it("deletes chat-owned private rows through one transactional RPC", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => true });
     await expect(supabase.deleteUserData(42)).resolves.toBe(true);
 
-    expect(mockFetch).toHaveBeenCalledTimes(8);
-    const calls = mockFetch.mock.calls as [string, RequestInit][];
-    expect(calls[0][0]).toContain("/rest/v1/user_preferences?chat_id=eq.42");
-    expect(calls[0][1].method).toBe("PATCH");
-    expect(JSON.parse(String(calls[0][1].body))).toEqual({ is_active: false });
-
-    const deletedTables = calls.slice(1).map(([url, options]) => {
-      expect(options.method).toBe("DELETE");
-      expect(url).toContain("chat_id=eq.42");
-      return new URL(url).pathname.split("/").pop();
-    });
-    expect(deletedTables).toEqual([
-      "user_preferences",
-      "user_delivery_log",
-      "alert_delivery_log",
-      "product_events",
-      "price_watches",
-      "command_usage",
-      "article_validations",
-    ]);
-    expect(calls.some(([url]) => /articles|digest_runs/.test(url))).toBe(false);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("/rest/v1/rpc/delete_user_data");
+    expect(options.method).toBe("POST");
+    expect(JSON.parse(String(options.body))).toEqual({ p_chat_id: 42 });
   });
 
-  it("continues private-table cleanup and reports false when one boundary fails", async () => {
-    mockFetch
-      .mockResolvedValueOnce({ ok: true, status: 204 })
-      .mockResolvedValueOnce({ ok: true, status: 204 })
-      .mockResolvedValueOnce({ ok: false, status: 503 })
-      .mockResolvedValue({ ok: true, status: 204 });
+  it("reports false when the transactional boundary fails", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 503 });
 
     await expect(supabase.deleteUserData(42)).resolves.toBe(false);
-    expect(mockFetch).toHaveBeenCalledTimes(8);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   it("rejects an unsafe chat id before making a request", async () => {
@@ -102,5 +83,53 @@ describe("high-impact alert idempotency boundary", () => {
       status: "success",
       claimed_at: null,
     });
+  });
+});
+
+describe("canonical digest publication boundary", () => {
+  it("creates an immutable publication and returns its identity", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      json: async () => [{ id: 17 }],
+    });
+
+    await expect(
+      supabase.createDigestPublication("2026-08-19", { schemaVersion: 1 }, new Map([["url", 9]]))
+    ).resolves.toBe(17);
+
+    const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("/rest/v1/digest_publications?select=id");
+    expect(options.method).toBe("POST");
+    expect(JSON.parse(String(options.body))).toEqual({
+      publication_date: "2026-08-19",
+      schema_version: 1,
+      payload: { schemaVersion: 1 },
+      article_ids: { url: 9 },
+    });
+  });
+
+  it("loads only the publication for the requested editorial date", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => [
+        {
+          id: 17,
+          publication_date: "2026-08-19",
+          payload: { schemaVersion: 1 },
+          article_ids: { url: 9 },
+        },
+      ],
+    });
+
+    await expect(supabase.getDigestPublication("2026-08-19")).resolves.toMatchObject({
+      id: 17,
+      publication_date: "2026-08-19",
+    });
+
+    const [url] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("publication_date=eq.2026-08-19");
+    expect(url).toContain("limit=1");
   });
 });

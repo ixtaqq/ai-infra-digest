@@ -107,12 +107,17 @@ export async function deliverDigest(
 
     if (supabase.isConfigured()) {
       const details = [sendResult.error, ...copyResults].filter(Boolean).join("; ") || undefined;
-      await supabase.logUserDelivery(
+      const deliveryArgs = [
         targetChatId,
         runDate,
         sendResult.success ? "success" : "failed",
-        details
-      );
+        details,
+      ] as const;
+      if (generated.publicationId) {
+        await supabase.logUserDelivery(...deliveryArgs, generated.publicationId);
+      } else {
+        await supabase.logUserDelivery(...deliveryArgs);
+      }
       await supabase.recordProductEvent(
         sendResult.success ? "delivery_succeeded" : "delivery_failed",
         targetChatId,
@@ -124,6 +129,7 @@ export async function deliverDigest(
             userPrefs?.preferred_time,
             userPrefs?.timezone
           ),
+          publication_id: generated.publicationId,
         }
       );
     }

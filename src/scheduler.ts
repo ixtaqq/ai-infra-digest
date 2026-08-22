@@ -4,8 +4,8 @@
  *
  * Designed to be called by a cron job (GitHub Actions scheduled workflow).
  * Queries all active users, finds those whose preferred_time is due in their
- * timezone, and runs the digest pipeline for each user who has not already
- * received a successful delivery for that local date.
+ * timezone, and delivers the current editorial publication to each user who
+ * has not already received a successful delivery for that local date.
  *
  * Usage:
  *   npx tsx src/scheduler.ts
@@ -14,11 +14,14 @@
  */
 
 import { logger } from "./utils/logger";
+import { config } from "./config";
 import { supabase } from "./utils/supabase";
-import { generateDigest, deliverDigest, persistDigestMetrics } from "./index";
+import { deliverDigest } from "./delivery/deliver";
 import { sendValidationFollowUp } from "./sender/telegram";
 import { todayInTimezone } from "./utils/helpers";
 import { flushMetrics } from "./utils/metrics";
+import { deserializeDigestPublication } from "./pipeline/publication";
+import type { GeneratedDigest } from "./pipeline/types";
 
 // ─── Time Helpers ───────────────────────────────────────
 
@@ -76,6 +79,7 @@ export function getDeliveryDate(
 export async function schedulerMain(): Promise<void> {
   const startTime = Date.now();
   const now = new Date(startTime);
+  const editorialDate = todayInTimezone(config.app.timezone, now);
 
   logger.info("⏰ Scheduled delivery check — starting");
 
@@ -134,28 +138,78 @@ export async function schedulerMain(): Promise<void> {
     return;
   }
 
-  logger.info(`Delivering digest to ${pendingUsers.length} user(s)`);
+  logger.info(`Delivering canonical publication to ${pendingUsers.length} user(s)`);
 
-  // Generate the digest ONCE, then fan out the same formatted message to every
-  // due user. This is the whole point of the scheduler: the expensive work
-  // (RSS crawl + AI + SEC + earnings + stock prices) happens a single time per
-  // run regardless of how many users are due, instead of once per user.
-  const generated = await generateDigest();
-  if (!generated) {
-    logger.error("Digest generation failed — no deliveries performed this run");
-    return;
-  }
+  // Watches are intentionally refreshed at delivery time. They are user state,
+  // unlike the immutable editorial content stored in digest_publications.
+  const activeWatches = await supabase.getAllPriceWatches();
+  let publication:
+    | { generated: GeneratedDigest; articleIds: Map<string, number> }
+    | null
+    | undefined;
+
+  const getPublication = async () => {
+    if (publication !== undefined) return publication;
+
+    const row = await supabase.getDigestPublication(editorialDate);
+    if (!row) {
+      logger.warn(`No canonical publication is ready for editorial date ${editorialDate}`);
+      publication = null;
+      return null;
+    }
+
+    try {
+      publication = {
+        generated: deserializeDigestPublication(
+          row.payload,
+          activeWatches,
+          Date.now(),
+          row.id
+        ),
+        articleIds: new Map(
+          Object.entries(row.article_ids || {}).filter(
+            (entry): entry is [string, number] => typeof entry[1] === "number"
+          )
+        ),
+      };
+      return publication;
+    } catch (error) {
+      logger.error(
+        `Canonical publication #${row.id} is invalid: ${(error as Error).message}`
+      );
+      publication = null;
+      return null;
+    }
+  };
 
   let successCount = 0;
   let failCount = 0;
-  const successfulChatIds: number[] = [];
+  const successfulDeliveries: {
+    chatId: number;
+    generated: GeneratedDigest;
+    articleIds: Map<string, number>;
+  }[] = [];
 
   for (const { user, deliveryDate } of pendingUsers) {
     try {
-      const result = await deliverDigest(generated, user.chat_id, user, deliveryDate);
+      const currentPublication = await getPublication();
+      if (!currentPublication) {
+        failCount++;
+        continue;
+      }
+      const result = await deliverDigest(
+        currentPublication.generated,
+        user.chat_id,
+        user,
+        deliveryDate
+      );
       if (result.success) {
         successCount++;
-        successfulChatIds.push(user.chat_id);
+        successfulDeliveries.push({
+          chatId: user.chat_id,
+          generated: currentPublication.generated,
+          articleIds: currentPublication.articleIds,
+        });
       } else {
         failCount++;
       }
@@ -165,18 +219,16 @@ export async function schedulerMain(): Promise<void> {
     }
   }
 
-  // Record run metrics once for this single generation — not once per user.
-  const articleIds = await persistDigestMetrics(
-    generated,
-    successCount > 0 ? "success" : "failed",
-    failCount > 0 ? `${failCount} of ${pendingUsers.length} user deliveries failed` : undefined
-  );
-
-  // Send validation follow-up to all users who received the digest successfully
-  if (articleIds.size > 0 && successfulChatIds.length > 0) {
-    for (const chatId of successfulChatIds) {
+  // Publications retain the article identity map created by the editorial run,
+  // so validation buttons do not require a second persistence pass.
+  for (const delivery of successfulDeliveries) {
+    if (delivery.articleIds.size > 0) {
       try {
-        await sendValidationFollowUp(chatId, generated.digest.articles, articleIds);
+        await sendValidationFollowUp(
+          delivery.chatId,
+          delivery.generated.digest.articles,
+          delivery.articleIds
+        );
       } catch {
         // Non-critical
       }
@@ -187,7 +239,7 @@ export async function schedulerMain(): Promise<void> {
   logger.info(
     `✅ Scheduled delivery complete in ${elapsed}s — ` +
       `${successCount} delivered, ${failCount} failed ` +
-      `(${pendingUsers.length} users, 1 generation)`
+      `(${pendingUsers.length} users, ${publication === undefined ? 0 : 1} publication lookup(s), 0 generations)`
   );
 }
 

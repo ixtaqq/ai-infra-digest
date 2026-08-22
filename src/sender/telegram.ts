@@ -337,8 +337,8 @@ function initCommands() {
       `<b>About:</b>\n` +
       `• Covers AI infra across 10 sectors (chips → power → data centers)\n` +
       `• Tracks 32+ key tickers\n` +
-      `• Runs daily at 8 AM Malaysia time\n` +
-      `• Powered by Llama 3.3 via Groq\n\n` +
+      `• One canonical edition is published daily; your copy follows your saved local time\n` +
+      `• Provider-agnostic two-tier AI analysis\n\n` +
       `<i>Built by AI | Not financial advice</i>`;
 
     await pollingBot.sendMessage(chatId, text, {
@@ -369,9 +369,10 @@ function initCommands() {
           link_preview_options: { is_disabled: true },
         });
       } catch (error) {
+        logger.warn(`Digest command failed for ${chatId}: ${(error as Error).message}`);
         await pollingBot.sendMessage(
           chatId,
-          `❌ Failed to generate digest: ${(error as Error).message}`,
+          "❌ The digest could not be generated right now. Please try again later.",
           { parse_mode: "HTML" }
         );
       }
@@ -434,9 +435,10 @@ function initCommands() {
           });
         }
       } catch (error) {
+        logger.warn(`Feedback command failed for ${chatId}: ${(error as Error).message}`);
         await pollingBot.sendMessage(
           chatId,
-          `❌ Failed: ${(error as Error).message}`,
+          "❌ That request could not be completed right now. Please try again later.",
           { parse_mode: "HTML" }
         );
       }
@@ -675,9 +677,10 @@ function initCommands() {
         link_preview_options: { is_disabled: true },
       });
     } catch (error) {
+      logger.warn(`Command ${key} failed for ${chatId}: ${(error as Error).message}`);
       await pollingBot.sendMessage(
         chatId,
-        `❌ Failed: ${(error as Error).message}`,
+        "❌ That request could not be completed right now. Please try again later.",
         { parse_mode: "HTML" }
       );
     }

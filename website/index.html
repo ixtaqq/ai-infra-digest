@@ -401,6 +401,9 @@ footer a:hover{color:var(--lime)}
   .road-points li{padding-top:13px;padding-bottom:13px}
   footer{padding:28px 20px}
 }
+@media(max-width:400px){
+  .nav .cta{display:none}
+}
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
   [data-reveal]{opacity:1;transform:none}
@@ -432,7 +435,7 @@ footer a:hover{color:var(--lime)}
     </nav>
     <div class="nav-right">
       <button class="kchip" id="kOpen" aria-label="Open command palette">⌕ <span>Jump to…</span> <kbd>⌘K</kbd></button>
-      <span class="live-chip"><i aria-hidden="true"></i>LIVE · 68 FEEDS</span>
+      <span class="live-chip"><i aria-hidden="true"></i>68 SOURCES · DAILY</span>
       <a class="btn btn-orange cta" href="/dashboard/">Dashboard →</a>
       <button class="burger" id="burger" aria-label="Menu" aria-expanded="false"><span></span><span></span></button>
     </div>
@@ -451,7 +454,7 @@ footer a:hover{color:var(--lime)}
     <a href="https://github.com/ixtaqq/ai-infra-digest" target="_blank" rel="noopener" style="--i:5"><small>06</small>GitHub</a>
   </nav>
   <div class="mfoot">
-    <span class="live-chip" style="display:flex"><i aria-hidden="true"></i>LIVE · 68 FEEDS</span>
+    <span class="live-chip" style="display:flex"><i aria-hidden="true"></i>68 SOURCES · DAILY</span>
     <a class="btn btn-orange" href="/dashboard/">Dashboard →</a>
     <button class="btn" id="kOpenM">⌕ Jump to…</button>
   </div>
@@ -491,7 +494,7 @@ footer a:hover{color:var(--lime)}
       <div><span class="num" data-count="68">0</span> <span>RSS Feeds</span></div><span class="sep">•</span>
       <div><span class="num" data-count="10">0</span> <span>Sectors</span></div><span class="sep">•</span>
       <div><span class="num" data-count="35">0</span> <span>SEC Companies</span></div><span class="sep">•</span>
-      <div><span class="num" data-count="2" data-prefix="&lt;$">&lt;$0</span> <span>/month</span></div>
+      <div><span class="num" data-count="362">0</span> <span>Unit Tests</span></div>
     </div>
     <div class="gh-row">★ <a href="https://github.com/ixtaqq/ai-infra-digest" target="_blank" rel="noopener">Star on GitHub</a></div>
   </div>
@@ -566,7 +569,7 @@ footer a:hover{color:var(--lime)}
         <span class="h2l tg-item" style="--d:1.15s">▸ 🔬 DAILY DEEP-DIVE</span>
         <span class="tg-item" style="--d:1.3s">Top-scoring story gets a full 🟢 bull / 🔴 bear / 📊 context thesis</span><br>
         <span class="tg-item" style="--d:1.45s">⚠️ Bear case attached to every article scoring ≥ 7/10</span><br>
-        <span class="tg-item" style="--d:1.6s">👍 / 👎 buttons on the top 3 — your votes retrain source trust</span>
+        <span class="tg-item" style="--d:1.6s">👍 / 👎 buttons on the top 3 — your votes adjust future source ranking</span>
       </div>
     </div>
     <div>
@@ -576,7 +579,7 @@ footer a:hover{color:var(--lime)}
       </div>
       <div class="bp" data-reveal style="--d:.1s"><div class="k">RELEVANCE GATE</div><p>Every article is scored <b>1–10</b> for AI-infra relevance. When optional embeddings are enabled, a semantic gate checks 20 canonical seeds too; otherwise the pipeline uses its lexical fallback.</p></div>
       <div class="bp" data-reveal style="--d:.25s"><div class="k">TRUST-WEIGHTED RANKING</div><p>Vote-learned source multipliers, editorial tiers (<b>1.2×</b> Reuters/WSJ, <b>0.8×</b> vendor PR), PR-wire dampening and 48h novelty decay decide the order.</p></div>
-      <div class="bp" data-reveal style="--d:.4s"><div class="k">MULTI-CHANNEL</div><p>Telegram, Slack and Gmail fan out in parallel at <b>your preferred time</b> — Slack or email failures never block Telegram.</p></div>
+      <div class="bp" data-reveal style="--d:.4s"><div class="k">MULTI-CHANNEL</div><p>Telegram sends first at <b>your preferred time</b>; verified email and private Slack copies follow only after it succeeds.</p></div>
     </div>
   </div>
 </section>
@@ -628,7 +631,7 @@ footer a:hover{color:var(--lime)}
       <div class="step" data-reveal style="--d:.25s"><div class="node" style="--pd:.4s" aria-hidden="true">🧠</div><div class="no">STAGE 02</div><h4>ANALYZE<span>.</span></h4><p>GPT-OSS 20B + <b>120B synthesis</b></p></div>
       <div class="step" data-reveal style="--d:.4s"><div class="node" style="--pd:.8s" aria-hidden="true">🏛️</div><div class="no">STAGE 03</div><h4>EXTRACT<span>.</span></h4><p>two-pass SEC · <b>35 companies</b></p></div>
       <div class="step" data-reveal style="--d:.55s"><div class="node" style="--pd:1.2s" aria-hidden="true">📈</div><div class="no">STAGE 04</div><h4>MATERIALIZE<span>.</span></h4><p>derived metrics · <b>WoW movers</b></p></div>
-      <div class="step" data-reveal style="--d:.7s"><div class="node" style="--pd:1.6s" aria-hidden="true">📨</div><div class="no">STAGE 05</div><h4>DELIVER<span>.</span></h4><p>Telegram · Slack · Gmail · <b>&lt;$2/mo</b></p></div>
+      <div class="step" data-reveal style="--d:.7s"><div class="node" style="--pd:1.6s" aria-hidden="true">📨</div><div class="no">STAGE 05</div><h4>DELIVER<span>.</span></h4><p>Claimed · retryable · personalized</p></div>
     </div>
 
     <div class="term" data-reveal style="margin-top:70px">
@@ -683,17 +686,17 @@ footer a:hover{color:var(--lime)}
     <div class="sec-head" data-reveal>
       <span class="kicker">// 05 · ROADMAP</span>
       <h2><span class="mask"><span>Shipping in <span class="lime">public</span>.</span></span></h2>
-      <p>Eighteen phases shipped. The current focus is dependable delivery, measurable quality and operational clarity.</p>
+      <p>Nineteen phases shipped. The current release makes publication immutable, delivery cheaper, and model outputs auditable.</p>
     </div>
     <div class="road" data-reveal>
       <div class="road-side">
         <div class="road-overview">
-          <div class="road-number" id="roadNumber" aria-hidden="true">18</div>
+          <div class="road-number" id="roadNumber" aria-hidden="true">19</div>
           <div class="road-progress" id="roadProgress" style="--progress:100%"><span id="roadPercent">100%</span></div>
         </div>
         <div class="road-side-copy">
-          <div class="road-phase" id="roadSidePhase">Current update · Aug 18</div>
-          <h3 id="roadSideTitle">Provider Model Recovery</h3>
+          <div class="road-phase" id="roadSidePhase">Phase XIX · Aug 22</div>
+          <h3 id="roadSideTitle">Canonical Publication &amp; Trust</h3>
           <span class="road-state" id="roadState">Live</span>
         </div>
         <div class="road-nav" role="tablist" aria-label="Roadmap phases">
@@ -704,7 +707,8 @@ footer a:hover{color:var(--lime)}
           <button class="road-tab" type="button" role="tab" aria-selected="false" data-road="4">IX–X — Channels</button>
           <button class="road-tab" type="button" role="tab" aria-selected="false" data-road="5">XI–XIII — Validation</button>
           <button class="road-tab" type="button" role="tab" aria-selected="false" data-road="6">XIV–XVII — Hardening</button>
-          <button class="road-tab" type="button" role="tab" aria-selected="true" data-road="7">XVIII — Current</button>
+          <button class="road-tab" type="button" role="tab" aria-selected="false" data-road="7">XVIII — Models</button>
+          <button class="road-tab" type="button" role="tab" aria-selected="true" data-road="8">XIX — Current</button>
         </div>
         <div class="road-controls">
           <button class="road-control" id="roadPrev" type="button">← Previous</button>
@@ -715,18 +719,18 @@ footer a:hover{color:var(--lime)}
       <article class="road-panel" id="roadPanel" role="tabpanel" aria-live="polite">
         <div class="road-panel-head">
           <div>
-            <div class="road-panel-phase" id="roadPanelPhase">Current update · Aug 18</div>
-            <h3 id="roadPanelTitle">Provider Model Recovery</h3>
+            <div class="road-panel-phase" id="roadPanelPhase">Phase XIX · Aug 22</div>
+            <h3 id="roadPanelTitle">Canonical Publication &amp; Trust</h3>
           </div>
-          <span class="road-panel-count" id="roadPanelCount">18 / 18</span>
+          <span class="road-panel-count" id="roadPanelCount">19 / 19</span>
         </div>
         <ul class="road-points" id="roadPoints">
-          <li>GPT-OSS 20B handles classification</li>
-          <li>GPT-OSS 120B handles synthesis</li>
-          <li>HTTP 401/404 configuration failures now fail fast</li>
-          <li>Rate limits retain bounded retries and provider fallback</li>
+          <li>One immutable daily publication feeds every scheduled delivery</li>
+          <li>Model analysis joins back to source identity by article index</li>
+          <li>Transactional privacy erasure and explicit Data API privileges</li>
+          <li>Verified email destinations, webhook rate limits and quality telemetry</li>
         </ul>
-        <div class="road-tags" id="roadTags"><span>GPT-OSS</span><span>reliability</span><span>fallback</span></div>
+        <div class="road-tags" id="roadTags"><span>publication</span><span>provenance</span><span>privacy</span></div>
       </article>
     </div>
   </div>
@@ -756,9 +760,9 @@ footer a:hover{color:var(--lime)}
         <div class="tline"><span class="comment"># Run the full pipeline</span></div>
         <div class="tline"><span class="prompt">$</span><span class="cmd">npm run dev</span></div>
         <div class="tline">&nbsp;</div>
-        <div class="tline"><span class="comment"># 336 unit tests, no credentials needed</span></div>
+        <div class="tline"><span class="comment"># 362 unit tests, no credentials needed</span></div>
         <div class="tline"><span class="prompt">$</span><span class="cmd">npm run test:unit</span></div>
-        <div class="tline"><span class="ok">  ✓ 336 unit tests passing <span class="caret" aria-hidden="true"></span></span></div>
+        <div class="tline"><span class="ok">  ✓ 362 unit tests passing <span class="caret" aria-hidden="true"></span></span></div>
       </div>
     </div>
     <div class="setup-cta" data-reveal>
@@ -989,14 +993,15 @@ document.querySelectorAll('[data-reveal]').forEach(function(el){ rio.observe(el)
 
 /* ---------- roadmap navigator ---------- */
 var ROADMAP = [
-  {number:'01–02',phase:'Phase I–II',title:'Foundation + Intelligence',count:'02 / 18',points:['68 RSS feeds with conditional caching and Jaccard dedup','Two-tier classification and synthesis routing','SEC EDGAR extraction across 35 companies','Transcript mining and market data for 30+ tickers'],tags:['feeds','SEC','market data']},
-  {number:'03–04',phase:'Phase III–IV',title:'Reliability + Platform',count:'04 / 18',points:['Generate once, then personalize delivery per user','Four-step onboarding with watchlist and thresholds','SHA-256 response cache with budget guardrails','Supabase-backed dashboard and expandable research rows'],tags:['delivery','onboarding','dashboard']},
-  {number:'05–06',phase:'Phase V–VI',title:'Intelligence + Trust',count:'06 / 18',points:['Daily ticker and sector metrics materialized every run','Market Pulse highlights meaningful week-over-week changes','Reader votes learn per-source trust multipliers','Bear cases challenge every high-impact article'],tags:['metrics','ranking','validation']},
-  {number:'07–08',phase:'Phase VII–VIII',title:'Sharper Semantic Signal',count:'08 / 18',points:['AI-infrastructure relevance scoring removes filler','Anchored impact rubric and 48-hour novelty decay','Optional pgvector embeddings enable semantic corroboration','Lexical fallbacks keep the pipeline useful without embeddings'],tags:['relevance','pgvector','novelty']},
-  {number:'09–10',phase:'Phase IX–X',title:'Channels + Thesis Layer',count:'10 / 18',points:['Telegram, Slack and Gmail deliver in parallel','Coverage is grounded in filings, earnings and market moves','Daily deep-dives add bull, bear and context analysis','Weekly ticker thesis snapshots retain historical evolution'],tags:['channels','grounding','thesis']},
-  {number:'11–13',phase:'Phase XI–XIII',title:'Demand + Production Hardening',count:'13 / 18',points:['Price Watch and coverage commands use existing data','One tested dispatcher keeps every command reachable','Command usage logging turns feature demand into evidence','Article intelligence fields persist for historical analysis'],tags:['commands','usage data','coverage']},
-  {number:'14–17',phase:'Phase XIV–XVII',title:'Correctness + Explainability',count:'17 / 18',points:['Focused pipeline modules replace the former all-in-one entry point','Capability reports and safe preflight checks expose degraded stages','Ranking explanations make every score auditable','Private personalized email and Slack destinations stay service-protected'],tags:['architecture','explainability','privacy']},
-  {number:'18',phase:'Current update · Aug 18',title:'Provider Model Recovery',count:'18 / 18',points:['GPT-OSS 20B handles classification','GPT-OSS 120B handles synthesis','HTTP 401/404 configuration failures now fail fast','Rate limits retain bounded retries and provider fallback'],tags:['GPT-OSS','reliability','fallback']}
+  {number:'01–02',phase:'Phase I–II',title:'Foundation + Intelligence',count:'02 / 19',points:['68 RSS feeds with conditional caching and Jaccard dedup','Two-tier classification and synthesis routing','SEC EDGAR extraction across 35 companies','Transcript mining and market data for 30+ tickers'],tags:['feeds','SEC','market data']},
+  {number:'03–04',phase:'Phase III–IV',title:'Reliability + Platform',count:'04 / 19',points:['Generate once, then personalize delivery per user','Four-step onboarding with watchlist and thresholds','SHA-256 response cache with budget guardrails','Supabase-backed dashboard and expandable research rows'],tags:['delivery','onboarding','dashboard']},
+  {number:'05–06',phase:'Phase V–VI',title:'Intelligence + Trust',count:'06 / 19',points:['Daily ticker and sector metrics materialized every run','Market Pulse highlights meaningful week-over-week changes','Reader votes learn per-source trust multipliers','Bear cases challenge every high-impact article'],tags:['metrics','ranking','validation']},
+  {number:'07–08',phase:'Phase VII–VIII',title:'Sharper Semantic Signal',count:'08 / 19',points:['AI-infrastructure relevance scoring removes filler','Anchored impact rubric and 48-hour novelty decay','Optional pgvector embeddings enable semantic corroboration','Lexical fallbacks keep the pipeline useful without embeddings'],tags:['relevance','pgvector','novelty']},
+  {number:'09–10',phase:'Phase IX–X',title:'Channels + Thesis Layer',count:'10 / 19',points:['Telegram sends first; optional copies follow only on success','Coverage is grounded in filings, earnings and market moves','Daily deep-dives add bull, bear and context analysis','Weekly ticker thesis snapshots retain historical evolution'],tags:['channels','grounding','thesis']},
+  {number:'11–13',phase:'Phase XI–XIII',title:'Demand + Production Hardening',count:'13 / 19',points:['Price Watch and coverage commands use existing data','One tested dispatcher keeps every command reachable','Command usage logging turns feature demand into evidence','Article intelligence fields persist for historical analysis'],tags:['commands','usage data','coverage']},
+  {number:'14–17',phase:'Phase XIV–XVII',title:'Correctness + Explainability',count:'17 / 19',points:['Focused pipeline modules replace the former all-in-one entry point','Capability reports and safe preflight checks expose degraded stages','Ranking explanations make every score auditable','Private personalized email and Slack destinations stay service-protected'],tags:['architecture','explainability','privacy']},
+  {number:'18',phase:'Phase XVIII · Aug 18',title:'Provider Model Recovery',count:'18 / 19',points:['GPT-OSS 20B handles classification','GPT-OSS 120B handles synthesis','HTTP 401/404 configuration failures now fail fast','Rate limits retain bounded retries and provider fallback'],tags:['GPT-OSS','reliability','fallback']},
+  {number:'19',phase:'Phase XIX · Aug 22',title:'Canonical Publication & Trust',count:'19 / 19',points:['One immutable daily publication feeds every scheduled delivery','Model analysis joins back to source identity by article index','Transactional privacy erasure and explicit Data API privileges','Verified email destinations, webhook rate limits and quality telemetry'],tags:['publication','provenance','privacy']}
 ];
 var roadIndex = ROADMAP.length - 1;
 var roadTabs = Array.prototype.slice.call(document.querySelectorAll('.road-tab'));
@@ -1014,8 +1019,8 @@ function renderRoadmap(index, focusTab){
   document.getElementById('roadPanelPhase').textContent = item.phase;
   document.getElementById('roadPanelTitle').textContent = item.title;
   document.getElementById('roadPanelCount').textContent = item.count;
-  document.getElementById('roadPercent').textContent = Math.round(completed/18*100) + '%';
-  document.getElementById('roadProgress').style.setProperty('--progress',(completed/18*100) + '%');
+  document.getElementById('roadPercent').textContent = Math.round(completed/19*100) + '%';
+  document.getElementById('roadProgress').style.setProperty('--progress',(completed/19*100) + '%');
   var points = document.getElementById('roadPoints');
   points.replaceChildren.apply(points,item.points.map(function(point){var li=document.createElement('li');li.textContent=point;return li;}));
   var tags = document.getElementById('roadTags');
@@ -1120,7 +1125,7 @@ var TICKS = [
   ['08:14', '🔢 Optional embeddings · semantic corroboration when configured'],
   ['08:15', '🎯 Relevance gate · lexical fallback or semantic gate when enabled'],
   ['08:15', '📊 Market Pulse — NVDA mentions +32% WoW · Datacenters +18% WoW'],
-  ['08:16', 'Digest delivered to Telegram / Slack / Gmail + Supabase updated']
+  ['08:16', 'Canonical edition published · claimed delivery sent to configured channels']
 ];
 var track = document.getElementById('tickerTrack');
 if (track){
@@ -1143,7 +1148,7 @@ var terminalLines = [
   { id:'termLine6', text:'→ SEC: 5 new filings analyzed — 2 high-impact' },
   { id:'termLine7', text:'→ Optional embeddings: cosine corroboration when configured' },
   { id:'termLine8', text:'→ Relevance gate: lexical fallback or semantic gate when enabled' },
-  { id:'termLine9', text:'✔ Digest delivered — Telegram · Slack · Gmail' }
+  { id:'termLine9', text:'✔ Canonical edition published · Telegram delivered · optional copies followed' }
 ];
 function typeLine(el, text, done){
   if (!el){ if (done) done(); return; }

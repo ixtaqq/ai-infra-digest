@@ -25,7 +25,7 @@ vi.mock("../utils/logger", () => ({
 
 vi.mock("../utils/helpers", () => ({ sleep: vi.fn(() => Promise.resolve()) }));
 
-import { normalizeArticles, processArticles } from "./ai";
+import { normalizeArticles, processArticles, reconcileArticleAnalyses } from "./ai";
 import type { Article } from "../collector/rss";
 
 function makeArticle(overrides: Partial<Article> = {}): Article {
@@ -122,6 +122,65 @@ describe("normalizeArticles", () => {
   });
 });
 
+describe("reconcileArticleAnalyses", () => {
+  it("takes identity only from the indexed source article", () => {
+    const source = makeArticle({
+      title: "Trusted source title",
+      url: "https://example.com/trusted",
+      source: "Trusted Wire",
+    });
+
+    const result = reconcileArticleAnalyses(
+      [
+        {
+          articleIndex: 1,
+          title: "Hallucinated title",
+          url: "https://attacker.example/fake",
+          source: "Fake Wire",
+          summary: "Analysis",
+          impact: "Bullish",
+          impactScore: 8,
+          relevanceScore: 9,
+          affectedStocks: [" nvda ", "NVDA", "not-a-ticker", "AI"],
+          reason: "Material demand signal",
+          category: "Chips & GPUs",
+        },
+      ],
+      [source]
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      title: "Trusted source title",
+      url: "https://example.com/trusted",
+      source: "Trusted Wire",
+      affectedStocks: ["NVDA"],
+    });
+  });
+
+  it("drops out-of-range and duplicate source references", () => {
+    const analysis = {
+      summary: "Analysis",
+      impact: "Neutral",
+      impactScore: 5,
+      affectedStocks: [],
+      reason: "Reason",
+      category: "Datacenters",
+    };
+
+    expect(
+      reconcileArticleAnalyses(
+        [
+          { ...analysis, articleIndex: 1 },
+          { ...analysis, articleIndex: 1 },
+          { ...analysis, articleIndex: 99 },
+        ],
+        [makeArticle()]
+      )
+    ).toHaveLength(1);
+  });
+});
+
 describe("processArticles", () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -185,6 +244,7 @@ describe("processArticles", () => {
           JSON.stringify({
             articles: [
               {
+                articleIndex: 1,
                 title: "Recovered article",
                 url: "https://example.com/a2",
                 source: "Test Feed",
@@ -206,7 +266,7 @@ describe("processArticles", () => {
     const result = await processArticles([makeArticle()]);
 
     expect(result.articles).toHaveLength(1);
-    expect(result.articles[0].title).toBe("Recovered article");
+    expect(result.articles[0].title).toBe("NVIDIA ships record GPUs");
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
@@ -372,6 +432,7 @@ describe("processArticles", () => {
         JSON.stringify({
           articles: [
             {
+              articleIndex: 1,
               title: "Fallback classification",
               url: "https://example.com/fallback",
               source: "Fallback",
@@ -392,7 +453,7 @@ describe("processArticles", () => {
     const primaryCalls = fetchMock.mock.calls.filter(([url]) => String(url).startsWith("https://api.test"));
     const fallbackCalls = fetchMock.mock.calls.filter(([url]) => String(url).startsWith("https://fallback.test"));
 
-    expect(result.articles[0].title).toBe("Fallback classification");
+    expect(result.articles[0].title).toBe("NVIDIA ships record GPUs");
     expect(result.summary).toBe("fallback summary");
     expect(primaryCalls).toHaveLength(2);
     expect(fallbackCalls).toHaveLength(2);

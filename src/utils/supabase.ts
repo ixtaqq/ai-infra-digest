@@ -18,6 +18,9 @@ export interface DigestRunData {
   error_message?: string;
   capabilities?: Record<string, { state: string; detail: string }>;
   degraded_stages?: string[];
+  prompt_version?: string;
+  analysis_schema_version?: number;
+  quality_metrics?: Record<string, number | boolean>;
 }
 
 export interface ArticleData {
@@ -41,6 +44,7 @@ export interface ArticleData {
   effective_score?: number;
   /** Versioned, auditable breakdown of the score components (v16). */
   ranking_explanation?: RankingExplanation;
+  source_identity_verified?: boolean;
 }
 
 export interface SectorActivityData {
@@ -127,6 +131,15 @@ export interface FeedStatus {
   error?: string;
 }
 
+export interface DigestPublicationRow {
+  id: number;
+  publication_date: string;
+  schema_version: number;
+  payload: unknown;
+  article_ids: Record<string, number>;
+  published_at?: string;
+}
+
 // ─── Supabase REST Helpers ────────────────────────────
 function getConfig() {
   const url = config.app.supabaseUrl;
@@ -161,10 +174,11 @@ async function claimRpc(
   rpc: string,
   body: Record<string, unknown>,
   resultKeys: string[],
-  label: string
+  label: string,
+  unconfiguredResult = true
 ): Promise<boolean> {
   const cfg = getConfig();
-  if (!cfg) return true;
+  if (!cfg) return unconfiguredResult;
 
   try {
     const response = await fetch(`${cfg.url}/rest/v1/rpc/${rpc}`, {
@@ -290,6 +304,61 @@ export const supabase = {
     }
   },
 
+  /** Create the canonical publication for a date. Existing editions are never overwritten. */
+  async createDigestPublication(
+    publicationDate: string,
+    payload: Record<string, unknown>,
+    articleIds: Map<string, number>
+  ): Promise<number | null> {
+    const cfg = getConfig();
+    if (!cfg || !/^\d{4}-\d{2}-\d{2}$/.test(publicationDate)) return null;
+
+    try {
+      const response = await fetch(`${cfg.url}/rest/v1/digest_publications?select=id`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: cfg.key,
+          Authorization: `Bearer ${cfg.key}`,
+          Prefer: "return=representation",
+        },
+        body: JSON.stringify({
+          publication_date: publicationDate,
+          schema_version:
+            typeof payload.schemaVersion === "number" ? payload.schemaVersion : 1,
+          payload,
+          article_ids: Object.fromEntries(articleIds),
+        }),
+      });
+
+      if (response.status === 409) {
+        const existing = await supabase.getDigestPublication(publicationDate);
+        return existing?.id ?? null;
+      }
+      if (!response.ok) {
+        logger.warn(`Supabase createDigestPublication: ${response.status}`);
+        return null;
+      }
+
+      const rows = (await response.json()) as { id?: number }[] | { id?: number };
+      const row = Array.isArray(rows) ? rows[0] : rows;
+      return typeof row?.id === "number" ? row.id : null;
+    } catch (error) {
+      logger.warn(`Supabase createDigestPublication: ${(error as Error).message}`);
+      return null;
+    }
+  },
+
+  /** Resolve the canonical edition for one exact editorial date. */
+  async getDigestPublication(publicationDate: string): Promise<DigestPublicationRow | null> {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(publicationDate)) return null;
+    const rows = await supabase.queryRows<DigestPublicationRow>(
+      "digest_publications",
+      `publication_date=eq.${encodeURIComponent(publicationDate)}&limit=1&select=id,publication_date,schema_version,payload,article_ids,published_at`
+    );
+    return rows[0] ?? null;
+  },
+
   async insertArticles(
     digestRunId: number,
     articles: ArticleData[]
@@ -316,6 +385,7 @@ export const supabase = {
       grounding_text: a.grounding_text || null,
       effective_score: a.effective_score ?? null,
       ranking_explanation: a.ranking_explanation ?? null,
+      source_identity_verified: a.source_identity_verified ?? false,
     }));
 
     const inserted: { id: number; url: string }[] = [];
@@ -526,32 +596,61 @@ export const supabase = {
     });
   },
 
-  /** Disable delivery, then remove all rows owned by one Telegram chat. */
+  /** Atomically disable delivery and remove all rows owned by one Telegram chat. */
   async deleteUserData(chatId: number): Promise<boolean> {
-    if (!Number.isSafeInteger(chatId)) return false;
-
-    const filter = `chat_id=eq.${encodeURIComponent(chatId)}`;
-    let success = await supabaseFetch(
-      "PATCH",
-      "user_preferences",
-      { is_active: false },
-      filter
+    if (!Number.isSafeInteger(chatId) || chatId <= 0) return false;
+    return claimRpc(
+      "delete_user_data",
+      { p_chat_id: chatId },
+      ["deleted", "delete_user_data"],
+      "deleteUserData",
+      false
     );
+  },
 
-    for (const table of [
-      "user_preferences",
-      "user_delivery_log",
-      "alert_delivery_log",
-      "product_events",
-      "price_watches",
-      "command_usage",
-      "article_validations",
-    ]) {
-      const deleted = await supabaseFetch("DELETE", table, undefined, filter);
-      if (!deleted) success = false;
+  async createEmailVerification(
+    chatId: number,
+    email: string,
+    codeHash: string,
+    expiresAt: string
+  ): Promise<boolean> {
+    if (
+      !Number.isSafeInteger(chatId) ||
+      chatId <= 0 ||
+      !/^[0-9a-f]{64}$/.test(codeHash) ||
+      !email ||
+      !Number.isFinite(Date.parse(expiresAt))
+    ) {
+      return false;
     }
+    return supabaseFetch(
+      "POST",
+      "delivery_email_verifications",
+      {
+        chat_id: chatId,
+        email,
+        code_hash: codeHash,
+        expires_at: expiresAt,
+        attempts: 0,
+        updated_at: new Date().toISOString(),
+      },
+      "on_conflict=chat_id"
+    );
+  },
 
-    return success;
+  async verifyDeliveryEmail(chatId: number, codeHash: string): Promise<boolean> {
+    if (
+      !Number.isSafeInteger(chatId) ||
+      chatId <= 0 ||
+      !/^[0-9a-f]{64}$/.test(codeHash)
+    ) return false;
+    return claimRpc(
+      "verify_delivery_email",
+      { p_chat_id: chatId, p_code_hash: codeHash },
+      ["verified", "verify_delivery_email"],
+      "verifyDeliveryEmail",
+      false
+    );
   },
 
   async getUserPreferences(
@@ -611,7 +710,8 @@ export const supabase = {
     chatId: number,
     runDate: string,
     status: "success" | "failed",
-    details?: string
+    details?: string,
+    publicationId?: number
   ): Promise<boolean> {
     // Use upsert with on_conflict to handle race conditions from overlapping cron runs
     return supabaseFetch(
@@ -623,6 +723,7 @@ export const supabase = {
         status,
         details,
         claimed_at: null,
+        ...(publicationId ? { publication_id: publicationId } : {}),
       },
       "on_conflict=chat_id,run_date"
     );

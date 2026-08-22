@@ -8,6 +8,8 @@ import type { PriceWatch } from "../utils/price-watch";
 import type { StockPrice } from "../utils/stocks";
 
 export interface GeneratedDigest {
+  /** Stable database identity when this digest came from a canonical publication. */
+  publicationId?: number;
   runDate: string;
   startTime: number;
   formattedMessage: string;
