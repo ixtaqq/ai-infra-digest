@@ -25,6 +25,17 @@ async function loadConfigWithArticleCap(raw: string) {
   return config;
 }
 
+async function loadSchedulerConfig() {
+  vi.resetModules();
+  vi.stubEnv("TELEGRAM_BOT_TOKEN", "test-token");
+  vi.stubEnv("TELEGRAM_CHAT_ID", "");
+  vi.stubEnv("AI_API_KEY", "");
+  vi.stubEnv("CONFIG_SCOPE", "scheduler");
+
+  const { config } = await import("./config");
+  return config;
+}
+
 describe("configuration budget parsing", () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
@@ -66,5 +77,75 @@ describe("configuration budget parsing", () => {
     await expect(loadConfigWithArticleCap("not-a-number")).resolves.toMatchObject({
       app: { maxArticlesForAI: 35 },
     });
+  });
+});
+
+describe("scoped runtime configuration", () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it("lets scheduled delivery boot without AI or a default Telegram chat", async () => {
+    const config = await loadSchedulerConfig();
+
+    expect(config.telegram).toMatchObject({
+      botToken: "test-token",
+      chatId: "",
+      mode: "send-only",
+    });
+    expect(config.ai.apiKey).toBe("");
+  });
+
+  it("keeps scheduled delivery send-only even if polling is configured globally", async () => {
+    vi.resetModules();
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "test-token");
+    vi.stubEnv("TELEGRAM_CHAT_ID", "");
+    vi.stubEnv("AI_API_KEY", "");
+    vi.stubEnv("CONFIG_SCOPE", "scheduler");
+    vi.stubEnv("TELEGRAM_MODE", "polling");
+
+    const { config } = await import("./config");
+
+    expect(config.telegram.mode).toBe("send-only");
+  });
+
+  it("keeps daily runs strict about their pipeline and default-chat credentials", async () => {
+    vi.resetModules();
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "test-token");
+    vi.stubEnv("TELEGRAM_CHAT_ID", "");
+    vi.stubEnv("AI_API_KEY", "");
+    vi.stubEnv("CONFIG_SCOPE", "daily");
+
+    await expect(import("./config")).rejects.toThrow("TELEGRAM_CHAT_ID");
+  });
+
+  it("accepts explicit send-only, polling, and webhook modes", async () => {
+    vi.resetModules();
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "test-token");
+    vi.stubEnv("TELEGRAM_CHAT_ID", "test-chat");
+    vi.stubEnv("AI_API_KEY", "test-key");
+    const { loadConfig } = await import("./config");
+
+    expect(loadConfig({ scope: "daily", telegramMode: "send-only" }).telegram.mode).toBe("send-only");
+    expect(loadConfig({ scope: "daily", telegramMode: "polling" }).telegram.mode).toBe("polling");
+    expect(loadConfig({ scope: "webhook", telegramMode: "webhook" }).telegram.mode).toBe("webhook");
+  });
+
+  it("initializes the exported config through the named pipeline loader", async () => {
+    vi.resetModules();
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "test-token");
+    vi.stubEnv("TELEGRAM_CHAT_ID", "test-chat");
+    vi.stubEnv("AI_API_KEY", "test-key");
+    vi.stubEnv("CONFIG_SCOPE", "daily");
+
+    const { config, loadPipelineConfig } = await import("./config");
+
+    expect(config.scope).toBe("daily");
+    expect(loadPipelineConfig().scope).toBe("daily");
   });
 });

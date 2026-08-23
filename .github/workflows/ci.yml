@@ -12,6 +12,7 @@ permissions:
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
@@ -30,8 +31,21 @@ jobs:
       - name: Lint (TypeScript type check)
         run: npm run lint
 
+      - name: Build production entrypoints
+        run: npm run build
+
       - name: Unit tests (no live credentials required)
         run: npm run test:unit
+
+      - name: Full test suite (mocked integration boundaries)
+        run: npm test
+
+      - name: Verify responsive website
+        run: |
+          python3 -m http.server 4321 --directory website >/tmp/website-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          BROWSER_PATH=/usr/bin/google-chrome npm run verify:website
 
       # Blocking dependency-vulnerability gate. Fails only on high/critical
       # advisories (currently 0). Uses the npm CLI directly — no marketplace
@@ -39,12 +53,41 @@ jobs:
       - name: Security audit (dependencies)
         run: npm audit --audit-level=high
 
-      # Static analysis for the prompt-injection / unsanitized-output patterns
-      # that pattern-based SAST catches well. Informational for now
-      # (continue-on-error) so it never blocks on an un-triaged baseline; flip to
-      # blocking (drop continue-on-error, add --error) once findings are reviewed.
+      # Blocking static analysis. The configured ERROR-level ruleset was verified
+      # clean locally before this gate was made blocking.
       - name: Static analysis (semgrep)
-        continue-on-error: true
         run: |
           pipx install semgrep
-          semgrep scan --config p/security-audit --config p/typescript --severity ERROR
+          semgrep scan --config p/security-audit --config p/typescript --severity ERROR --error
+
+  migration-validation:
+    name: Supabase migration validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start local Supabase database only
+        run: npx supabase start --exclude analytics,edge-runtime,functions,imgproxy,inbucket,kong,meta,realtime,rest,storage,studio,vector
+
+      - name: Apply migrations without seed data
+        run: npx supabase db reset --local --no-seed --yes
+
+      - name: Lint local database schema
+        run: npx supabase db lint --local --fail-on error
+
+      - name: Stop local Supabase
+        if: always()
+        run: npx supabase stop --no-backup

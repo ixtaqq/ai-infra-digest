@@ -7,10 +7,24 @@ const DEFAULT_BUDGET_DAILY_USD = 0.5;
 const DEFAULT_BUDGET_MONTHLY_USD = 5.0;
 const DEFAULT_MAX_ARTICLES_FOR_AI = 35;
 
+/** The process boundary that is loading configuration. */
+export type ConfigScope = "daily" | "scheduler" | "webhook";
+
+/** How the Telegram client is allowed to receive updates. */
+export type TelegramMode = "send-only" | "polling" | "webhook";
+
+export interface ConfigLoadOptions {
+  scope?: ConfigScope;
+  /** Override the default mode for an explicitly loaded process boundary. */
+  telegramMode?: TelegramMode;
+}
+
 export interface Config {
+  scope: ConfigScope;
   telegram: {
     botToken: string;
     chatId: string;
+    mode: TelegramMode;
   };
   ai: {
     provider: "groq" | "openai" | "openrouter" | "custom";
@@ -59,6 +73,64 @@ function requireEnv(name: string): string {
   return val;
 }
 
+function optionalEnv(name: string): string {
+  return process.env[name] || "";
+}
+
+function detectConfigScope(): ConfigScope {
+  const configured = process.env.CONFIG_SCOPE || process.env.RUNTIME_SCOPE;
+  if (configured === "daily" || configured === "scheduler" || configured === "webhook") {
+    return configured;
+  }
+  if (configured) {
+    throw new Error(
+      `Invalid CONFIG_SCOPE: "${configured}". Must be one of: daily, scheduler, webhook`
+    );
+  }
+
+  // npm run scheduler uses tsx, so process.argv[1] is the tsx launcher and
+  // the source entry point is later in argv. The built workflows invoke the
+  // JavaScript entry point directly. Looking for the exact filename supports
+  // both without requiring every caller to set another environment variable.
+  const args = process.argv.slice(1);
+  if (args.some((arg) => /(?:^|[\\/])scheduler\.(?:ts|m?js)$/.test(arg))) {
+    return "scheduler";
+  }
+  if (args.some((arg) => /(?:^|[\\/])webhook\.(?:ts|m?js)$/.test(arg))) {
+    return "webhook";
+  }
+  return "daily";
+}
+
+function parseTelegramMode(scope: ConfigScope, override?: TelegramMode): TelegramMode {
+  // These entry points are never allowed to receive updates by long polling.
+  // An accidental shared TELEGRAM_MODE=polling must not change that contract.
+  if (scope === "webhook") return "webhook";
+  if (scope === "scheduler") return "send-only";
+
+  const sourceEntryPoint = process.argv.some((arg) => /(?:^|[\\/])src[\\/]index\.ts$/.test(arg));
+  // The compiled daily workflow is send-only by contract. TELEGRAM_MODE is
+  // intentionally honored only for the local source entry point, preserving
+  // polling for `tsx src/index.ts` without making production configurable into
+  // a long-polling process.
+  if (!sourceEntryPoint && override === undefined) return "send-only";
+
+  const raw = override || process.env.TELEGRAM_MODE || process.env.TELEGRAM_BOT_MODE;
+  if (raw === "send-only" || raw === "polling" || raw === "webhook") {
+    return raw;
+  }
+  if (raw) {
+    throw new Error(
+      `Invalid TELEGRAM_MODE: "${raw}". Must be one of: send-only, polling, webhook`
+    );
+  }
+
+  // Keep `npm run dev` useful for local interactive development. Built daily
+  // workflow runs are send-only because their entry point is not an interactive
+  // bot process and must never start long polling.
+  return "polling";
+}
+
 function parseBudgetUsd(raw: string | undefined, fallback: number): number {
   const value = raw?.trim();
   if (!value) return fallback;
@@ -76,7 +148,13 @@ function parsePositiveInteger(raw: string | undefined, fallback: number): number
   return Math.min(parsed, 100);
 }
 
-function loadConfig(): Config {
+export function loadConfig(scope?: ConfigScope): Config;
+export function loadConfig(options?: ConfigLoadOptions): Config;
+export function loadConfig(options: ConfigScope | ConfigLoadOptions = {}): Config {
+  const scope = typeof options === "string"
+    ? options
+    : options.scope || detectConfigScope();
+  const telegramMode = typeof options === "string" ? undefined : options.telegramMode;
   const provider =
     (process.env.AI_PROVIDER as Config["ai"]["provider"]) || "groq";
 
@@ -94,13 +172,23 @@ function loadConfig(): Config {
   };
 
   return {
+    scope,
     telegram: {
       botToken: requireEnv("TELEGRAM_BOT_TOKEN"),
-      chatId: requireEnv("TELEGRAM_CHAT_ID"),
+      // A scheduler fans out to user chat IDs from Supabase and has no default
+      // chat. Webhook mode likewise only replies to the incoming chat. Keep an
+      // empty value in the public shape so existing consumers remain typed as
+      // strings while scoped validation still fails fast for daily runs.
+      chatId: scope === "scheduler" || scope === "webhook"
+        ? optionalEnv("TELEGRAM_CHAT_ID")
+        : requireEnv("TELEGRAM_CHAT_ID"),
+      mode: parseTelegramMode(scope, telegramMode),
     },
     ai: {
       provider,
-      apiKey: requireEnv("AI_API_KEY"),
+      // Scheduled delivery reads a canonical publication and never invokes AI.
+      // It must therefore be able to boot with no AI_API_KEY at all.
+      apiKey: scope === "scheduler" ? optionalEnv("AI_API_KEY") : requireEnv("AI_API_KEY"),
       model: process.env.AI_MODEL || "openai/gpt-oss-120b",
       fastModel: process.env.AI_FAST_MODEL || "openai/gpt-oss-20b",
       baseUrl: baseUrls[provider] || process.env.AI_BASE_URL,
@@ -133,4 +221,22 @@ function loadConfig(): Config {
   };
 }
 
-export const config = loadConfig();
+export function loadPipelineConfig(): Config {
+  return loadConfig("daily");
+}
+
+export function loadSchedulerConfig(): Config {
+  return loadConfig("scheduler");
+}
+
+export function loadWebhookConfig(): Config {
+  return loadConfig("webhook");
+}
+
+const detectedScope = detectConfigScope();
+
+export const config = detectedScope === "scheduler"
+  ? loadSchedulerConfig()
+  : detectedScope === "webhook"
+    ? loadWebhookConfig()
+    : loadPipelineConfig();

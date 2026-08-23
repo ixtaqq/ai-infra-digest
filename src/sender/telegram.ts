@@ -1,5 +1,5 @@
 import TelegramBot, { type Update, type Message, type InlineKeyboardButton } from "node-telegram-bot-api";
-import { config } from "../config";
+import { config, type TelegramMode } from "../config";
 import { logger } from "../utils/logger";
 import { emitCommandUsage } from "../utils/metrics";
 import { supabase } from "../utils/supabase";
@@ -12,9 +12,48 @@ import {
 } from "../onboarding";
 import { escapeHtml } from "../utils/escape";
 
+export type { TelegramMode } from "../config";
+
 let bot: TelegramBot | null = null;
 let commandHandlersRegistered = false;
-let useWebhook = false;
+let telegramMode: TelegramMode = config.telegram.mode || "send-only";
+
+export interface TelegramStartOptions {
+  mode?: TelegramMode;
+}
+
+function normalizeMode(options?: TelegramStartOptions | TelegramMode): TelegramMode | undefined {
+  return typeof options === "string" ? options : options?.mode;
+}
+
+/**
+ * Select how the shared Telegram client receives updates. Send-only and
+ * webhook modes both pass `polling: false`; only the explicitly requested
+ * polling mode starts long polling.
+ *
+ * Set this before the first bot call when possible. If a caller changes modes
+ * after creation, stop/start polling where the Telegram client supports it so
+ * a delivery process cannot accidentally keep a polling loop alive.
+ */
+export function setTelegramMode(mode: TelegramMode): void {
+  if (mode !== "send-only" && mode !== "polling" && mode !== "webhook") {
+    throw new Error(`Invalid Telegram mode: ${String(mode)}`);
+  }
+
+  const previous = telegramMode;
+  telegramMode = mode;
+  if (!bot || previous === mode) return;
+
+  if (mode === "polling") {
+    void bot.startPolling?.();
+  } else {
+    void bot.stopPolling?.();
+  }
+}
+
+export function getTelegramMode(): TelegramMode {
+  return telegramMode;
+}
 
 /**
  * Switch the (lazily-created) bot into webhook mode — it will be created with
@@ -23,15 +62,14 @@ let useWebhook = false;
  * updates are fed in via {@link handleWebhookUpdate} instead of long polling.
  */
 export function enableWebhookMode(): void {
-  useWebhook = true;
+  setTelegramMode("webhook");
 }
 
 function getBot(): TelegramBot {
   if (!bot) {
-    // Polling for local/CI runs; disabled in webhook mode so a serverless or
-    // always-on host can push updates via processUpdate(). A non-polling bot can
-    // still send outgoing messages via sendMessage().
-    bot = new TelegramBot(config.telegram.botToken, useWebhook ? { polling: false } : { polling: true });
+    bot = telegramMode === "polling"
+      ? new TelegramBot(config.telegram.botToken, { polling: true })
+      : new TelegramBot(config.telegram.botToken, { polling: false });
   }
   return bot;
 }
@@ -687,9 +725,11 @@ function initCommands() {
   });
 
   logger.info(
-    useWebhook
+    telegramMode === "webhook"
       ? "Telegram command handlers registered — webhook mode (updates via processUpdate)"
-      : "Telegram bot polling started — interactive commands ready"
+      : telegramMode === "polling"
+        ? "Telegram bot polling started — interactive commands ready"
+        : "Telegram command handlers registered — send-only mode"
   );
 }
 
@@ -714,6 +754,10 @@ async function upsertUser(msg: Message): Promise<void> {
  * caller is responsible for catching rejections if needed.
  */
 export async function sendAdminAlert(text: string): Promise<void> {
+  if (!config.telegram.chatId) {
+    logger.warn("Skipping Telegram admin alert — TELEGRAM_CHAT_ID is not configured");
+    return;
+  }
   const b = getBot();
   await b.sendMessage(config.telegram.chatId, text, {
     parse_mode: "HTML",
@@ -828,6 +872,9 @@ export async function sendTelegramMessage(
   text: string,
   parseMode: "HTML" | "MarkdownV2" = "HTML"
 ): Promise<SendResult> {
+  if (!config.telegram.chatId) {
+    return { success: false, error: "TELEGRAM_CHAT_ID is not configured for this runtime" };
+  }
   const bot = getBot();
 
   try {
@@ -983,6 +1030,9 @@ export async function setupWebhook(
   }
 ): Promise<boolean> {
   try {
+    // Calling setupWebhook directly is supported; make the non-polling
+    // contract explicit even when the caller did not use enableWebhookMode().
+    setTelegramMode("webhook");
     const b = getBot();
     // Stop polling first — prevents wasted getUpdates requests after webhook is set
     if (typeof b.stopPolling === "function") {
@@ -1015,10 +1065,14 @@ export async function setupWebhook(
 export async function switchToPolling(): Promise<void> {
   try {
     const b = getBot();
+    // Change the mode before deleting the webhook, then start polling exactly
+    // once. setTelegramMode() starts it immediately when a client already
+    // exists, which would otherwise double-start this transition.
+    telegramMode = "polling";
     await b.deleteWebHook();
-    // The bot was already created with polling: true, so it will resume polling
-    // after the webhook is deleted. We just need to wait a moment.
-    await new Promise((r) => setTimeout(r, 1000));
+    if (typeof b.startPolling === "function") {
+      await b.startPolling();
+    }
     logger.info("Switched back to long polling mode");
   } catch (error) {
     logger.error(`Failed to switch to polling: ${(error as Error).message}`);
@@ -1045,7 +1099,9 @@ export async function getWebhookInfo(): Promise<{
 // ─── Init ──────────────────────────────────────────────
 
 /** Call once at startup to enable interactive commands. */
-export function startInteractiveBot(): void {
+export function startInteractiveBot(options?: TelegramStartOptions | TelegramMode): void {
+  const mode = normalizeMode(options);
+  if (mode) setTelegramMode(mode);
   initCommands();
 }
 
@@ -1064,6 +1120,7 @@ export async function startWebhookBot(
     secretToken?: string;
   }
 ): Promise<void> {
+  setTelegramMode("webhook");
   // Register commands first
   initCommands();
 
@@ -1072,6 +1129,9 @@ export async function startWebhookBot(
   if (ok) {
     logger.info(`Webhook bot started at ${webhookUrl}`);
   } else {
-    logger.warn("Webhook setup failed, falling back to polling");
+    // A failed webhook registration must not turn an always-on process into a
+    // hidden long-polling client. The caller can retry setup explicitly or use
+    // startInteractiveBot({ mode: "polling" }) for local development.
+    logger.warn("Webhook setup failed — bot remains non-polling");
   }
 }

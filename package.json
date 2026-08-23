@@ -1,11 +1,13 @@
 {
   "name": "ai-infra-digest",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "🚀 AI Infrastructure Daily Digest - Telegram bot delivering personalized AI infrastructure intelligence",
   "main": "dist/index.js",
   "scripts": {
     "postinstall": "node scripts/patch-node-telegram-bot-api.cjs",
     "build": "tsc",
+    "pretest": "npm run build",
+    "pretest:unit": "npm run build",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "test-digest": "tsx scripts/test-digest.ts",

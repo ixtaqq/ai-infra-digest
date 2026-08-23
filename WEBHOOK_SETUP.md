@@ -6,11 +6,13 @@ Telegram's rate limits. A webhook pushes updates to your server immediately.
 
 ## Why this matters
 
-The daily-digest and scheduled-delivery GitHub Actions runs start the polling bot,
-do their work, then `process.exit(0)` within ~2 minutes. GitHub Actions has no
-long-running process, so interactive commands (`/digest`, `/sec`, `/watchlist`,
-`/alert`, `/feedback`, …) only respond during that brief window. To make them work
-**24/7**, run the webhook server on an always-on host.
+Only local `npm run dev` uses long polling for a single digest run, then exits.
+The daily-digest workflow and scheduled-delivery workflow are send-only jobs;
+they do not listen for Telegram updates. GitHub Actions does not provide an
+always-on command listener, so interactive commands (`/digest`, `/sec`,
+`/watchlist`, `/alert`, `/feedback`, …) are not available continuously from
+those jobs. To make them work **24/7**, run the webhook server on an always-on
+host.
 
 ## Built-in webhook server
 
@@ -44,9 +46,14 @@ normal Gmail account password. App Passwords require 2-Step Verification and are
 ### Run it
 
 ```bash
-npm run webhook            # local dev (tsx)
+npm run dev                # one digest run; Telegram long polling, then exit
+npm run webhook            # always-on command listener; HTTP webhook, non-polling
 npm run build && npm run start:webhook   # production (compiled)
 ```
+
+`npm run webhook` does not generate a digest; it only keeps the command listener
+online. Set `WEBHOOK_SECRET` before starting it. Set `WEBHOOK_URL` as well when
+you want startup to register the webhook with Telegram automatically.
 
 Locally, expose it with a tunnel (`ngrok http 3000`) and set `WEBHOOK_URL` to the
 tunnel URL so Telegram can reach you.
@@ -81,7 +88,8 @@ curl "https://api.telegram.org/bot<TOKEN>/getWebhookInfo"
 Each Telegram update is a single POST, so a serverless function works too — reuse
 the pure router `decideWebhook(...)` from `src/webhook.ts` to validate the secret
 and parse the body, then call `handleWebhookUpdate(update)`. (Note: Vercel and
-GitHub Actions can't host the *polling* bot; only a webhook fits serverless.)
+GitHub Actions can't host an **always-on** polling bot; only a webhook fits
+serverless.)
 
 ## Verifying Webhook Health
 

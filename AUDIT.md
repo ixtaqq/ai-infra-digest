@@ -1,6 +1,11 @@
 # Codebase Audit Report — `ai-infra-digest`
 
-_Original audit date: 2026-07-03; remediation status reviewed: 2026-08-15_
+_Original audit date: 2026-07-03; remediation status reviewed: 2026-08-23; release: 1.0.1_
+
+> **Current status (2026-08-23):** All Immediate and Short-Term remediation
+> actions remain complete. The repository reports **425 passing tests across 57
+> files** (**380 unit tests across 54 files**), and the blocking Semgrep ERROR-level
+> baseline is clean.
 
 > The findings tables below preserve the original evidence and severity labels. The
 > remediation checklist in section 5 is the current status of those findings.
@@ -164,7 +169,7 @@ No copyleft (GPL/AGPL) licenses detected in the direct dependency tree.
 - [x] Introduce a zod schema for every AI JSON response shape (`processor/ai.ts`, `sec.ts`, `bear-cases.ts`, `thesis.ts`) — also applied to `processor/earnings.ts`, which had the identical unvalidated-cast bug (found while adding tests); shared `nullableFinancialNumber` helper extracted to `src/utils/ai-schema.ts`
 - [x] Sanitize/strip HTML tags from `article.contentSnippet` at collection time, not just at render — `stripHtmlTags()` added to `src/utils/escape.ts`, applied in `src/collector/rss.ts`
 - [x] Consolidate `escapeHtml()` into `src/utils/escape.ts` — only 2 real duplicates existed (`index.ts`, `formatter/telegram.ts`), not 3 as originally flagged; `sender/telegram.ts` never had its own copy
-- [x] Write unit tests (mocked responses) for `processor/ai.ts`, `sec.ts`, `earnings.ts`, `embeddings.ts`, `thesis.ts`, plus `collector/sec.ts` and `collector/earnings.ts` — current suite reports 381 passing tests
+- [x] Write unit tests (mocked responses) for `processor/ai.ts`, `sec.ts`, `earnings.ts`, `embeddings.ts`, `thesis.ts`, plus `collector/sec.ts` and `collector/earnings.ts` — current suite reports 425 passing tests across 57 files (380 unit tests across 54 files)
 - [x] Add `permissions:` blocks to all 5 GitHub workflows; standardize on Node 22
 - [x] Add failure-notification step to `daily-digest.yml`, `scheduled-delivery.yml`, `data-retention.yml`, `weekly-thesis.yml`
 - [x] Switch `fs.appendFileSync` in `src/utils/metrics.ts:91` to async
@@ -180,7 +185,7 @@ versioned GitHub Actions workflow rather than an untracked Supabase `pg_cron` se
 
 ## 6. Meta-Recommendations
 
-- **Static analysis / SAST**: add `semgrep` (community ruleset covers prompt-injection and unsanitized-output patterns well) or CodeQL as a CI job — this project's biggest gaps (S-01, S-02) are exactly what pattern-based SAST tools catch.
+- **Static analysis / SAST**: Semgrep and CodeQL now cover this project's biggest gaps (S-01, S-02); the configured Semgrep ERROR-level baseline was verified clean before the gate became blocking.
 - **Schema validation**: adopt `zod` (already TypeScript-native, no new runtime paradigm) at every AI-response and external-API boundary; this single change eliminates most of the Medium bugs in 2.1.
 - **Dependency hygiene**: `npm audit` is already clean — keep it that way by adding `npm audit --audit-level=high` as a CI gate, and schedule a quarterly pass to close the version gaps in section 2.8 (especially the `openai` major-version lag).
 - **Governance**: given this is a single-maintainer project, a lightweight PR checklist (does this touch AI prompt construction? does it touch user-facing rendering? if yes, was untrusted-input handling considered?) captures most of what a full review process would catch, without the overhead of one.

@@ -1,5 +1,6 @@
 import { logger } from "./utils/logger";
 import { startInteractiveBot } from "./sender/telegram";
+import { config } from "./config";
 import { runPipeline } from "./pipeline/run";
 import { registerDigestCommands } from "./commands/register";
 import { flushMetrics } from "./utils/metrics";
@@ -12,8 +13,11 @@ async function exitAfterMetrics(code: number): Promise<void> {
 async function main() {
   logger.info("🚀 AI Infrastructure Daily Digest — Starting");
 
-  // Start interactive bot (registers /start, /help, etc.)
-  startInteractiveBot();
+  // Only the local interactive entry point consumes Telegram updates. The
+  // compiled daily pipeline remains send-only and does not register handlers.
+  if (config.telegram.mode === "polling") {
+    startInteractiveBot({ mode: "polling" });
+  }
 
   const success = await runPipeline();
 

@@ -1094,6 +1094,8 @@
     let articlePage = 0;
     const ARTICLES_PAGE_SIZE = 20;
     const ARTICLE_SELECT = 'id,title,url,source,impact,impact_score,effective_score,ranking_explanation,is_sec_filing,category,affected_stocks,summary,reason,bear_case,thumbs_up,thumbs_down,created_at';
+    const DAILY_METRICS_SELECT = 'date,total_articles_processed,total_stocks_tracked,sectors_active,feeds_healthy,feeds_failing,total_tokens_used,estimated_cost,total_capex_announced,top_sector,top_ticker,digest_status,created_at,sec_filings_processed,sec_capex_total,sec_ai_revenue_total,trending_json,trending_entities';
+    const FEEDBACK_DAILY_SELECT = 'feedback_date,total_votes,rating_sum,rating_1_count,rating_2_count,rating_3_count,rating_4_count,rating_5_count,comment_count,updated_at';
     let allFetchedArticles = [];
     let hasMoreArticles = true;
     let articleSearchQuery = '';
@@ -1459,14 +1461,15 @@
 
       try {
         const partialErrors = [];
-        const [digests, sectors, stocks, articles, feeds, capex, metrics, prices, deliveries, secFilings, theses, thesisHistory, rankingQuality] = await Promise.all([
+        const [digests, sectors, stocks, articles, feeds, capex, metrics, feedbackDaily, prices, deliveries, secFilings, theses, thesisHistory, rankingQuality] = await Promise.all([
           queryDashboardData('Digest runs', 'digest_runs', { select: 'id,run_date,status,articles_collected,articles_processed,batches_run,total_tokens_used,duration_seconds,created_at,capabilities,degraded_stages', order: 'run_date', limit: 60, rangeColumn: 'run_date', range: rangeDate }, partialErrors),
           queryDashboardData('Sector activity', 'sector_activity', { select: 'date,sector,article_count,avg_impact_score', order: 'date', range: rangeDate }, partialErrors),
           queryDashboardData('Stock mentions', 'stock_mentions', { order: 'mention_count', limit: 10, range: rangeDate }, partialErrors),
           queryDashboardData('Articles', 'articles', { select: ARTICLE_SELECT, order: 'impact_score.desc,created_at.desc,id.desc', limit: ARTICLES_PAGE_SIZE }, partialErrors),
           queryDashboardData('Pipeline health', 'pipeline_health', { select: 'id,digest_run_id,feed_name,status,articles_fetched,response_time_ms,created_at', order: 'created_at', limit: 50 }, partialErrors),
           queryDashboardData('Capex tracking', 'capex_tracking', { order: 'date', limit: 10 }, partialErrors),
-          queryDashboardData('Daily metrics', 'daily_metrics', { order: 'date', limit: 30, range: rangeDate }, partialErrors),
+          queryDashboardData('Daily metrics', 'daily_metrics', { select: DAILY_METRICS_SELECT, order: 'date', limit: 30, range: rangeDate }, partialErrors),
+          queryDashboardData('Daily feedback aggregates', 'digest_feedback_daily', { select: FEEDBACK_DAILY_SELECT, order: 'feedback_date', limit: 30, range: rangeDate, rangeColumn: 'feedback_date' }, partialErrors),
           queryDashboardData('Stock prices', 'stock_prices', { order: 'date', limit: 500, range: rangeDate }, partialErrors),
           queryDashboardData('Delivery metrics', 'delivery_metrics_daily', { order: 'run_date', limit: 100, range: rangeDate, rangeColumn: 'run_date' }, partialErrors),
           queryDashboardData('SEC filings', 'sec_filings', { order: 'filing_date', limit: 50, range: rangeDate, rangeColumn: 'filing_date' }, partialErrors),
@@ -1505,7 +1508,7 @@
         }
         allSectors = [...new Set(sectors.map(s => s.sector))];
 
-        renderKPI(digests, sectors, metrics);
+        renderKPI(digests, sectors, metrics, feedbackDaily);
         setTimeout(animateKPIValues, 300);
         renderSectorChart(sectors);
         renderTopSectors(sectors);
@@ -1513,14 +1516,14 @@
         renderStockPriceChart(prices);
         renderSectorTrendChart(sectors);
         renderCapexChart(metrics);
-        renderFeedbackChart(metrics);
+        renderFeedbackChart(feedbackDaily);
         renderDigestPerformanceChart(digests, metrics);
         renderTokenChart(metrics);
         renderFilterBar();
         applyFilters();
         renderPipeline(feeds);
         renderTrendingSection(metrics);
-        renderFeedbackSection(metrics);
+        renderFeedbackSection(feedbackDaily);
         renderRankingQuality(rankingQuality);
         renderDeliverySection(deliveries);
         renderSECSection(secFilings);
@@ -1560,7 +1563,7 @@
     }
 
     // ─── KPI ──
-    function renderKPI(digests, sectors, metrics) {
+    function renderKPI(digests, sectors, metrics, feedbackDaily) {
       const totalDigests = digests.length;
       const successful = digests.filter(d => d.status === 'success').length;
       const failed = digests.filter(d => d.status === 'failed').length;
@@ -1568,12 +1571,8 @@
       const activeSectors = new Set(sectors.map(s => s.sector)).size;
       const totalTokens = digests.reduce((s, d) => s + (d.total_tokens_used || 0), 0);
 
-      let totalSum = 0, totalVotes = 0;
-      for (const m of (metrics || [])) {
-        if (m.feedback_ratings) {
-          try { const p = JSON.parse(m.feedback_ratings); if (p.ratings && p.ratings.length) { totalSum += p.ratings.reduce((s, r) => s + r, 0); totalVotes += p.ratings.length; } } catch {}
-        }
-      }
+      const totalSum = (feedbackDaily || []).reduce((sum, row) => sum + Number(row.rating_sum || 0), 0);
+      const totalVotes = (feedbackDaily || []).reduce((sum, row) => sum + Number(row.total_votes || 0), 0);
       const avgRating = totalVotes > 0 ? (totalSum / totalVotes).toFixed(1) : '—';
 
       const latest = digests[0];
@@ -1608,7 +1607,7 @@
         <div class="kpi-card">
           <div class="kpi-label">Avg Feedback</div>
           <div class="kpi-value">${avgRating !== '—' ? avgRating : '—'}</div>
-          <div class="kpi-change up">${totalVotes > 0 ? `⭐ ${totalVotes} votes` : 'No ratings yet'}</div>
+          <div class="kpi-change up">${totalVotes > 0 ? `⭐ ${totalVotes} votes` : '5 ratings needed for summary'}</div>
         </div>
       `;
     }
@@ -1820,19 +1819,16 @@
       });
     }
 
-    function renderFeedbackChart(metrics) {
+    function renderFeedbackChart(feedbackDaily) {
       if (chartsUnavailable('feedbackChartFallback')) return;
       if (charts.feedback) charts.feedback.destroy();
-      const sorted = (metrics || []).filter(m => m.feedback_ratings).sort((a, b) => a.date.localeCompare(b.date));
-      if (!sorted.length) { setChartFallback('feedbackChartFallback', 'No feedback ratings are available yet.'); return; }
-      const dates = sorted.map(m => fmtShortDate(m.date));
-      const avgRatings = sorted.map(m => {
-        try { const p = JSON.parse(m.feedback_ratings); if (p.ratings && p.ratings.length) return p.ratings.reduce((s, r) => s + r, 0) / p.ratings.length; } catch {} return null;
-      });
-      const voteCounts = sorted.map(m => {
-        try { const p = JSON.parse(m.feedback_ratings); return p.ratings ? p.ratings.length : 0; } catch { return 0; }
-      });
-      const valid = dates.map((d, i) => ({ date: d, avg: avgRatings[i], votes: voteCounts[i] })).filter(v => v.avg !== null);
+      const sorted = (feedbackDaily || []).filter(row => Number(row.total_votes || 0) > 0).sort((a, b) => a.feedback_date.localeCompare(b.feedback_date));
+      if (!sorted.length) { setChartFallback('feedbackChartFallback', 'Feedback summaries appear after at least five ratings are received.'); return; }
+      const valid = sorted.map(row => ({
+        date: fmtShortDate(row.feedback_date),
+        avg: Number(row.rating_sum || 0) / Number(row.total_votes || 1),
+        votes: Number(row.total_votes || 0),
+      })).filter(v => Number.isFinite(v.avg) && v.votes > 0);
       if (valid.length < 2) { setChartFallback('feedbackChartFallback', 'At least two feedback rating points are needed for this chart.'); return; }
       setChartFallback('feedbackChartFallback', `${valid.reduce((s, v) => s + v.votes, 0)} votes across ${valid.length} dated rating points.`);
       const badge = document.getElementById('feedbackBadge');
@@ -2076,11 +2072,19 @@
       }
     }
 
+    function csvCell(value) {
+      const raw = Array.isArray(value) ? value.join('; ') : String(value ?? '');
+      // Prefix spreadsheet formula triggers so exported article data stays
+      // inert when opened in Excel, Sheets, or another spreadsheet app.
+      const safe = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+      return '"' + safe.replace(/"/g, '""') + '"';
+    }
+
     function exportCSV() {
       const data = allFetchedArticles.length > 0 ? allFetchedArticles : allArticlesCache;
       if (!data.length) return;
       const headers = ['title', 'source', 'category', 'impact', 'impact_score', 'affected_stocks', 'summary', 'url'];
-      const rows = data.map(a => headers.map(h => { const v = a[h] || ''; const s = Array.isArray(v) ? v.join('; ') : String(v); return '"' + s.replace(/"/g, '""') + '"'; }).join(','));
+      const rows = data.map(a => headers.map(h => csvCell(a[h])).join(','));
       const csv = [headers.join(','), ...rows].join('\n');
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
@@ -2225,30 +2229,30 @@
       el.innerHTML = html;
     }
 
-    function renderFeedbackSection(metrics) {
+    function renderFeedbackSection(feedbackDaily) {
       const el = document.getElementById('feedbackSection');
-      if (!metrics.length) { el.innerHTML = '<p style="color:var(--text-dim);padding:10px 0;font-size:12px">No feedback yet</p>'; return; }
-      let allRatings = [], allComments = [];
-      for (const m of metrics) {
-        if (m.feedback_ratings) {
-          try { const p = JSON.parse(m.feedback_ratings); if (p.ratings) allRatings = allRatings.concat(p.ratings); if (p.comments) allComments = allComments.concat(p.comments); } catch {}
-        }
-      }
-      if (!allRatings.length) { el.innerHTML = '<p style="color:var(--text-dim);padding:10px 0;font-size:12px">No feedback ratings yet</p>'; return; }
-      const avg = (allRatings.reduce((s, r) => s + r, 0) / allRatings.length).toFixed(1);
-      const dist = [0, 0, 0, 0, 0];
-      for (const r of allRatings) { if (r >= 1 && r <= 5) dist[r - 1]++; }
+      if (!feedbackDaily || !feedbackDaily.length) { el.innerHTML = '<p style="color:var(--text-dim);padding:10px 0;font-size:12px">Feedback summaries appear after at least five ratings are received.</p>'; return; }
+      const totals = feedbackDaily.reduce((acc, row) => {
+        acc.sum += Number(row.rating_sum || 0);
+        acc.votes += Number(row.total_votes || 0);
+        acc.dist[0] += Number(row.rating_1_count || 0);
+        acc.dist[1] += Number(row.rating_2_count || 0);
+        acc.dist[2] += Number(row.rating_3_count || 0);
+        acc.dist[3] += Number(row.rating_4_count || 0);
+        acc.dist[4] += Number(row.rating_5_count || 0);
+        return acc;
+      }, { sum: 0, votes: 0, dist: [0, 0, 0, 0, 0] });
+      if (!totals.votes) { el.innerHTML = '<p style="color:var(--text-dim);padding:10px 0;font-size:12px">Feedback summaries appear after at least five ratings are received.</p>'; return; }
+      const avg = (totals.sum / totals.votes).toFixed(1);
+      const dist = totals.dist;
       const maxD = Math.max(...dist, 1);
-      let html = `<div style="display:flex;gap:14px;margin-bottom:10px;flex-wrap:wrap;align-items:center"><span style="font-size:20px">${'⭐'.repeat(Math.round(parseFloat(avg)))}</span><span style="font-size:18px;font-weight:700">${avg}</span><span style="font-size:11px;color:var(--text-dim)">/ 5 · ${allRatings.length} vote${allRatings.length !== 1 ? 's' : ''}</span></div>`;
+      let html = `<div style="display:flex;gap:14px;margin-bottom:10px;flex-wrap:wrap;align-items:center"><span style="font-size:20px">${'⭐'.repeat(Math.round(parseFloat(avg)))}</span><span style="font-size:18px;font-weight:700">${avg}</span><span style="font-size:11px;color:var(--text-dim)">/ 5 · ${totals.votes} vote${totals.votes !== 1 ? 's' : ''}</span></div>`;
       for (let i = 5; i >= 1; i--) {
-        const c = dist[i - 1], p = (c / allRatings.length * 100).toFixed(0), w = (c / maxD * 100).toFixed(0);
+        const c = dist[i - 1], p = (c / totals.votes * 100).toFixed(0), w = (c / maxD * 100).toFixed(0);
         html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;font-size:11px"><span style="width:18px;text-align:right;color:var(--text-dim)">${i}★</span><div style="flex:1;height:8px;background:var(--border-light);border-radius:2px;overflow:hidden"><div style="height:100%;width:${w}%;background:${['#ef4444','#f97316','#f59e0b','#b6ff5e','#8cff00'][i - 1]};border-radius:2px"></div></div><span style="width:36px;color:var(--text-muted);font-family:'IBM Plex Mono', monospace;font-size:10px">${c} (${p}%)</span></div>`;
       }
-      if (allComments.length > 0) {
-        html += `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border-light)"><span style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;font-weight:600">Recent Comments</span>`;
-        for (const comment of allComments.slice(-3).reverse()) html += `<div style="font-size:11px;color:var(--text-dim);padding:4px 0;font-style:italic">"${escapeHtml(comment)}"</div>`;
-        html += `</div>`;
-      }
+      const commentCount = feedbackDaily.reduce((sum, row) => sum + Number(row.comment_count || 0), 0);
+      html += `<p style="margin:10px 0 0;color:var(--text-muted);font-size:10px">${commentCount} written response${commentCount === 1 ? '' : 's'} retained privately; only aggregate ratings are shown here.</p>`;
       el.innerHTML = html;
     }
 

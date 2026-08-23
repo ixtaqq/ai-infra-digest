@@ -8,7 +8,7 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 
 ## Release status
 
-The checked-in package version is **`1.0.0`** (`package.json`). The phase and `vN` labels below are implementation milestones, not package-version claims. The scheduled GitHub Actions jobs execute the current `main` branch; optional stages still depend on the credentials configured for each deployment.
+The checked-in package version is **`1.0.1`** (`package.json`). The phase and `vN` labels below are implementation milestones, not package-version claims. The scheduled GitHub Actions jobs execute the current `main` branch; optional stages still depend on the credentials configured for each deployment.
 
 ### Deployment-dependent capabilities
 
@@ -95,7 +95,7 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 
 ### 📱 Interactive Telegram Bot
 
-> **Note:** Interactive commands require the webhook server to be deployed (see `WEBHOOK_SETUP.md`). The scheduled GitHub Actions jobs do not run an always-on command listener. For 24/7 command response, deploy `src/webhook.ts` to Render/Railway/Fly.io.
+> **Note:** `npm run dev` starts a short-lived polling listener while one digest runs. The scheduled GitHub Actions jobs do not run an always-on command listener. For 24/7 command response, deploy the non-polling webhook server in `src/webhook.ts` (see `WEBHOOK_SETUP.md`) to Render/Railway/Fly.io.
 
 | Command | Description |
 |---------|-------------|
@@ -124,7 +124,7 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 | `/resume` | Resume delivery with saved preferences after completed onboarding |
 | `/delete_my_data` | Delete private user rows and disable delivery; `/delete` is an alias |
 | `/watchlist NVDA,AMD,AVGO` | Set your ticker watchlist |
-| `/alert on` | Enable high-impact alerts (score 8+) during editorial runs |
+| `/alert on` | Enable high-impact alerts (score 8+) during the daily editorial run |
 | `/alert off` | Disable alerts |
 | `/alert threshold 9` | Set minimum impact score for alerts |
 | `/watch NVDA 130` | One-shot price watch — notified once when NVDA crosses $130, then it clears |
@@ -162,7 +162,7 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 - **6 interactive Chart.js charts**: sector trends, stock prices, capex/AI spending, digest performance, token usage, feed health
 - **Article filtering** — sector pills, impact filter, indexed Postgres full-text search (title, summary, source, category)
 - **Expandable article rows** — click any row to inline-expand: full summary, analyst reason, and source link; chevron rotates on open
-- **Pagination** — "Load More" fetches additional 20 articles via cursor
+- **Pagination** — "Load More" fetches additional 20 articles via offset pagination
 - **SEC filings table** — capex, AI revenue, margins, guidance, impact scores
 - **Auto-refresh** every 60 seconds
 - Reads directly from Supabase REST API
@@ -183,7 +183,7 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 - **Fan-out safe** — validation follow-up uses the article identity map stored with the canonical publication; never triggers a second persistence pass or blocks digest delivery
 
 ### 🗄️ Database (Supabase)
-- **24 tables**: the 22 editorial, market, delivery, and product tables listed in prior releases plus immutable `digest_publications` and private `delivery_email_verifications`
+- **26 tables**: the prior 24 editorial, market, delivery, and product tables plus private `digest_feedback` submissions and the sanitized `digest_feedback_daily` aggregate
 - Managed with **Supabase CLI** — migrations in `supabase/migrations/`
 - `digest_runs` tracks both models (`ai_model` + `ai_fast_model`)
 - `articles` has `is_sec_filing` boolean, `thumbs_up` / `thumbs_down` aggregate validation counters, `bear_case TEXT` (skeptical counter-argument for high-impact articles), an optional `embedding vector(1536)` from OpenAI `text-embedding-3-small`, and `corroboration_count` / `grounding_text` / `effective_score` (v14 — persists ranking/grounding data that used to be computed in-memory each run and discarded afterward)
@@ -197,6 +197,9 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 - **Performance indexes** — 16+ indexes including GIN full-text search, partial indexes for SEC filings and active users, time-series indexes on `daily_derived_metrics`, article validation lookup
 - **Automated retention** — `cleanup_old_data()` prunes articles (90d), pipeline health (30d), AI usage (90d), delivery and alert logs (90d), private product events (180d), and capex tracking (365d). Triggered weekly by `.github/workflows/data-retention.yml` — no manual `pg_cron` setup required.
 
+The 180-day private retention window also covers private digest feedback submissions
+and their daily aggregate rows.
+
 ### 📈 Structured Logging & Metrics
 - **Per-day NDJSON logs** — `logs/YYYY-MM-DD.ndjson`, written to disk and streamed to stdout
 - **Event types**: `feed_fetch`, `ai_batch`, `stock_fetch`, `digest_delivery`, `error`
@@ -206,7 +209,7 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 ### 🔔 Error Handling & Alerts
 - **Source health alerts** — if >20% of RSS feeds fail, admin gets a Telegram alert listing failing feeds
 - **Dead feed detection** — feeds failing 3+ consecutive runs are flagged as likely dead/URL-changed (distinct from a transient blip) in logs and error events
-- **High-impact alert system** — articles scoring 8+/10 trigger idempotent instant alerts to opted-in users; a service-role claim prevents repeats across overlapping or rerun pipelines
+- **High-impact alert system** — articles scoring 8+/10 trigger idempotent alerts during the daily editorial run for opted-in users; a service-role claim prevents repeats across overlapping or rerun pipelines
 - **Budget cap** — daily threshold alerts; 30-day rolling cap actually blocks the run pre-spend (see Scheduled Delivery above)
 - **AI provider failover** — optional `AI_FALLBACK_*` secondary provider tried once if the primary exhausts all retries, so one provider outage doesn't abort the whole digest; disabled in current scheduled production until its key is configured
 - **`withRetry<T>()`** — exponential backoff + full-jitter for AI calls (including embeddings and bear-case generation); non-retryable errors (401) bypass retry
@@ -214,7 +217,7 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 - **Structured error events** — AI 429, Yahoo Finance failures, Supabase errors all emit `ErrorEvent` with recovery suggestions
 
 ### 🧪 Testing & CI
-- **362 passing unit tests** with **Vitest** in the offline CI gate (`npm run test:unit`, 50 test files):
+- **380 passing unit tests** with **Vitest** in the offline CI gate (`npm run test:unit`, 54 test files):
   - Deduplication + cosine similarity: 9 unit tests (`cosineSimilarity` — identical, orthogonal, mismatched length, zero vectors; `deduplicateArticles` — 5 cases, now async)
   - Keyword matching: 13 unit tests
   - Stock price fetching: 3 unit tests
@@ -242,8 +245,8 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
   - Supabase boundary tests: 28 mocked REST-response tests — no live credentials
   - Telegram boundary tests: 9 mocked Bot API tests — no live credentials
   - Stocks boundary tests: 8 mocked Yahoo Finance tests — no live credentials
-- **`npm run test:unit`** is the passing offline gate. **`npm test`** also includes the three integration-labelled mocked suites; the current repository run reports 381 passing tests across 47 files.
-- **CI workflow** — `.github/workflows/ci.yml` runs `npm run lint` (`tsc --noEmit`) then `npm run test:unit` on every push/PR to main; all current workflows declare explicit `permissions: contents: read` and run on Node 22
+- **`npm run test:unit`** is the passing offline gate. **`npm test`** also includes the three integration-labelled mocked suites; the current repository run reports **425 passing tests across 57 files** (including **380 unit tests across 54 files**).
+- **CI workflow** — `.github/workflows/ci.yml` runs lint, both the unit and full test suites, responsive website verification, dependency audit, and blocking Semgrep on every push/PR to main; it also validates Supabase migrations locally with Docker. All current workflows declare explicit `permissions: contents: read` and run on Node 22.
 - **CodeQL** (v13) — `.github/workflows/codeql.yml` runs static security analysis (`javascript-typescript`, `security-extended` query pack) on every push/PR plus a weekly full scan; `github/codeql-action` steps SHA-pinned like every other action in this repo
 - **TypeScript strict mode** — entire project compiles cleanly with zero errors (`tsc --noEmit`)
 - **Full audit** — see [`AUDIT.md`](AUDIT.md) for the complete findings report (30 items across security/bugs/performance/architecture/tests/deps) and remediation checklist
@@ -382,12 +385,12 @@ cp .env.example .env
 ### Run Locally
 
 ```bash
-npm run dev          # Run pipeline once (polling mode)
+npm run dev          # Run pipeline once (polling mode, then exit)
 npm run scheduler    # Run per-user delivery check
-npm run webhook      # Start webhook server (tsx, local dev)
+npm run webhook      # Start always-on webhook server (tsx, local dev)
 npm run preflight    # Validate local configuration without network calls
 npm run preflight:network # Read-only authentication checks; sends nothing
-npm run test:unit    # Run 362 unit tests (offline, no credentials needed)
+npm run test:unit    # Run 380 unit tests (offline, no credentials needed)
 npm run verify:website # Check dashboard layout at 320/768/1024/1440px in headless Edge/Chrome
 npm test             # Run the full suite, including mocked integration-labelled tests
 
@@ -458,6 +461,8 @@ This command requires the local Supabase/Docker stack but does not require Supab
 | `20260815090616_v18_alert_idempotency_and_article_search.sql` | Idempotent alert claims, private product-funnel events, and indexed public article-search RPC |
 | `20260815091624_v181_onboarding_resume.sql` | Explicit onboarding-completion marker used by safe `/resume` activation |
 | `20260815091946_v182_consent_correction.sql` | Inactive-by-default users, removes inferred legacy consent, and records resume activation events |
+| `20260819112411_canonical_digest_publications.sql` | Immutable daily editorial publications, publication-linked delivery records, private email verification, privacy RPCs, and explicit Data API grants |
+| `20260823074758_private_digest_feedback.sql` | Private, atomic feedback storage; five-response public aggregates; legacy feedback archival; deletion and retention updates |
 
 ---
 
@@ -481,7 +486,7 @@ This command requires the local Supabase/Docker stack but does not require Supab
 
 ### CI
 
-`.github/workflows/ci.yml` — runs on every push and PR to `main`. Executes `tsc --noEmit` (type gate) then unit tests (362 tests, no credentials needed, fast).
+`.github/workflows/ci.yml` — runs on every push and PR to `main`. Executes `tsc --noEmit`, 380 unit tests across 54 files, the full 425-test suite across 57 files, credential-free responsive website verification, dependency audit, blocking Semgrep static analysis, and local Supabase migration validation.
 
 ### CodeQL
 
@@ -507,9 +512,11 @@ This command requires the local Supabase/Docker stack but does not require Supab
 
 Repository variables can configure optional model names, custom base URLs, fallback
 provider selection, and `AI_BUDGET_DAILY_USD` / `AI_BUDGET_MONTHLY_USD`; unset
-variables use the workflow defaults. Both digest workflows pass the same AI,
-embeddings, earnings, fallback, and budget settings when they are configured, so
-hosted runs do not silently lose locally enabled stages.
+variables use the editorial workflow defaults. The daily editorial workflow passes
+the AI, embedding, earnings, fallback, and budget settings when configured. The
+scheduled-delivery workflow is intentionally credential-isolated: it reads the
+canonical publication and user delivery state only, and receives no AI, embedding,
+earnings, fallback, or default-chat credentials.
 
 ---
 
@@ -537,7 +544,7 @@ ai-infra-digest/
 │   ├── ci.yml                                # Push/PR: lint + unit tests
 │   ├── codeql.yml                            # v13 — push/PR + weekly: CodeQL security analysis
 │   ├── daily-digest.yml                      # 8 AM MYT cron
-│   ├── scheduled-delivery.yml               # Every 30 min, per-user fan-out
+│   ├── scheduled-delivery.yml               # Every 10 min, per-user fan-out
 │   ├── data-retention.yml                    # Weekly: calls cleanup_old_data() RPC
 │   └── weekly-thesis.yml                     # Weekly: bull/bear thesis snapshots
 ├── Dockerfile                                # Webhook bot container
@@ -748,7 +755,7 @@ Tom's Hardware, ServeTheHome, Ars Technica, TechCrunch, The Verge, Seeking Alpha
   - **Data integrity** — a zod validation layer now sits in front of every AI JSON response (`ai.ts`, `sec.ts`, `bear-cases.ts`, `thesis.ts`, `earnings.ts`), coercing type-confused fields (e.g. `"8"` instead of `8`) instead of crashing `.toFixed()` calls downstream — caught and fixed a live instance of this exact bug in `processor/earnings.ts` while adding coverage
   - **Performance** — `metrics.ts` and `dedup.ts` switched from sync to async file I/O; onboarding sessions now expire after 30 minutes with a periodic sweep (was unbounded growth)
   - **CI/CD** — all 5 workflows hardened with explicit `permissions: contents: read`, standardized on Node 22, and now alert Slack on failure
-  - **Tests** — expanded mocked coverage for the previously-uncovered AI/collector and operational boundaries; the current suite reports 381 passing tests
+  - **Tests** — expanded mocked coverage for the previously-uncovered AI/collector and operational boundaries; the current suite reports **425 passing tests across 57 files** (380 unit tests across 54 files)
   - **Cleanup** — removed the redundant `node-telegram-bot-api` postinstall patch duplicated in `Dockerfile`/CI (the `package.json` postinstall already covers it via `npm ci`); consolidated `escapeHtml()` into one shared module
 - **v11** — `/coverage` command + Thesis Evolution History. Diagnosed via `/office-hours`: the original "Thesis Evolution Dashboard" pitch didn't match the validated incident (daily article coverage confusion, not the weekly AI narrative) — pivoted to two smaller, correct slices instead of one oversized wrong one:
   - `/coverage TICKER [days]` — recent per-article coverage history for a ticker, pulled straight from `articles` (no new table)

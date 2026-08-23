@@ -44,6 +44,36 @@ describe("deleteUserData boundary", () => {
   });
 });
 
+describe("digest feedback boundary", () => {
+  it("submits feedback through the service-only transactional RPC", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => true });
+
+    await expect(
+      supabase.submitDigestFeedback(42, "2026-08-23", 5, "Great coverage")
+    ).resolves.toBe(true);
+
+    const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("/rest/v1/rpc/submit_digest_feedback");
+    expect(options.method).toBe("POST");
+    expect(JSON.parse(String(options.body))).toEqual({
+      p_chat_id: 42,
+      p_feedback_date: "2026-08-23",
+      p_rating: 5,
+      p_comment: "Great coverage",
+    });
+  });
+
+  it("rejects malformed feedback before making a request", async () => {
+    await expect(
+      supabase.submitDigestFeedback(42, "2026-08-23", 6, "bad rating")
+    ).resolves.toBe(false);
+    await expect(
+      supabase.submitDigestFeedback(42, "2026-08-23", 4, "x".repeat(2001))
+    ).resolves.toBe(false);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+});
+
 describe("high-impact alert idempotency boundary", () => {
   it("claims a user/article hash through the service-only RPC", async () => {
     mockFetch.mockResolvedValueOnce({

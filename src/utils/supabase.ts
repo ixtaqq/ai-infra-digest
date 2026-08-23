@@ -596,6 +596,40 @@ export const supabase = {
     });
   },
 
+  /** Store one private rating/comment and update the daily aggregate atomically. */
+  async submitDigestFeedback(
+    chatId: number,
+    feedbackDate: string,
+    rating: number,
+    comment?: string
+  ): Promise<boolean> {
+    if (
+      !Number.isSafeInteger(chatId) ||
+      chatId <= 0 ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(feedbackDate) ||
+      !Number.isInteger(rating) ||
+      rating < 1 ||
+      rating > 5 ||
+      (comment !== undefined && comment.length > 2000)
+    ) {
+      return false;
+    }
+
+    const normalizedComment = comment?.trim() || null;
+    return claimRpc(
+      "submit_digest_feedback",
+      {
+        p_chat_id: chatId,
+        p_feedback_date: feedbackDate,
+        p_rating: rating,
+        p_comment: normalizedComment,
+      },
+      ["submitted", "submit_digest_feedback"],
+      "submitDigestFeedback",
+      false
+    );
+  },
+
   /** Atomically disable delivery and remove all rows owned by one Telegram chat. */
   async deleteUserData(chatId: number): Promise<boolean> {
     if (!Number.isSafeInteger(chatId) || chatId <= 0) return false;

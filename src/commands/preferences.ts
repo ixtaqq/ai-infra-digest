@@ -239,10 +239,11 @@ export function registerPreferenceCommands(): void {
 
   registerCommand("feedback", async (ctx) => {
     const parts = ctx.text.split(/\s+/).slice(1);
-    const rating = parseInt(parts[0], 10);
-    const comment = parts.slice(1).join(" ");
+    const ratingToken = parts[0] || "";
+    const rating = Number(ratingToken);
+    const comment = parts.slice(1).join(" ").trim();
 
-    if (isNaN(rating) || rating < 1 || rating > 5) {
+    if (!/^[1-5]$/.test(ratingToken)) {
       return (
         `💬 <b>Feedback</b>\n\n` +
         `Help me improve! Rate today's digest from 1 to 5.\n\n` +
@@ -250,8 +251,12 @@ export function registerPreferenceCommands(): void {
         `• <code>/feedback 5</code> — Rate 1–5 (required)\n` +
         `• <code>/feedback 4 Great coverage of NVIDIA</code> — Add a comment\n` +
         `• <code>/feedback 2 Too many articles on power sector</code>\n\n` +
-        `<i>Your feedback is anonymous and helps improve the digest.</i>`
+        `<i>Your feedback is kept private and helps improve the digest.</i>`
       );
+    }
+
+    if (comment.length > 2000) {
+      return "Your comment is too long. Please keep it to 2,000 characters or fewer.";
     }
 
     if (!supabase.isConfigured()) {
@@ -260,33 +265,14 @@ export function registerPreferenceCommands(): void {
 
     try {
       const today = todayInTimezone(config.app.timezone);
-      const existing = await supabase.queryRows<Record<string, unknown>>(
-        "daily_metrics",
-        `date=eq.${encodeURIComponent(today)}&select=date,feedback_ratings`
-      );
-
-      let existingRatings: number[] = [];
-      let existingComments: string[] = [];
-      if (existing.length > 0 && existing[0].feedback_ratings) {
-        try {
-          const parsed = JSON.parse(existing[0].feedback_ratings as string) as { ratings: number[]; comments: string[] };
-          existingRatings = parsed.ratings || [];
-          existingComments = parsed.comments || [];
-        } catch { /* start fresh */ }
+      const saved = await supabase.submitDigestFeedback(ctx.chatId, today, rating, comment || undefined);
+      if (!saved) {
+        return `✅ Thanks for your ${rating}/5 rating! (Couldn't save to database, but your feedback is noted.)`;
       }
 
-      existingRatings.push(rating);
-      if (comment) existingComments.push(comment);
-
-      await supabase.updateDailyMetrics(today, {
-        feedback_ratings: JSON.stringify({ ratings: existingRatings, comments: existingComments }),
-      });
-
-      const avg = existingRatings.reduce((s, r) => s + r, 0) / existingRatings.length;
       return `✅ Thanks for your feedback!\n\n` +
         `Your rating: ${rating}/5\n` +
-        `${comment ? `Comment: "${escapeHtml(comment)}"\n` : ""}\n` +
-        `Average rating today: ${avg.toFixed(1)}/5 (${existingRatings.length} votes)`;
+        `Your feedback was recorded privately to improve the digest.`;
     } catch {
       return `✅ Thanks for your ${rating}/5 rating! (Couldn't save to database, but your feedback is noted.)`;
     }

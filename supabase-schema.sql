@@ -14,6 +14,14 @@
 -- (is_sec_filing, bear_case, embedding, thumbs_up/down, etc.) predate this
 -- note and are NOT reconciled into the base CREATE TABLE statements below —
 -- migrations remain the only fully accurate source for column-level schema.
+-- WARNING: this snapshot also predates
+-- 20260819112411_canonical_digest_publications.sql and
+-- 20260823074758_private_digest_feedback.sql. It does not include the
+-- immutable digest_publications table, delivery_email_verifications,
+-- publication-linked delivery fields, private digest feedback, sanitized
+-- feedback aggregates, privacy RPCs, or the final Data API grants from those
+-- migrations. Do not use this snapshot to overwrite an
+-- existing database; apply the numbered migrations with `npm run db:push`.
 -- ============================================================
 
 -- 1. DIGEST RUNS — Track each execution of the daily digest

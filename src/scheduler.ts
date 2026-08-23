@@ -18,6 +18,7 @@ import { config } from "./config";
 import { supabase } from "./utils/supabase";
 import { deliverDigest } from "./delivery/deliver";
 import { sendValidationFollowUp } from "./sender/telegram";
+import * as telegram from "./sender/telegram";
 import { todayInTimezone } from "./utils/helpers";
 import { flushMetrics } from "./utils/metrics";
 import { deserializeDigestPublication } from "./pipeline/publication";
@@ -80,6 +81,11 @@ export async function schedulerMain(): Promise<void> {
   const startTime = Date.now();
   const now = new Date(startTime);
   const editorialDate = todayInTimezone(config.app.timezone, now);
+
+  // Scheduled delivery only sends to user chat IDs. It must never create a
+  // long-polling update receiver, even when invoked from a long-lived process
+  // that previously used the local interactive mode.
+  telegram.setTelegramMode?.("send-only");
 
   logger.info("⏰ Scheduled delivery check — starting");
 

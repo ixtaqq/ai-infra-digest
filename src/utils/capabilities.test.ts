@@ -8,7 +8,8 @@ import {
 
 function makeConfig(): Config {
   return {
-    telegram: { botToken: "telegram-secret", chatId: "1" },
+    scope: "daily",
+    telegram: { botToken: "telegram-secret", chatId: "1", mode: "send-only" },
     ai: {
       provider: "openrouter",
       apiKey: "ai-secret",

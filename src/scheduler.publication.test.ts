@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
   generateDigest: vi.fn(),
   deliverDigest: vi.fn(),
   persistDigestMetrics: vi.fn(),
+  setTelegramMode: vi.fn(),
 }));
 
 vi.mock("./utils/logger", () => ({
@@ -27,7 +28,10 @@ vi.mock("./utils/supabase", () => ({
 vi.mock("./delivery/deliver", () => ({ deliverDigest: h.deliverDigest }));
 vi.mock("./pipeline/generate", () => ({ generateDigest: h.generateDigest }));
 vi.mock("./pipeline/persist", () => ({ persistDigestMetrics: h.persistDigestMetrics }));
-vi.mock("./sender/telegram", () => ({ sendValidationFollowUp: vi.fn() }));
+vi.mock("./sender/telegram", () => ({
+  sendValidationFollowUp: vi.fn(),
+  setTelegramMode: h.setTelegramMode,
+}));
 
 import { schedulerMain } from "./scheduler";
 
@@ -72,6 +76,7 @@ beforeEach(() => {
   h.generateDigest.mockReset();
   h.deliverDigest.mockReset().mockResolvedValue({ success: true });
   h.persistDigestMetrics.mockReset();
+  h.setTelegramMode.mockReset();
 });
 
 afterEach(() => {
@@ -82,6 +87,7 @@ describe("scheduled publication delivery", () => {
   it("loads canonical content and never invokes generation or persistence", async () => {
     await schedulerMain();
 
+    expect(h.setTelegramMode).toHaveBeenCalledWith("send-only");
     expect(h.getDigestPublication).toHaveBeenCalledTimes(1);
     expect(h.getDigestPublication).toHaveBeenCalledWith("2026-08-19");
     expect(h.getAllPriceWatches).toHaveBeenCalledTimes(1);
