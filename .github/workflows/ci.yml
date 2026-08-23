@@ -90,7 +90,7 @@ jobs:
         run: npm ci
 
       - name: Start local Supabase database only
-        run: npx supabase start --exclude analytics,edge-runtime,functions,imgproxy,inbucket,kong,meta,realtime,rest,storage,studio,vector
+        run: npx supabase db start
 
       - name: Apply migrations without seed data
         run: npx supabase db reset --local --no-seed --yes

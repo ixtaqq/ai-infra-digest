@@ -19,7 +19,7 @@ if (!browserPath) {
   throw new Error("No supported browser found. Set BROWSER_PATH to Edge, Chrome, or Chromium.");
 }
 
-const browser = spawn(browserPath, [
+const browserArgs = [
   "--headless=new",
   "--disable-gpu",
   "--disable-background-mode",
@@ -27,25 +27,45 @@ const browser = spawn(browserPath, [
   `--remote-debugging-port=${port}`,
   `--user-data-dir=${profilePath}`,
   "about:blank",
-], { stdio: "ignore" });
+];
+if (process.platform === "linux") {
+  browserArgs.push("--no-sandbox", "--disable-dev-shm-usage");
+}
+
+const browser = spawn(browserPath, browserArgs, { stdio: ["ignore", "pipe", "pipe"] });
+let browserStderr = "";
+browser.stderr.setEncoding("utf8");
+browser.stderr.on("data", (chunk) => { browserStderr += chunk; });
+let browserExit;
+let browserError;
+browser.once("error", (error) => { browserError = error; });
+browser.once("exit", (code, signal) => { browserExit = `code=${code ?? "?"}, signal=${signal ?? "?"}`; });
 browser.unref();
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function connect() {
-  for (let attempt = 0; attempt < 30; attempt += 1) {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    if (browserError) {
+      throw new Error(`Failed to start headless browser: ${browserError.message}; ${browserStderr.trim() || "no diagnostics"}`);
+    }
+    if (browserExit) {
+      throw new Error(`Headless browser exited before connecting (${browserExit}): ${browserStderr.trim() || "no diagnostics"}`);
+    }
+    const remaining = deadline - Date.now();
     try {
       const response = await fetch(
         `http://127.0.0.1:${port}/json/new?${encodeURIComponent(targetUrl)}`,
-        { method: "PUT", signal: AbortSignal.timeout(500) },
+        { method: "PUT", signal: AbortSignal.timeout(Math.min(500, remaining)) },
       );
       if (response.ok) return response.json();
     } catch {
       // Browser startup is asynchronous.
     }
-    await delay(100);
+    await delay(Math.min(250, Math.max(0, deadline - Date.now())));
   }
-  throw new Error("Timed out connecting to the headless browser");
+  throw new Error(`Timed out connecting to the headless browser after 30s: ${browserStderr.trim() || "no diagnostics"}`);
 }
 
 async function verify() {
