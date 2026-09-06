@@ -1,3 +1,4 @@
+import { config } from "./config";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { DigestResult } from "./processor/ai";
 
@@ -337,7 +338,7 @@ describe("delivery state", () => {
       101,
       "2026-01-01",
       "success",
-      "slack:failed; email:failed"
+      undefined
     );
   });
 });
@@ -454,4 +455,49 @@ describe("price watch check-and-notify", () => {
     const tickersPassed = h.fetchStockPrices.mock.calls[0][0] as string[];
     expect(tickersPassed[0]).toBe("ZZZZ");
   });
+});
+
+
+describe("primary finalization before copies", () => {
+  it("does not copy when primary sending fails", async () => {
+    h.sendDigestMessage.mockResolvedValue({ success: false, error: "blocked" });
+    const generated = await generateDigest();
+    const previous = { ...config.app };
+    Object.assign(config.app, { slackWebhookUrl: "https://hooks.slack.com/services/test", smtpUser: "test", digestEmailTo: "test@example.com" });
+    try {
+      await deliverDigest(generated!);
+      expect(h.sendSlackDigest).not.toHaveBeenCalled();
+      expect(h.sendEmailDigest).not.toHaveBeenCalled();
+    } finally {
+      delete config.app.slackWebhookUrl; delete config.app.smtpUser; delete config.app.digestEmailTo;
+      Object.assign(config.app, previous);
+    }
+  });
+  it("surfaces finalization failure and withholds optional copies", async () => {
+    h.isConfigured.mockReturnValue(true);
+    h.logUserDelivery.mockResolvedValue(false);
+    const generated = await generateDigest();
+    const result = await deliverDigest(generated!, 101, { chat_id: 101, delivery_email: "test@example.com" });
+    expect(result).toMatchObject({ success: false, ambiguous: true });
+    expect(h.sendEmailDigest).not.toHaveBeenCalled();
+  });
+  it("finalizes success before starting optional copies", async () => {
+    h.isConfigured.mockReturnValue(true);
+    const generated = await generateDigest();
+    await deliverDigest(generated!, 101, { chat_id: 101, delivery_email: "test@example.com" });
+    expect(h.logUserDelivery.mock.invocationCallOrder[0]).toBeLessThan(h.sendEmailDigest.mock.invocationCallOrder[0]);
+  });
+});
+
+it("an optional copy timeout preserves finalized primary success", async () => {
+  h.isConfigured.mockReturnValue(true);
+  const generated = await generateDigest();
+  h.sendEmailDigest.mockImplementationOnce(() => new Promise(() => {}));
+  vi.useFakeTimers();
+  try {
+    const delivery = deliverDigest(generated!, 101, { chat_id: 101, delivery_email: "test@example.com" });
+    await vi.advanceTimersByTimeAsync(15_001);
+    expect(await delivery).toMatchObject({ success: true });
+    expect(h.logUserDelivery).toHaveBeenCalledWith(101, expect.any(String), "success", undefined);
+  } finally { vi.useRealTimers(); }
 });

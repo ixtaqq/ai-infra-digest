@@ -1,3 +1,4 @@
+import { accountedFetch } from "../utils/ai-accounting";
 import { config } from "../config";
 import { logger } from "../utils/logger";
 import { withRetry, HttpError, isRetryableStatus } from "../utils/retry";
@@ -26,7 +27,7 @@ export async function generateEmbeddings(
     try {
       const data = await withRetry(
         async () => {
-          const resp = await fetch(EMBED_URL, {
+          const resp = await accountedFetch("embeddings", "openai")(EMBED_URL, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",

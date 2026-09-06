@@ -170,6 +170,10 @@ function parseRpcBoolean(data: unknown, keys: string[]): boolean {
   return false;
 }
 
+async function boundedFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  return fetch(url, { ...init, signal: AbortSignal.timeout(15_000) });
+}
+
 async function claimRpc(
   rpc: string,
   body: Record<string, unknown>,
@@ -181,7 +185,7 @@ async function claimRpc(
   if (!cfg) return unconfiguredResult;
 
   try {
-    const response = await fetch(`${cfg.url}/rest/v1/rpc/${rpc}`, {
+    const response = await boundedFetch(`${cfg.url}/rest/v1/rpc/${rpc}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -191,12 +195,14 @@ async function claimRpc(
       body: JSON.stringify(body),
     });
     if (!response.ok) {
+      if (rpc === "claim_user_delivery") throw new Error(`Delivery claim failed: HTTP ${response.status}`);
       logger.warn(`Supabase ${label}: ${response.status}`);
       return false;
     }
 
     return parseRpcBoolean(await response.json(), resultKeys);
   } catch (error) {
+    if (rpc === "claim_user_delivery") throw error;
     logger.warn(`Supabase ${label}: ${(error as Error).message}`);
     return false;
   }
@@ -218,7 +224,7 @@ async function supabaseFetch(
     const prefer = params?.includes("on_conflict")
       ? "return=minimal,resolution=merge-duplicates"
       : "return=minimal";
-    const response = await fetch(url, {
+    const response = await boundedFetch(url, {
       method,
       headers: {
         "Content-Type": "application/json",
@@ -255,7 +261,7 @@ export const supabase = {
     const cfg = getConfig();
     if (!cfg) return [];
     try {
-      const response = await fetch(`${cfg.url}/rest/v1/${table}?${params}`, {
+      const response = await boundedFetch(`${cfg.url}/rest/v1/${table}?${params}`, {
         headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` },
       });
       if (!response.ok) {
@@ -269,12 +275,32 @@ export const supabase = {
     }
   },
 
+  async requiredRows<T>(table: string, params: string): Promise<T[]> {
+    const cfg = getConfig();
+    if (!cfg) throw new Error("Required database is not configured");
+    const response = await boundedFetch(`${cfg.url}/rest/v1/${table}?${params}`, {
+      headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` },
+    });
+    if (!response.ok) throw new Error(`Required database read ${table}: HTTP ${response.status}`);
+    const rows: unknown = await response.json();
+    if (!Array.isArray(rows)) throw new Error(`Invalid database response for ${table}`);
+    return rows as T[];
+  },
+
+  async recordAIAttempt(data: import("./ai-accounting").AIAttempt): Promise<boolean> {
+    return supabaseFetch("POST", "ai_attempts", data);
+  },
+
+  async completeDigestRun(id: number, status: "success" | "failed", error?: string): Promise<boolean> {
+    return supabaseFetch("PATCH", "digest_runs", { status, error_message: error ?? null }, `id=eq.${id}`);
+  },
+
   async createDigestRun(data: DigestRunData): Promise<number | null> {
     const cfg = getConfig();
     if (!cfg) return null;
 
     try {
-      const response = await fetch(
+      const response = await boundedFetch(
         `${cfg.url}/rest/v1/digest_runs?select=id`,
         {
           method: "POST",
@@ -314,7 +340,7 @@ export const supabase = {
     if (!cfg || !/^\d{4}-\d{2}-\d{2}$/.test(publicationDate)) return null;
 
     try {
-      const response = await fetch(`${cfg.url}/rest/v1/digest_publications?select=id`, {
+      const response = await boundedFetch(`${cfg.url}/rest/v1/digest_publications?select=id`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -352,7 +378,7 @@ export const supabase = {
   /** Resolve the canonical edition for one exact editorial date. */
   async getDigestPublication(publicationDate: string): Promise<DigestPublicationRow | null> {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(publicationDate)) return null;
-    const rows = await supabase.queryRows<DigestPublicationRow>(
+    const rows = await supabase.requiredRows<DigestPublicationRow>(
       "digest_publications",
       `publication_date=eq.${encodeURIComponent(publicationDate)}&limit=1&select=id,publication_date,schema_version,payload,article_ids,published_at`
     );
@@ -394,7 +420,7 @@ export const supabase = {
     for (let i = 0; i < records.length; i += 20) {
       const chunk = records.slice(i, i + 20);
       try {
-        const res = await fetch(
+        const res = await boundedFetch(
           `${cfg.url}/rest/v1/articles?select=id,url`,
           {
             method: "POST",
@@ -560,7 +586,7 @@ export const supabase = {
     if (!cfg) return false;
 
     try {
-      const response = await fetch(
+      const response = await boundedFetch(
         `${cfg.url}/rest/v1/user_preferences?on_conflict=chat_id`,
         {
           method: "POST",
@@ -694,7 +720,7 @@ export const supabase = {
     if (!cfg) return null;
 
     try {
-      const response = await fetch(
+      const response = await boundedFetch(
         `${cfg.url}/rest/v1/user_preferences?chat_id=eq.${encodeURIComponent(chatId)}&select=*`,
         {
           headers: {
@@ -713,24 +739,12 @@ export const supabase = {
   },
 
   async getAllActiveUsers(): Promise<UserPreferencesData[]> {
-    const cfg = getConfig();
-    if (!cfg) return [];
-
-    try {
-      const response = await fetch(
-        `${cfg.url}/rest/v1/user_preferences?is_active=eq.true&select=*`,
-        {
-          headers: {
-            "apikey": cfg.key,
-            "Authorization": `Bearer ${cfg.key}`,
-          },
-        }
-      );
-      if (!response.ok) return [];
-      return (await response.json()) as UserPreferencesData[];
-    } catch (error) {
-      logger.warn(`Supabase getAllActiveUsers: ${(error as Error).message}`);
-      return [];
+    const users: UserPreferencesData[] = [];
+    for (let offset = 0; ; offset += 500) {
+      const page = await supabase.requiredRows<UserPreferencesData>("user_preferences",
+        `is_active=eq.true&select=*&order=chat_id.asc&limit=500&offset=${offset}`);
+      users.push(...page);
+      if (page.length < 500) return users;
     }
   },
 
@@ -743,7 +757,7 @@ export const supabase = {
   async logUserDelivery(
     chatId: number,
     runDate: string,
-    status: "success" | "failed",
+    status: "success" | "failed" | "ambiguous",
     details?: string,
     publicationId?: number
   ): Promise<boolean> {
@@ -765,9 +779,8 @@ export const supabase = {
 
   /**
    * Atomically reserve the (chat_id, run_date) delivery slot before sending.
-   * The database function allows failed rows to retry immediately and pending
-   * rows to be reclaimed after their lease expires, while a recent pending row
-   * remains unavailable to overlapping scheduler runs.
+   * Only confirmed failed rows can retry. Pending and ambiguous rows require
+   * operator reconciliation; time passing is not evidence that no message was sent.
    */
   async claimUserDelivery(chatId: number, runDate: string): Promise<boolean> {
     return claimRpc(
@@ -818,34 +831,16 @@ export const supabase = {
     chatId: number,
     runDate: string
   ): Promise<boolean> {
-    const cfg = getConfig();
-    if (!cfg) return false;
-
-    try {
-      const response = await fetch(
-        `${cfg.url}/rest/v1/user_delivery_log?chat_id=eq.${encodeURIComponent(chatId)}&run_date=eq.${encodeURIComponent(runDate)}&status=eq.success&select=id&limit=1`,
-        {
-          headers: {
-            apikey: cfg.key,
-            Authorization: `Bearer ${cfg.key}`,
-          },
-        }
-      );
-      if (!response.ok) return false;
-      const data = (await response.json()) as { id: number }[];
-      return data.length > 0;
-    } catch {
-      return false;
-    }
+    const rows = await supabase.requiredRows<{ id: number }>("user_delivery_log",
+      `chat_id=eq.${encodeURIComponent(chatId)}&run_date=eq.${encodeURIComponent(runDate)}&status=eq.success&select=id&limit=1`);
+    return rows.length > 0;
   },
-
-  // ─── Earnings Transcripts ───────────────────────────
 
   async upsertEarningsTranscript(data: Record<string, unknown>): Promise<boolean> {
     const cfg = getConfig();
     if (!cfg) return false;
     try {
-      const response = await fetch(
+      const response = await boundedFetch(
         `${cfg.url}/rest/v1/earnings_transcripts?on_conflict=ticker,year,quarter`,
         {
           method: "POST",
@@ -879,7 +874,7 @@ export const supabase = {
     const cfg = getConfig();
     if (!cfg) return null;
     try {
-      const response = await fetch(
+      const response = await boundedFetch(
         `${cfg.url}/rest/v1/earnings_transcripts?ticker=eq.${encodeURIComponent(ticker)}&year=eq.${encodeURIComponent(year)}&quarter=eq.${encodeURIComponent(quarter)}&select=*`,
         {
           headers: {
@@ -904,7 +899,7 @@ export const supabase = {
     const cfg = getConfig();
     if (!cfg) return [];
     try {
-      const response = await fetch(`${cfg.url}/rest/v1/price_watches?select=*`, {
+      const response = await boundedFetch(`${cfg.url}/rest/v1/price_watches?select=*`, {
         headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` },
       });
       if (!response.ok) {
@@ -965,7 +960,7 @@ export const supabase = {
     const cfg = getConfig();
     if (!cfg) return false;
     try {
-      const response = await fetch(`${cfg.url}/rest/v1/digest_runs?limit=1`, {
+      const response = await boundedFetch(`${cfg.url}/rest/v1/digest_runs?limit=1`, {
         headers: {
           "apikey": cfg.key,
           "Authorization": `Bearer ${cfg.key}`,

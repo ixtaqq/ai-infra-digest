@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { cosineSimilarity } from "./dedup";
+import { cosineSimilarity, buildCorroborationMap } from "./dedup";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -132,5 +132,14 @@ describe("deduplicateArticles", () => {
     const result = await deduplicateArticles(articles, 0);
     // With 0 retention, entries are expired and re-added
     expect(result).toHaveLength(1);
+  });
+});
+
+
+describe("publisher corroboration", () => {
+  it("counts repeated entries and same-publisher URLs once", () => {
+    const title = "Nvidia builds new AI infrastructure datacenter";
+    const articles = ["https://example.com/a", "https://example.com/a", "https://www.example.com/b", "https://another.com/a"].map(url => ({ url, title }));
+    expect(buildCorroborationMap(articles).get(articles[0].url)).toBe(2);
   });
 });

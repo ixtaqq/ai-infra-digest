@@ -55,7 +55,7 @@ const payload = {
   secExtracts: [],
   earningsAnalyses: [],
   stockPrices: [],
-  capabilities: { rss: { state: "available", detail: "ok" } },
+  capabilities: Object.fromEntries(["primaryAi", "fallbackAi", "embeddings", "earnings", "supabase", "slack", "email"].map(key => [key, { state: "enabled", detail: "fixture" }])),
 };
 
 beforeEach(() => {
@@ -121,9 +121,19 @@ describe("scheduled publication delivery", () => {
   it("waits safely when no canonical publication is ready", async () => {
     h.getDigestPublication.mockResolvedValueOnce(null);
 
-    await schedulerMain();
+    await expect(schedulerMain()).rejects.toThrow("1 failed");
 
     expect(h.deliverDigest).not.toHaveBeenCalled();
     expect(h.generateDigest).not.toHaveBeenCalled();
   });
+});
+
+it("reports total delivery failure as a failed scheduler run", async () => {
+  h.deliverDigest.mockResolvedValue({ success: false, error: "blocked" });
+  await expect(schedulerMain()).rejects.toThrow("0 delivered, 1 failed");
+});
+it("rejects an empty nested digest before delivery can claim a slot", async () => {
+  h.getDigestPublication.mockResolvedValue({ id: 17, payload: { ...payload, digest: {} } });
+  await expect(schedulerMain()).rejects.toThrow("1 failed");
+  expect(h.deliverDigest).not.toHaveBeenCalled();
 });

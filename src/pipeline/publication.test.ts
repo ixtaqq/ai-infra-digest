@@ -36,7 +36,7 @@ function generatedDigest(): GeneratedDigest {
       ],
     ]),
     activeWatches: [{ id: 1, chat_id: 99, ticker: "NVDA", threshold: 170, direction: "above" }],
-    capabilities: { rss: { state: "available", detail: "68 feeds" } },
+    capabilities: Object.fromEntries(["primaryAi", "fallbackAi", "embeddings", "earnings", "supabase", "slack", "email"].map(key => [key, { state: "enabled", detail: "fixture" }])),
   } as unknown as GeneratedDigest;
 }
 
@@ -64,5 +64,15 @@ describe("digest publication serialization", () => {
     expect(() => deserializeDigestPublication({ runDate: "2026-08-19" }, [], 1, 1)).toThrow(
       "Invalid digest publication payload"
     );
+  });
+  it.each([
+    { digest: {} },
+    { stockPrices: [["NVDA", {}]] },
+    { secExtracts: [{}] },
+    { earningsAnalyses: [{}] },
+    { feedStatuses: [{}] },
+  ])("rejects invalid nested data: %j", (invalid) => {
+    const payload = { ...serializeDigestPublication(generatedDigest()), ...invalid };
+    expect(() => deserializeDigestPublication(payload, [])).toThrow("Invalid digest publication payload");
   });
 });

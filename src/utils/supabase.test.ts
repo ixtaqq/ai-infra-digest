@@ -163,3 +163,18 @@ describe("canonical digest publication boundary", () => {
     expect(url).toContain("limit=1");
   });
 });
+
+
+describe("required database reads", () => {
+  it("does not confuse a backend failure with an empty audience", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 503 });
+    await expect(supabase.getAllActiveUsers()).rejects.toThrow("HTTP 503");
+    expect(mockFetch.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+  });
+  it("paginates the complete active audience", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => Array.from({ length: 500 }, (_, chat_id) => ({ chat_id })) });
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => [{ chat_id: 501 }] });
+    expect(await supabase.getAllActiveUsers()).toHaveLength(501);
+    expect(mockFetch.mock.calls[1][0]).toContain("offset=500");
+  });
+});

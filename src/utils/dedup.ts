@@ -123,7 +123,7 @@ function clusterArticles(
     });
 
     if (match) {
-      match.urls.push(article.url);
+      if (!match.urls.includes(article.url)) match.urls.push(article.url);
     } else {
       clusters.push({
         representativeUrl: article.url,
@@ -156,7 +156,11 @@ export function buildCorroborationMap(
   const clusters = clusterArticles(articles, embeddingMap);
   const result = new Map<string, number>();
   for (const [repUrl, urls] of clusters) {
-    result.set(repUrl, urls.length);
+    const publishers = new Set(urls.map((url) => {
+      try { return new URL(url).hostname.toLowerCase().replace(/^www\./, ""); }
+      catch { return url; }
+    }));
+    result.set(repUrl, publishers.size);
   }
   return result;
 }

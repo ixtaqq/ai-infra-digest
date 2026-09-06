@@ -1,3 +1,4 @@
+import { planMessageParts } from "./message-parts";
 import TelegramBot, { type Update, type Message, type InlineKeyboardButton } from "node-telegram-bot-api";
 import { config, type TelegramMode } from "../config";
 import { logger } from "../utils/logger";
@@ -68,8 +69,8 @@ export function enableWebhookMode(): void {
 function getBot(): TelegramBot {
   if (!bot) {
     bot = telegramMode === "polling"
-      ? new TelegramBot(config.telegram.botToken, { polling: true })
-      : new TelegramBot(config.telegram.botToken, { polling: false });
+      ? new TelegramBot(config.telegram.botToken, { polling: true, request: { timeoutMs: 45_000, maxRetriesOn429: 0 } })
+      : new TelegramBot(config.telegram.botToken, { polling: false, request: { timeoutMs: 15_000, maxRetriesOn429: 0 } });
   }
   return bot;
 }
@@ -83,6 +84,7 @@ export function handleWebhookUpdate(update: Update): void {
 }
 
 export interface SendResult {
+  ambiguous?: boolean;
   success: boolean;
   messageId?: number;
   error?: string;
@@ -868,6 +870,13 @@ async function handleArticleValidation(
 
 // ─── Send Functions (unchanged from before) ────────────
 
+function definitelyRejected(error: unknown): boolean {
+  const failure = error as { code?: string; response?: { status?: number } };
+  if (failure?.code !== "ETELEGRAM") return false;
+  const code = failure.response?.status;
+  return code !== undefined && code >= 400 && code < 500 && code !== 408;
+}
+
 export async function sendTelegramMessage(
   text: string,
   parseMode: "HTML" | "MarkdownV2" = "HTML"
@@ -898,7 +907,7 @@ export async function sendTelegramMessage(
       logger.error("Message too long for Telegram. Try reducing articles.");
     }
 
-    return { success: false, error: errMsg };
+    return { success: false, error: errMsg, ambiguous: !definitelyRejected(error) };
   }
 }
 
@@ -912,6 +921,7 @@ export async function sendDigestMessageToUser(
   parseMode: "HTML" | "MarkdownV2" = "HTML"
 ): Promise<SendResult> {
   const b = getBot();
+  let sentParts = 0;
 
   try {
     if (text.length <= 4096) {
@@ -924,15 +934,15 @@ export async function sendDigestMessageToUser(
     }
 
     // Chunk long messages
-    const chunks = splitMessage(text, 4096);
+    const chunks = planMessageParts(text);
     let lastResult: SendResult = { success: true };
 
     for (let i = 0; i < chunks.length; i++) {
-      const header = i === 0 ? "" : `📄 Part ${i + 1}/${chunks.length}\n\n`;
-      const result = await b.sendMessage(chatId, header + chunks[i], {
+      const result = await b.sendMessage(chatId, chunks[i], {
         parse_mode: parseMode,
   
       });
+      sentParts++;
       lastResult = { success: true, messageId: result.message_id };
     }
 
@@ -941,7 +951,7 @@ export async function sendDigestMessageToUser(
   } catch (error) {
     const errMsg = (error as Error).message;
     logger.error(`Failed to send digest to user ${chatId}: ${errMsg}`);
-    return { success: false, error: errMsg };
+    return { success: false, error: errMsg, ambiguous: sentParts > 0 || !definitelyRejected(error) };
   }
 }
 
@@ -954,13 +964,15 @@ export async function sendDigestMessage(
     return sendTelegramMessage(digestText);
   }
 
-  const chunks = splitMessage(digestText, 4096);
+  const chunks = planMessageParts(digestText);
   let lastResult: SendResult = { success: true };
 
   for (let i = 0; i < chunks.length; i++) {
-    const header = i === 0 ? "" : `📄 Part ${i + 1}/${chunks.length}\n\n`;
-    lastResult = await sendTelegramMessage(header + chunks[i]);
-    if (!lastResult.success) break;
+    lastResult = await sendTelegramMessage(chunks[i]);
+    if (!lastResult.success) {
+      if (i > 0) lastResult.ambiguous = true;
+      break;
+    }
   }
 
   return lastResult;

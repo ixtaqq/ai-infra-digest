@@ -90,8 +90,7 @@ export async function schedulerMain(): Promise<void> {
   logger.info("⏰ Scheduled delivery check — starting");
 
   if (!supabase.isConfigured()) {
-    logger.warn("Supabase not configured — scheduled delivery requires a database");
-    return;
+    throw new Error("Supabase not configured — scheduled delivery requires a database");
   }
 
   // Get all active users
@@ -247,6 +246,9 @@ export async function schedulerMain(): Promise<void> {
       `${successCount} delivered, ${failCount} failed ` +
       `(${pendingUsers.length} users, ${publication === undefined ? 0 : 1} publication lookup(s), 0 generations)`
   );
+  if (failCount > 0) {
+    throw new Error(`Scheduled delivery incomplete: ${successCount} delivered, ${failCount} failed`);
+  }
 }
 
 // ─── Run ─────────────────────────────────────────────────

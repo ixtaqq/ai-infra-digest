@@ -1,3 +1,4 @@
+import { accountedFetch } from "../utils/ai-accounting";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
@@ -78,7 +79,7 @@ export async function embedSeeds(): Promise<number[][]> {
   try {
     const data = await withRetry(
       async () => {
-        const resp = await fetch(EMBED_URL, {
+        const resp = await accountedFetch("relevance", "openai")(EMBED_URL, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

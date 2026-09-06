@@ -68,7 +68,7 @@ describe("Telegram runtime modes", () => {
 
     await telegram.sendDigestMessageToUser(101, "digest");
 
-    expect(h.constructors).toEqual([{ polling: false }]);
+    expect(h.constructors).toEqual([{ polling: false, request: { timeoutMs: 15_000, maxRetriesOn429: 0 } }]);
     expect(telegram.getTelegramMode()).toBe("send-only");
   });
 
@@ -77,7 +77,7 @@ describe("Telegram runtime modes", () => {
 
     telegram.startInteractiveBot({ mode: "polling" });
 
-    expect(h.constructors).toEqual([{ polling: true }]);
+    expect(h.constructors).toEqual([{ polling: true, request: { timeoutMs: 45_000, maxRetriesOn429: 0 } }]);
     expect(telegram.getTelegramMode()).toBe("polling");
   });
 
@@ -87,7 +87,24 @@ describe("Telegram runtime modes", () => {
     telegram.enableWebhookMode();
     telegram.startInteractiveBot();
 
-    expect(h.constructors).toEqual([{ polling: false }]);
+    expect(h.constructors).toEqual([{ polling: false, request: { timeoutMs: 15_000, maxRetriesOn429: 0 } }]);
     expect(telegram.getTelegramMode()).toBe("webhook");
   });
+});
+
+
+it("does not replay a multipart digest after a later part fails", async () => {
+  const telegram = await loadTelegram();
+  h.sendMessage.mockResolvedValueOnce({ message_id: 1 }).mockRejectedValueOnce(
+    Object.assign(new Error("rate limited"), { code: "ETELEGRAM", response: { status: 429 } }));
+  const result = await telegram.sendDigestMessageToUser(101, "<b>" + "x".repeat(9000) + "</b>");
+  expect(result).toMatchObject({ success: false, ambiguous: true });
+  expect(h.sendMessage).toHaveBeenCalledTimes(2);
+});
+it("distinguishes a confirmed Telegram rejection from an unknown transport result", async () => {
+  const telegram = await loadTelegram();
+  h.sendMessage.mockRejectedValueOnce(Object.assign(new Error("blocked"), { code: "ETELEGRAM", response: { status: 403 } }));
+  expect(await telegram.sendDigestMessageToUser(101, "digest")).toMatchObject({ success: false, ambiguous: false });
+  h.sendMessage.mockRejectedValueOnce(new Error("timeout"));
+  expect(await telegram.sendDigestMessageToUser(101, "digest")).toMatchObject({ success: false, ambiguous: true });
 });

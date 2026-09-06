@@ -1,3 +1,4 @@
+import { accountedFetch } from "../utils/ai-accounting";
 /**
  * Earnings Call Transcript Processor
  *
@@ -120,7 +121,7 @@ function createClient(): OpenAI {
     baseURL: config.ai.baseUrl,
     timeout: 120000,
     maxRetries: 2,
-    fetch: globalThis.fetch,
+    fetch: accountedFetch("earnings", config.ai.provider),
   });
 }
 

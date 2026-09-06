@@ -13,7 +13,7 @@ const browserCandidates = process.platform === "win32"
 const browserPath = process.env.BROWSER_PATH || browserCandidates.find(existsSync);
 const targetUrl = process.argv[2] || "http://127.0.0.1:4321/dashboard/";
 const port = 9200 + (process.pid % 500);
-const profilePath = join(tmpdir(), "ai-infra-website-verification");
+const profilePath = join(tmpdir(), `ai-infra-website-verification-${process.pid}`);
 
 if (!browserPath) {
   throw new Error("No supported browser found. Set BROWSER_PATH to Edge, Chrome, or Chromium.");
@@ -99,7 +99,7 @@ async function verify() {
   await call("Page.enable");
   await call("Runtime.enable");
   const evaluate = async (expression) => {
-    const response = await call("Runtime.evaluate", { returnByValue: true, expression });
+    const response = await call("Runtime.evaluate", { returnByValue: true, awaitPromise: true, expression });
     if (response.error || response.result?.exceptionDetails) {
       throw new Error(JSON.stringify(response.error || response.result.exceptionDetails));
     }
@@ -134,6 +134,42 @@ async function verify() {
     }
     await waitUntilReady();
 
+    const pagination = await evaluate(`(async () => {
+      const fixtures = Array.from({ length: 45 }, (_, i) => ({ id: i + 1,
+        title: 'Fixture article ' + (i + 1), url: 'https://example.com/' + i,
+        source: 'Fixture', category: 'Chips & GPUs', impact: 'Neutral',
+        impact_score: 7, affected_stocks: ['NVDA'], summary: 'Synthetic coverage' }));
+      const originalFetch = fetchArticlePage;
+      fetchArticlePage = async (_query, offset) => ({ articles: fixtures.slice(offset, offset + 20), total: 45, hasMore: offset + 20 < 45 });
+      activeFilters.search = ''; activeFilters.sector = ''; activeFilters.impact = '';
+      allFetchedArticles = fixtures.slice(0, 20); allArticlesCache = allFetchedArticles;
+      articlePage = 0; articleSearchQuery = ''; hasMoreArticles = true;
+      renderArticles(allFetchedArticles, false);
+      const counts = [document.querySelectorAll('#articlesBody tr[id^="article-detail-"]').length];
+      await loadMoreArticles();
+      counts.push(document.querySelectorAll('#articlesBody tr[id^="article-detail-"]').length);
+      await loadMoreArticles();
+      counts.push(document.querySelectorAll('#articlesBody tr[id^="article-detail-"]').length);
+      const complete = !hasMoreArticles;
+      const lastReachable = document.getElementById('articlesBody').textContent.includes('Fixture article 45');
+      let releaseOld;
+      fetchArticlePage = (query) => query === 'older'
+        ? new Promise(resolve => { releaseOld = resolve; })
+        : Promise.resolve({ articles: [fixtures[44]], total: 1, hasMore: false });
+      document.getElementById('fullTextSearch').value = 'older';
+      const older = doFullTextSearch();
+      document.getElementById('fullTextSearch').value = 'newer';
+      await doFullTextSearch();
+      releaseOld({ articles: [fixtures[0]], total: 1, hasMore: false });
+      await older;
+      const latestSearchWon = allFetchedArticles.length === 1 && allFetchedArticles[0].id === 45;
+      fetchArticlePage = originalFetch;
+      return { counts, complete, lastReachable, latestSearchWon };
+    })()`);
+    if (JSON.stringify(pagination.counts) !== '[20,40,45]' || !pagination.complete || !pagination.lastReachable || !pagination.latestSearchWon) {
+      throw new Error('Accumulated pagination regression: ' + JSON.stringify(pagination));
+    }
+
     const evaluation = await evaluate(`(() => {
         const root = document.documentElement;
         const heading = document.querySelector('h1');
@@ -151,7 +187,7 @@ async function verify() {
           configWarnsAgainstServiceRole: /never enter a service-role key/i.test(configText),
         };
       })()`);
-    results.push({ width, ...evaluation });
+    results.push({ width, pagination, ...evaluation });
   }
 
   console.log(JSON.stringify({ results, browserErrors }, null, 2));
@@ -176,7 +212,7 @@ try {
 } finally {
   if (process.platform === "win32") {
     const escapedProfile = profilePath.replaceAll("'", "''");
-    const stopProfile = `$profile='${escapedProfile}'; 1..3 | ForEach-Object { $ids=@(Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" | Where-Object { $_.CommandLine -like "*$profile*" } | Select-Object -ExpandProperty ProcessId); if($ids.Count -gt 0){ Stop-Process -Id $ids -Force -ErrorAction SilentlyContinue }; Start-Sleep -Milliseconds 100 }`;
+    const stopProfile = `$profile='${escapedProfile}'; 1..3 | ForEach-Object { $ids=@(Get-CimInstance Win32_Process -Filter "Name='msedge.exe' OR Name='chrome.exe'" | Where-Object { $_.CommandLine -like "*$profile*" } | Select-Object -ExpandProperty ProcessId); if($ids.Count -gt 0){ Stop-Process -Id $ids -Force -ErrorAction SilentlyContinue }; Start-Sleep -Milliseconds 100 }`;
     spawnSync("powershell.exe", ["-NoProfile", "-Command", stopProfile], { stdio: "ignore" });
   } else {
     browser.kill("SIGTERM");

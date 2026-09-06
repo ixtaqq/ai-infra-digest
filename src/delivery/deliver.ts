@@ -14,6 +14,15 @@ import type { UserPreferencesData } from "../utils/supabase";
 import { todayInTimezone } from "../utils/helpers";
 import { personalizeDigest } from "./personalization";
 
+async function boundedCopy(send: Promise<boolean>): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([send, new Promise<boolean>(resolve => {
+      timer = setTimeout(() => resolve(false), 15_000);
+    })]);
+  } finally { if (timer) clearTimeout(timer); }
+}
+
 function deliveryLatenessSeconds(
   preferredTime = "08:00",
   timezone = "Asia/Kuala_Lumpur",
@@ -42,7 +51,8 @@ export async function deliverDigest(
   generated: GeneratedDigest,
   targetChatId?: number,
   userPrefs?: UserPreferencesData,
-  deliveryDate?: string
+  deliveryDate?: string,
+  finalizePrimary?: (result: SendResult) => Promise<boolean>
 ): Promise<SendResult> {
   const { digest, stockPrices, startTime, secExtracts, earningsAnalyses } = generated;
   const runDate = targetChatId
@@ -80,43 +90,23 @@ export async function deliverDigest(
     try {
       sendResult = await sendDigestMessageToUser(targetChatId, messageToSend);
     } catch (error) {
-      sendResult = { success: false, error: (error as Error).message };
-    }
-
-    const copyResults: string[] = [];
-    if (sendResult.success) {
-      const [slackResult, emailResult] = await Promise.allSettled([
-        userPrefs?.slack_webhook_url
-          ? sendSlackDigest(messageToSend, userPrefs.slack_webhook_url)
-          : Promise.resolve(false),
-        userPrefs?.delivery_email
-          ? sendEmailDigest(messageToSend, userPrefs.delivery_email)
-          : Promise.resolve(false),
-      ]);
-      if (userPrefs?.slack_webhook_url) {
-        copyResults.push(
-          `slack:${slackResult.status === "fulfilled" && slackResult.value ? "success" : "failed"}`
-        );
-      }
-      if (userPrefs?.delivery_email) {
-        copyResults.push(
-          `email:${emailResult.status === "fulfilled" && emailResult.value ? "success" : "failed"}`
-        );
-      }
+      sendResult = { success: false, ambiguous: true, error: (error as Error).message };
     }
 
     if (supabase.isConfigured()) {
-      const details = [sendResult.error, ...copyResults].filter(Boolean).join("; ") || undefined;
+      const details = sendResult.error;
       const deliveryArgs = [
         targetChatId,
         runDate,
-        sendResult.success ? "success" : "failed",
+        sendResult.success ? "success" : sendResult.ambiguous ? "ambiguous" : "failed",
         details,
       ] as const;
-      if (generated.publicationId) {
-        await supabase.logUserDelivery(...deliveryArgs, generated.publicationId);
-      } else {
-        await supabase.logUserDelivery(...deliveryArgs);
+      const finalized = generated.publicationId
+        ? await supabase.logUserDelivery(...deliveryArgs, generated.publicationId)
+        : await supabase.logUserDelivery(...deliveryArgs);
+      if (!finalized) {
+        logger.error(`Primary delivery finalization failed for ${targetChatId}/${runDate}; manual reconciliation required`);
+        return { ...sendResult, success: false, ambiguous: true, error: "Primary delivery finalization failed; do not replay" };
       }
       await supabase.recordProductEvent(
         sendResult.success ? "delivery_succeeded" : "delivery_failed",
@@ -133,11 +123,37 @@ export async function deliverDigest(
         }
       );
     }
+    const copyResults: string[] = [];
+    if (sendResult.success) {
+      const [slackResult, emailResult] = await Promise.allSettled([
+        userPrefs?.slack_webhook_url
+          ? boundedCopy(sendSlackDigest(messageToSend, userPrefs.slack_webhook_url))
+          : Promise.resolve(false),
+        userPrefs?.delivery_email
+          ? boundedCopy(sendEmailDigest(messageToSend, userPrefs.delivery_email))
+          : Promise.resolve(false),
+      ]);
+      if (userPrefs?.slack_webhook_url) {
+        copyResults.push(
+          `slack:${slackResult.status === "fulfilled" && slackResult.value ? "success" : "failed"}`
+        );
+      }
+      if (userPrefs?.delivery_email) {
+        copyResults.push(
+          `email:${emailResult.status === "fulfilled" && emailResult.value ? "success" : "failed"}`
+        );
+      }
+      if (copyResults.length) logger.info(`Optional delivery copies: ${copyResults.join("; ")}`);
+    }
+
   } else {
     sendResult = await sendDigestMessage(messageToSend);
+    if (finalizePrimary && !await finalizePrimary(sendResult)) {
+      return { ...sendResult, success: false, ambiguous: true, error: "Primary delivery finalization failed; do not replay" };
+    }
   }
 
-  if (targetChatId) {
+  if (targetChatId && sendResult.success) {
     const triggered = generated.activeWatches
       .filter((watch) => watch.chat_id === targetChatId)
       .filter((watch) => {
@@ -161,15 +177,15 @@ export async function deliverDigest(
     }
   }
 
-  if (!targetChatId) {
+  if (!targetChatId && sendResult.success) {
     logger.info(
       `Additional channels — Slack: ${config.app.slackWebhookUrl ? "configured" : "not set"}, ` +
       `Email: ${config.app.smtpUser ? "configured" : "not set"}`
     );
     const [slackResult, emailResult] = await Promise.allSettled([
-      config.app.slackWebhookUrl ? sendSlackDigest(messageToSend) : Promise.resolve(false),
+      config.app.slackWebhookUrl ? boundedCopy(sendSlackDigest(messageToSend)) : Promise.resolve(false),
       config.app.smtpUser && config.app.digestEmailTo
-        ? sendEmailDigest(messageToSend)
+        ? boundedCopy(sendEmailDigest(messageToSend))
         : Promise.resolve(false),
     ]);
     if (config.app.slackWebhookUrl && (slackResult.status === "rejected" || !slackResult.value)) {

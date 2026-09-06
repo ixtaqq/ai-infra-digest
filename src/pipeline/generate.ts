@@ -217,7 +217,7 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
 
     // ─── Step 2: AI Processing ───────────────────
     logger.info(`Step 2/4: Processing articles with AI (${articlesToProcess.length} articles)...`);
-    const articleUrls = articlesToProcess.map((a) => a.url).filter(Boolean);
+    const articleUrls = articlesToProcess.map((a) => JSON.stringify([a.url, a.title, a.source, a.summary, a.contentSnippet]));
     const cached = getCached(articleUrls);
     const digest = cached ?? await withRetry(
       () => processArticles(articlesToProcess),

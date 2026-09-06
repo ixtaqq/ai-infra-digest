@@ -1092,6 +1092,8 @@
     let allSectors = [];
     let searchDebounceTimer = null;
     let articlePage = 0;
+    let articleRevision = 0;
+    let dashboardRevision = 0;
     const ARTICLES_PAGE_SIZE = 20;
     const ARTICLE_SELECT = 'id,title,url,source,impact,impact_score,effective_score,ranking_explanation,is_sec_filing,category,affected_stocks,summary,reason,bear_case,thumbs_up,thumbs_down,created_at';
     const DAILY_METRICS_SELECT = 'date,total_articles_processed,total_stocks_tracked,sectors_active,feeds_healthy,feeds_failing,total_tokens_used,estimated_cost,total_capex_announced,top_sector,top_ticker,digest_status,created_at,sec_filings_processed,sec_capex_total,sec_ai_revenue_total,trending_json,trending_entities';
@@ -1446,11 +1448,13 @@
       const msg = document.getElementById('loadingMsg');
 
       if (document.hidden) return;
-      const preserveArticleSearch = Boolean(articleSearchQuery);
+      const revision = ++dashboardRevision;
+      const articleRequest = articleRevision;
+      const preserveArticleSearch = Boolean(articleSearchQuery) || allFetchedArticles.length > ARTICLES_PAGE_SIZE;
 
       loading.style.display = 'block';
       msg.textContent = 'Loading dashboard data...';
-      content.style.display = 'none';
+      if (!allArticlesCache.length) content.style.display = 'none';
 
       const days = parseInt(document.querySelector('.chart-tabs button.active')?.dataset?.range || '30');
       const rangeDate = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
@@ -1481,6 +1485,7 @@
         ]);
 
         clearTimeout(slowTimer);
+        if (revision !== dashboardRevision) return;
         loading.style.display = 'none';
         content.style.display = 'block';
         renderPartialLoadErrors(partialErrors);
@@ -1497,7 +1502,9 @@
           `;
         }
 
-        if (!preserveArticleSearch) {
+        if (!preserveArticleSearch && articleRequest === articleRevision) {
+          articlePage = 0;
+          articleRevision++;
           articleSearchQuery = '';
           articleSearchTotal = null;
           allArticlesCache = articles;
@@ -1548,6 +1555,7 @@
 
       } catch (e) {
         clearTimeout(slowTimer);
+        if (revision !== dashboardRevision) return;
         loading.style.display = 'none';
         content.style.display = 'block';
         document.getElementById('kpiGrid').innerHTML = `
@@ -2013,7 +2021,7 @@
         if (countEl) countEl.textContent = '';
         return;
       }
-      const show = articles.slice(0, ARTICLES_PAGE_SIZE);
+      const show = articles;
       tbody.innerHTML = show.map((a, i) => {
         const isSec = a.is_sec_filing;
         const secBadge = isSec ? '<span style="font-size:11px" title="SEC Filing">\uD83C\uDFDB</span>' : '';
@@ -2305,12 +2313,14 @@
     async function loadMoreArticles() {
       const btn = document.getElementById('loadMoreBtn');
       const info = document.getElementById('paginationInfo');
-      if (!hasMoreArticles || !btn) return;
+      if (!hasMoreArticles || !btn || btn.disabled) return;
+      const revision = articleRevision;
       btn.disabled = true; btn.textContent = '⏳ Loading...';
       const nextPage = articlePage + 1;
       const offset = nextPage * ARTICLES_PAGE_SIZE;
       try {
         const result = await fetchArticlePage(articleSearchQuery, offset);
+        if (revision !== articleRevision) return;
         const existingArticles = new Set(allFetchedArticles.map(a => a.id ?? a.url));
         for (const article of result.articles) {
           const identity = article.id ?? article.url;
@@ -2327,16 +2337,20 @@
         info.style.color = 'var(--text-muted)';
         updatePartialLoadError('Article pagination');
       } catch (e) {
+        if (revision !== articleRevision) return;
         info.textContent = `Error loading articles: ${e.message || 'Request failed'}`;
         info.style.color = 'var(--danger)';
         updatePartialLoadError('Article pagination', e.message || 'Request failed');
       } finally {
+        if (revision === articleRevision) {
         btn.disabled = false;
         btn.textContent = '⬇️ Load More';
+        }
       }
     }
 
     async function doFullTextSearch() {
+      const revision = ++articleRevision;
       const input = document.getElementById('fullTextSearch');
       const status = document.getElementById('searchStatus');
       const query = normalizeSearchQuery(input.value);
@@ -2361,6 +2375,7 @@
       updatePartialLoadError('Article pagination');
       try {
         const result = await fetchArticlePage(articleSearchQuery, 0);
+        if (revision !== articleRevision) return;
         allFetchedArticles = result.articles;
         allArticlesCache = allFetchedArticles;
         articleSearchTotal = result.total;
@@ -2379,6 +2394,7 @@
         if (pagInfo) pagInfo.textContent = hasMoreArticles ? `Showing ${allFetchedArticles.length} of ${articleSearchTotal ?? allFetchedArticles.length}` : `${allFetchedArticles.length} results`;
         updatePartialLoadError('Article search');
       } catch (e) {
+        if (revision !== articleRevision) return;
         status.textContent = `❌ Error: ${e.message || 'Search failed'}`;
         status.style.color = 'var(--danger)';
         renderArticles([], true);

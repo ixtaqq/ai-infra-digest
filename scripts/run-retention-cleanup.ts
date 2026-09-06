@@ -27,6 +27,7 @@ async function main() {
   console.log("→ Calling cleanup_old_data() via Supabase RPC...");
   const res = await fetch(`${url}/rest/v1/rpc/cleanup_old_data`, {
     method: "POST",
+    signal: AbortSignal.timeout(30_000),
     headers: {
       apikey: key,
       Authorization: `Bearer ${key}`,
@@ -39,6 +40,13 @@ async function main() {
     console.error(`❌ Retention cleanup failed: HTTP ${res.status} — ${await res.text()}`);
     process.exit(1);
   }
+
+  const cutoff = new Date(Date.now() - 90 * 86400000).toISOString();
+  const attempts = await fetch(`${url}/rest/v1/ai_attempts?started_at=lt.${encodeURIComponent(cutoff)}`, {
+    method: "DELETE", signal: AbortSignal.timeout(30_000),
+    headers: { apikey: key, Authorization: `Bearer ${key}` },
+  });
+  if (!attempts.ok) throw new Error(`AI attempt retention failed: HTTP ${attempts.status}`);
 
   console.log("✅ Retention cleanup ran successfully (see Supabase logs for row counts via RAISE NOTICE).");
 }

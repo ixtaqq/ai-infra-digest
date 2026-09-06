@@ -38,6 +38,9 @@ export async function sendEmailDigest(
     host: "smtp.gmail.com",
     port: 587,
     secure: false,
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 15_000,
     auth: { user: smtpUser, pass: smtpPass },
   });
 
@@ -75,6 +78,9 @@ export async function sendEmailVerification(
     host: "smtp.gmail.com",
     port: 587,
     secure: false,
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 15_000,
     auth: { user: smtpUser, pass: smtpPass },
   });
 

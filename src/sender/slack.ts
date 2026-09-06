@@ -45,6 +45,7 @@ export async function sendSlackDigest(
     for (const chunk of chunks) {
       const resp = await fetch(webhookUrl, {
         method: "POST",
+        signal: AbortSignal.timeout(10_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: chunk }),
       });

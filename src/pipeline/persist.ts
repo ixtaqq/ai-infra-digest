@@ -1,3 +1,4 @@
+import { summarizeAIAttempts } from "../utils/ai-accounting";
 import { config } from "../config";
 import { NEWS_CATEGORIES } from "../processor/ai";
 import {
@@ -136,6 +137,7 @@ export async function persistSecFilings(
       `${url}/rest/v1/sec_filings?on_conflict=ticker,accession_number`,
       {
         method: "POST",
+        signal: AbortSignal.timeout(15_000),
         headers: {
           "Content-Type": "application/json",
           apikey: key,
@@ -157,7 +159,7 @@ export async function persistSecFilings(
 
 export async function persistDigestMetrics(
   generated: GeneratedDigest,
-  status: "success" | "failed",
+  status: "running" | "success" | "failed",
   errorMessage?: string
 ): Promise<Map<string, number>> {
   if (!supabase.isConfigured()) return new Map();
@@ -179,6 +181,7 @@ export async function persistDigestMetrics(
     logger.warn(`Signal quality baseline: ${qualityAssessment.issues.join("; ")}`);
   }
 
+  const accounting = summarizeAIAttempts(startTime);
   const digestRunId = await supabase.createDigestRun({
     run_date: runDate,
     status,
@@ -188,16 +191,20 @@ export async function persistDigestMetrics(
     ai_provider: config.ai.provider,
     ai_model: config.ai.model,
     ai_fast_model: config.ai.fastModel,
-    total_tokens_used: digest.usage.totalTokens,
+    total_tokens_used: accounting.totalTokens,
     duration_seconds: durationSeconds,
     error_message: status === "success" ? undefined : errorMessage,
     capabilities: generated.capabilities,
     degraded_stages: degradedCapabilities(generated.capabilities),
     prompt_version: AI_PROMPT_VERSION,
     analysis_schema_version: AI_ANALYSIS_SCHEMA_VERSION,
-    quality_metrics: { ...qualityMetrics, baselinePassed: qualityAssessment.passed },
+    quality_metrics: { ...qualityMetrics, baselinePassed: qualityAssessment.passed,
+      aiAttempts: accounting.attempts, unknownUsageAttempts: accounting.unknownUsage,
+      costKnown: accounting.cost !== null },
   });
 
+  generated.digestRunId = digestRunId ?? undefined;
+  if (!digestRunId) throw new Error("Required digest run persistence failed");
   let articleIds = new Map<string, number>();
   if (digestRunId) {
     const inserted = await supabase.insertArticles(
@@ -304,8 +311,7 @@ export async function persistDigestMetrics(
 
   const healthyFeeds = feedStatuses.filter((feed) => feed.status === "success").length;
   const failingFeeds = feedStatuses.filter((feed) => feed.status === "failed").length;
-  const costPer1KTokens = 0.00015;
-  const estimatedCost = digest.usage.totalTokens * costPer1KTokens / 1000;
+  const estimatedCost = accounting.cost;
   const grossCapex = secExtracts.reduce((sum, extract) => sum + (extract.capex || 0), 0);
   const totalAiRevenue = secExtracts.reduce((sum, extract) => sum + (extract.aiRevenue || 0), 0);
 
@@ -315,8 +321,8 @@ export async function persistDigestMetrics(
     sectors_active: Object.keys(digest.categories).length,
     feeds_healthy: healthyFeeds,
     feeds_failing: failingFeeds,
-    total_tokens_used: digest.usage.totalTokens,
-    estimated_cost: Math.round(estimatedCost * 1000000) / 1000000,
+    total_tokens_used: accounting.totalTokens,
+    estimated_cost: estimatedCost,
     top_sector: Object.entries(sectorCounts).sort((a, b) => b[1].count - a[1].count)[0]?.[0] || null,
     top_ticker: Object.entries(mentionMap).sort((a, b) => b[1].count - a[1].count)[0]?.[0] || null,
     digest_status: status,
@@ -326,7 +332,7 @@ export async function persistDigestMetrics(
   });
 
   if (digestRunId) await computeAndStoreTrending(runDate, digest);
-  await checkBudget(estimatedCost);
+  if (estimatedCost !== null) await checkBudget(estimatedCost);
   logger.info("✅ Metrics written to Supabase");
   return articleIds;
 }
@@ -343,8 +349,8 @@ async function checkBudget(todayCost: number): Promise<void> {
     );
   }
 
-  const monthlyTotal = (await getRolling30DaySpend()) + todayCost;
-  if (monthlyTotal >= budgetMonthlyUsd) {
+  const monthlyTotal = await getRolling30DaySpend();
+  if (monthlyTotal !== null && monthlyTotal >= budgetMonthlyUsd) {
     alerts.push(
       `⚠️ <b>AI Cost Alert — Monthly budget hit</b>\n` +
         `30-day spend: <b>$${monthlyTotal.toFixed(4)}</b>\n` +

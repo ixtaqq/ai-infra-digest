@@ -41,7 +41,8 @@ describe("scheduled-delivery workflow/runtime parity", () => {
     );
 
     expect(result.error).toBeUndefined();
-    expect(result.status).toBe(0);
+    expect(result.status).toBe(1);
+    expect(`${result.stdout}\n${result.stderr}`).toContain("scheduled delivery requires a database");
     expect(`${result.stdout}\n${result.stderr}`).not.toContain("getUpdates");
   });
 });

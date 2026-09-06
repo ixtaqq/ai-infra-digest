@@ -1,3 +1,4 @@
+import { accountedFetch } from "../utils/ai-accounting";
 import OpenAI from "openai";
 import { z } from "zod";
 import type { RankingExplanation } from "../utils/ranking";
@@ -130,7 +131,7 @@ function createClient(): OpenAI {
     baseURL: config.ai.baseUrl,
     timeout: 180000,
     maxRetries: 0,
-    fetch: globalThis.fetch,
+    fetch: accountedFetch("ai", config.ai.provider),
   });
 }
 
@@ -142,7 +143,7 @@ function createFallbackClient(): OpenAI | null {
     baseURL: fb.baseUrl,
     timeout: 180000,
     maxRetries: 0,
-    fetch: globalThis.fetch,
+    fetch: accountedFetch("ai-fallback", "fallback"),
   });
 }
 

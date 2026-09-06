@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   isConfigured: vi.fn(),
   claimUserDelivery: vi.fn(),
   logUserDelivery: vi.fn(),
+  wasUserDeliveredToday: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock("../config", () => ({
@@ -25,6 +26,7 @@ vi.mock("../utils/supabase", () => ({
     getDigestPublication: h.getDigestPublication,
     claimUserDelivery: h.claimUserDelivery,
     logUserDelivery: h.logUserDelivery,
+    wasUserDeliveredToday: h.wasUserDeliveredToday,
   },
 }));
 vi.mock("../sender/telegram", () => ({ sendValidationFollowUp: vi.fn() }));
@@ -51,12 +53,16 @@ const generated = {
   earningsAnalyses: [],
   stockPrices: new Map(),
   activeWatches: [],
-  capabilities: { rss: { state: "available", detail: "ok" } },
+  capabilities: Object.fromEntries(["primaryAi", "fallbackAi", "embeddings", "earnings", "supabase", "slack", "email"].map(key => [key, { state: "enabled", detail: "fixture" }])),
 } as unknown as GeneratedDigest;
 
 beforeEach(() => {
   h.generateDigest.mockReset().mockResolvedValue(generated);
-  h.deliverDigest.mockReset().mockResolvedValue({ success: true });
+  h.deliverDigest.mockReset().mockImplementation(async (_edition, _chat, _prefs, _date, finalize) => {
+    const result = { success: true };
+    if (finalize) await finalize(result);
+    return result;
+  });
   h.persistDigestMetrics.mockReset().mockResolvedValue(new Map());
   h.createDigestPublication.mockReset().mockResolvedValue(17);
   h.getDigestPublication.mockReset().mockImplementation(async () => ({
@@ -88,7 +94,7 @@ describe("editorial pipeline publication", () => {
   it("persists and publishes before delivery", async () => {
     await expect(runPipeline()).resolves.toBe(true);
 
-    expect(h.persistDigestMetrics).toHaveBeenCalledWith(generated, "success");
+    expect(h.persistDigestMetrics).toHaveBeenCalledWith(generated, "running");
     expect(h.createDigestPublication).toHaveBeenCalledWith(
       "2026-08-19",
       expect.objectContaining({ schemaVersion: 1, formattedMessage: "digest" }),
@@ -171,7 +177,7 @@ describe("editorial pipeline publication", () => {
       expect.objectContaining({
         publicationId: 17,
         formattedMessage: "first immutable edition",
-      })
+      }), undefined, undefined, undefined, expect.any(Function)
     );
   });
 });

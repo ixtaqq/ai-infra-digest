@@ -1,7 +1,9 @@
+import { config } from "../config";
+import { AI_PROMPT_VERSION, AI_ANALYSIS_SCHEMA_VERSION } from "../processor/versions";
 /**
  * File-based AI response cache.
  *
- * Cache key: SHA-256 of sorted article URLs, truncated to 16 hex chars.
+ * Cache key: SHA-256 of versioned source inputs and model configuration.
  * TTL: 23 hours — safe to re-use within the same calendar day but expires
  * before the next day's run so stale results never carry forward.
  *
@@ -25,7 +27,14 @@ interface CacheEntry {
 }
 
 function cacheKey(articleUrls: string[]): string {
-  const sorted = [...articleUrls].sort().join("|");
+  const sorted = JSON.stringify({
+    inputs: [...articleUrls].sort(), prompt: AI_PROMPT_VERSION, schema: AI_ANALYSIS_SCHEMA_VERSION,
+    provider: config.ai.provider, endpoint: config.ai.baseUrl,
+    model: config.ai.model, fastModel: config.ai.fastModel,
+    fallback: config.ai.fallback ? {
+      endpoint: config.ai.fallback.baseUrl, model: config.ai.fallback.model, fastModel: config.ai.fallback.fastModel,
+    } : null,
+  });
   return createHash("sha256").update(sorted).digest("hex").slice(0, 16);
 }
 

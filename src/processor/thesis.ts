@@ -1,3 +1,4 @@
+import { accountedFetch } from "../utils/ai-accounting";
 /**
  * Bull/Bear Thesis Snapshots (v10) — per-ticker AI investment narrative,
  * refreshed weekly from accumulated pipeline data.
@@ -237,7 +238,7 @@ export async function generateTheses(): Promise<ThesisRow[]> {
 
   const data = await withRetry(
     async () => {
-      const res = await fetch(`${url}/chat/completions`, {
+      const res = await accountedFetch("thesis", config.ai.provider)(`${url}/chat/completions`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
         body: JSON.stringify({

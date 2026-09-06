@@ -1,3 +1,4 @@
+import { accountedFetch } from "../utils/ai-accounting";
 /**
  * SEC Filing AI Processor
  *
@@ -102,7 +103,7 @@ function createClient(): OpenAI {
     baseURL: config.ai.baseUrl,
     timeout: 120000,
     maxRetries: 2,
-    fetch: globalThis.fetch,
+    fetch: accountedFetch("sec", config.ai.provider),
   });
 }
 

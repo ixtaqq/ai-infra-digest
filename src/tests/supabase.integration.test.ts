@@ -316,7 +316,7 @@ describe("Supabase Integration", () => {
       await expect(supabase.claimUserDelivery(12345, "2026-08-15")).resolves.toBe(false);
 
       mockFetch.mockResolvedValueOnce({ ok: false, status: 503 });
-      await expect(supabase.claimUserDelivery(12345, "2026-08-15")).resolves.toBe(false);
+      await expect(supabase.claimUserDelivery(12345, "2026-08-15")).rejects.toThrow("HTTP 503");
     });
 
     it("clears the claim timestamp when recording the final delivery state", async () => {

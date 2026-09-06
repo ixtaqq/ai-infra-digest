@@ -10,6 +10,8 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 
 The checked-in package version is **`1.0.1`** (`package.json`). The phase and `vN` labels below are implementation milestones, not package-version claims. The scheduled GitHub Actions jobs execute the current `main` branch; optional stages still depend on the credentials configured for each deployment.
 
+Local stabilization work dated **2026-09-06** implements the two prioritized reliability milestones. See [changes, rollout, recovery, and remaining gates](docs/stabilization.md). These changes have not been deployed.
+
 ### Deployment-dependent capabilities
 
 These capabilities are implemented in the repository but are opt-in at runtime. Missing or unusable optional credentials affect only the relevant stage.
@@ -20,7 +22,7 @@ These capabilities are implemented in the repository but are opt-in at runtime. 
 | **Earnings transcripts** | `ROIC_AI_API_KEY` | Earnings collection and analysis are skipped | **Disabled** — no `ROIC_AI_API_KEY` secret is configured |
 | **AI provider fallback** | `AI_FALLBACK_API_KEY` plus optional `AI_FALLBACK_*` settings | The primary provider is used on its own | **Disabled** — no `AI_FALLBACK_API_KEY` secret is configured |
 
-The production status above describes the current GitHub Actions secret configuration; local `.env` values can enable these stages independently. Never copy real credentials into `.env.example`, documentation, or `supabase/config.toml`.
+The production status above is a historical configuration snapshot, not reverified during local stabilization; local `.env` values can enable these stages independently. Never copy real credentials into `.env.example`, documentation, or `supabase/config.toml`.
 
 ---
 
@@ -44,10 +46,10 @@ The production status above describes the current GitHub Actions secret configur
 - **Anchored impact rubric** — 1–10 scale with tier anchors: 1–3 routine, 4–6 notable, 7–8 significant surprise, 9–10 market-moving; scores ≥ 8 require a justification sentence
 - **Synthesis pass** — market outlook, top stocks, daily summary
 - **Token tracking** — `prompt_tokens`, `completion_tokens`, `total_tokens` per run, both model names stored in Supabase
-- **AI response caching** — SHA-256 hash of article URLs as cache key; 23-hour TTL prevents redundant AI spend on same article set during dev re-runs
+- **AI response caching** — SHA-256 hash of source content and prompt/schema/provider/model identities as cache key; 23-hour TTL prevents redundant AI spend on same article set during dev re-runs
 - **Cross-source grounding (v9.1)** — each article is annotated with a one-line note linking it to same-run SEC filings, earnings guidance, or stock moves for matching tickers; zero extra DB calls
 - **Daily Deep-Dive (v9.2)** — the highest-scoring article gets a full bull/bear/context thesis (🟢/🔴/📊) appended to the bear-case AI pass; one prompt extension, no extra AI round-trip
-- **Prompt-injection guardrails (v10.2)** — untrusted RSS content is passed to the AI as fenced, escaped JSON (not interpolated prose), with an explicit system instruction to treat article fields as data only, never as instructions — a hostile feed can't steer the model's output
+- **Prompt-injection guardrails (v10.2)** — untrusted RSS content is passed to the AI as fenced, escaped JSON (not interpolated prose), with an explicit system instruction to treat article fields as data only, never as instructions — this reduces prompt-injection exposure but does not guarantee immunity
 - **Zod-validated AI responses (v10.2)** — every AI JSON response (classification, synthesis, SEC extraction, bear cases, thesis, earnings) is parsed through a zod schema that coerces type-confused fields (e.g. a numeric field returned as a string) instead of letting them crash downstream `.toFixed()` calls or silently corrupt state
 
 ### 🏛️ SEC Filing Intelligence
@@ -101,7 +103,7 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 |---------|-------------|
 | `/start` | 4-step onboarding: delivery time → watchlist → impact filter → digest length |
 | `/help` | Show all available commands |
-| `/digest` | Show recent stored articles (filtered by your watchlist/sector if set) |
+| `/digest` | Currently shows operator guidance; a stored-edition preview remains planned |
 | `/digest watchlist` | Filter stored articles by your saved watchlist tickers |
 | `/digest sector=Chips_&_GPUs` | Filter stored articles by sector |
 | `/sources` | List all 68 tracked RSS feeds with health status |
@@ -141,9 +143,9 @@ npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends 
 - **Custom delivery times** — each user sets `preferred_time` via `/start` onboarding or `/settings`
 - **Optional delivery copies** — `/delivery` adds email or Slack copies using the same filters and digest length; Telegram stays primary so retry/idempotency behavior remains deterministic
 - **Timezone-aware** — delivery triggers at the user's local time; the run date itself is computed in the configured timezone (not UTC), so digests, delta comparisons, and delivery logs never drift a day off during part of the day
-- **Idempotent and retryable** — delivery is claimed atomically per `(chat_id, run_date)` through the `claim_user_delivery` RPC immediately before sending; failed claims can retry and stale pending leases can be reclaimed without allowing concurrent sends
+- **Idempotent and retryable** — delivery is claimed atomically per `(chat_id, run_date)` through the `claim_user_delivery` RPC immediately before sending; confirmed failures can retry; pending and ambiguous outcomes require manual reconciliation and are never reclaimed by age
 - **GitHub Actions cron** — runs every 10 minutes, checks all active users, and delivers anyone whose preferred local time has passed without a successful delivery for that date
-- **Budget caps** — daily cap triggers a Telegram alert; the 30-day rolling cap is a real **pre-spend gate** — once hit, the run is skipped entirely (no AI calls made) until spend drops below the cap
+- **Advisory budgets** — checks use provider-reported costs from the private attempt ledger. Unknown prices or unavailable accounting produce a warning, not a zero-dollar estimate. These settings are not strict spending caps; see the stabilization notes.
 
 ### 🌐 Production Webhook Bot
 - **`src/webhook.ts`** — zero-dependency Node `http` server; registers all command handlers in non-polling mode
@@ -210,7 +212,7 @@ and their daily aggregate rows.
 - **Source health alerts** — if >20% of RSS feeds fail, admin gets a Telegram alert listing failing feeds
 - **Dead feed detection** — feeds failing 3+ consecutive runs are flagged as likely dead/URL-changed (distinct from a transient blip) in logs and error events
 - **High-impact alert system** — articles scoring 8+/10 trigger idempotent alerts during the daily editorial run for opted-in users; a service-role claim prevents repeats across overlapping or rerun pipelines
-- **Budget cap** — daily threshold alerts; 30-day rolling cap actually blocks the run pre-spend (see Scheduled Delivery above)
+- **Budget checks** — advisory daily/rolling checks over known provider-reported costs; unknown pricing remains explicit.
 - **AI provider failover** — optional `AI_FALLBACK_*` secondary provider tried once if the primary exhausts all retries, so one provider outage doesn't abort the whole digest; disabled in current scheduled production until its key is configured
 - **`withRetry<T>()`** — exponential backoff + full-jitter for AI calls (including embeddings and bear-case generation); non-retryable errors (401) bypass retry
 - **`tryStage<T>()`** — never-throws wrapper for optional stages (SEC, earnings, stocks); one stage failing never crashes the pipeline
@@ -373,7 +375,7 @@ cp .env.example .env
 | `SMTP_PASS` | ❌ | — | 16-char Gmail App Password (no spaces; 2FA required on the account) |
 | `DIGEST_EMAIL_TO` | ❌ | — | Recipient email address for digest delivery |
 | `AI_BUDGET_DAILY_USD` | ❌ | `0.50` | Daily AI spend cap; Telegram alert when breached |
-| `AI_BUDGET_MONTHLY_USD` | ❌ | `5.00` | 30-day rolling AI spend cap |
+| `AI_BUDGET_MONTHLY_USD` | ❌ | `5.00` | Advisory 30-day threshold for known AI spend |
 | `MAX_ARTICLES_FOR_AI` | ❌ | `35` | Maximum deduplicated articles sent to the AI per run (clamped to 1–100) |
 
 ### Get Your Telegram Chat ID

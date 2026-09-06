@@ -1,3 +1,4 @@
+import { accountedFetch } from "../utils/ai-accounting";
 /**
  * Devil's Advocate — generates a skeptical bear case for high-impact articles.
  *
@@ -147,7 +148,7 @@ export async function generateBearCases(
   try {
     const data = await withRetry(
       async () => {
-        const res = await fetch(`${url}/chat/completions`, {
+        const res = await accountedFetch("bear-cases", config.ai.provider)(`${url}/chat/completions`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
