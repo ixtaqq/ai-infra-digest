@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 490">
+  <defs>
+    <pattern id="grid" width="14" height="14" patternUnits="userSpaceOnUse"><path d="M14 0H0V14" fill="none" stroke="#a8af98" stroke-width=".6"/></pattern>
+    <pattern id="vents" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M2 0V8" stroke="#7c866c" stroke-width="1"/></pattern>
+  </defs>
+  <g fill="none" stroke="#bdc3ae" stroke-width="1">
+    <path d="m55 379 210 104 213-108-211-101z"/>
+    <path d="M77 132V389M267 36V483M451 128V388" stroke-dasharray="3 6"/>
+    <ellipse cx="266" cy="282" rx="206" ry="155" stroke-dasharray="2 8"/>
+  </g>
+  <g stroke="#7a8568" stroke-linejoin="round">
+    <path d="m77 330 189 92 185-94v24l-185 94-189-92z" fill="#b4bda0"/>
+    <path d="m77 330 188-94 186 92-185 94z" fill="#e3e7d6"/>
+    <path d="m105 329 160-79 156 78-155 78z" fill="url(#grid)"/>
+    <path d="M266 422v24M92 346l157 77" fill="none"/>
+    <path d="m160 326 104-51 104 52-103 52z" fill="#c4ceb0"/>
+    <path d="m239 312 25-12 29 14-15 8 17 8-31 15-27-13 16-8z" fill="#526137" stroke="none"/>
+  </g>
+  <g stroke="#7a8568" stroke-linejoin="round">
+    <path d="m77 229 189 92 185-94v24l-185 94-189-92z" fill="#a5b092"/>
+    <path d="m77 229 188-94 186 92-185 94z" fill="#e5e9da"/>
+    <path d="m103 230 162-81 161 80-160 81z" fill="url(#grid)"/>
+    <g fill="#879774"><path d="m155 228 50-25 47 24-49 25z"/><path d="m225 194 39-19 49 24-39 20z"/><path d="m227 263 49-25 38 19-49 25z"/><path d="m293 230 39-20 43 21-39 20z"/></g>
+    <path d="m92 245 155 76M266 321v24" fill="none"/>
+    <path d="m111 252 106 52" stroke="#526137" stroke-width="5" stroke-dasharray="4 5"/>
+  </g>
+  <g stroke="#677651" stroke-linejoin="round">
+    <path d="m77 132 189 92 185-94v24l-185 94-189-92z" fill="#869771"/>
+    <path d="m77 132 188-94 186 92-185 94z" fill="#d6dfc5"/>
+    <path d="m101 132 164-82 160 80-159 81z" fill="url(#grid)"/>
+    <path d="m190 132 76-38 73 36v12l-73 37-76-37z" fill="#6d8056"/>
+    <path d="m190 120 76-38 73 36-73 37z" fill="#eef1e5"/>
+    <path d="m205 120 61-30 58 28-58 30z" fill="url(#vents)"/>
+    <path d="M266 224v24M91 148l157 77" fill="none"/>
+  </g>
+  <g font-family="monospace" font-size="9" fill="#526137">
+    <path d="M379 95h61l28-24M430 263h35M404 396h59" fill="none" stroke="#8d987b"/>
+    <text x="430" y="62">01 / COMPUTE</text><text x="435" y="282">02 / NETWORK</text><text x="408" y="415">03 / POWER</text>
+    <text x="22" y="60" letter-spacing="2">FIG. 001</text>
+    <text x="22" y="75" fill="#747c69" font-size="8">THE PHYSICAL AI STACK</text>
+  </g>
+</svg>

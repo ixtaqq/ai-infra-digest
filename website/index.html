@@ -7,10 +7,10 @@
   <meta name="description" content="Goldirham Stack collects, analyzes, and delivers AI infrastructure news from 68 RSS feeds, SEC filings, and market data — straight to your Telegram and live dashboard.">
   <meta property="og:title" content="Goldirham Stack">
   <meta property="og:description" content="Daily intelligence for the AI infrastructure age. RSS feeds, SEC filings, AI analysis, Telegram delivery, and a premium dashboard.">
-  <meta name="theme-color" content="#FF6B2C">
+  <meta name="theme-color" content="#f7f0e5">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Newsreader:ital,wght@0,400;0,500;1,400&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
 
 <style>
 /* ══════════════════════════════════════════════════
@@ -413,6 +413,10 @@ footer a:hover{color:var(--lime)}
   .road-panel.swap .road-panel-head,.road-panel.swap .road-points,.road-panel.swap .road-tags{animation:none}
 }
 </style>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/editorial.css">
+<link rel="stylesheet" href="/landing.css">
+<script src="/briefing.js" defer></script>
 </head>
 <body>
 <a href="#main" class="skip-link">Skip to content</a>
@@ -475,34 +479,41 @@ footer a:hover{color:var(--lime)}
 <!-- ══════════ HERO ══════════ -->
 <section class="hero">
   <canvas id="rain" aria-hidden="true"></canvas>
-  <div class="hero-glow glow-a" aria-hidden="true"></div>
-  <div class="hero-glow glow-b" aria-hidden="true"></div>
   <div class="hero-inner">
-    <div class="badge"><span class="pip" aria-hidden="true"></span>DAILY INTELLIGENCE FOR THE AI INFRASTRUCTURE AGE</div>
-    <h1>
-      <span class="mask l1"><span>Goldirham Stack</span></span>
-      <span class="mask l2"><span>AI Infrastructure</span></span>
-      <span class="mask l3"><span>Intelligence</span></span>
-    </h1>
-    <p class="lede">Collects <b>68 RSS feeds</b>, analyzes them with <b>two-tier AI routing</b>, extracts <b>SEC filings</b> from 35 companies via two-pass extraction, optionally mines <b>earnings call transcripts</b> from 15 companies with guidance delta, and delivers a curated morning digest — straight to your Telegram and live analytics dashboard.</p>
-    <div class="cta-row">
-      <a class="btn btn-orange" href="/dashboard/">🚀 View Live Dashboard</a>
-      <a class="btn" href="https://t.me/ai_infra_digest_bot" target="_blank" rel="noopener">🤖 Try the Bot</a>
-      <button class="btn" id="palHint">⌘K · Jump anywhere</button>
+    <nav class="experience-nav" aria-label="Explore Goldirham"><a href="#briefing" aria-current="location">Daily brief</a><a href="/dashboard/">Research desk ↗</a><a href="#how">How it works</a></nav>
+    <div class="badge"><span class="pip" aria-hidden="true"></span>Independent intelligence. Every morning.</div>
+    <h1>A clearer view <em>of AI.</em></h1>
+    <p class="lede">The chips, power, and capital behind the headlines.<br> One thoughtful briefing connects it all.</p>
+    <div class="briefing-workbench" id="briefing">
+      <div class="briefing-topics" role="tablist" aria-label="Explore briefing coverage">
+        <button id="briefing-compute" type="button" role="tab" aria-selected="true" aria-controls="briefingPanel" data-briefing-topic="compute"><span class="topic-symbol" aria-hidden="true">▦</span><strong>Compute</strong><small>Chips &amp; capacity</small></button>
+        <button id="briefing-power" type="button" role="tab" aria-selected="false" aria-controls="briefingPanel" tabindex="-1" data-briefing-topic="power"><span class="topic-symbol" aria-hidden="true">↯</span><strong>Power</strong><small>Energy &amp; cooling</small></button>
+        <button id="briefing-capital" type="button" role="tab" aria-selected="false" aria-controls="briefingPanel" tabindex="-1" data-briefing-topic="capital"><span class="topic-symbol" aria-hidden="true">↗</span><strong>Capital</strong><small>Markets &amp; filings</small></button>
+      </div>
+      <article class="briefing-card" id="briefingPanel" role="tabpanel" aria-labelledby="briefing-compute" tabindex="0">
+        <div class="briefing-masthead"><span class="briefing-seal" aria-hidden="true">g.</span><span>Your daily perspective<small>Goldirham Stack</small></span><span class="sample-label">Editorial preview</span></div>
+        <div class="briefing-story" aria-live="polite" aria-atomic="true">
+          <div class="briefing-category"><span id="briefing-label">Compute &amp; chips</span><span aria-hidden="true">↗</span></div>
+          <h2 id="briefing-title">Follow the capacity behind the capability.</h2>
+          <p id="briefing-summary">A model announcement is only part of the story. Our compute coverage connects chip supply, advanced packaging, and datacenter expansion.</p>
+          <div class="briefing-watch"><span>What we follow</span><p id="briefing-watch">GPU supply · Foundry capacity · Cloud buildouts</p></div>
+        </div>
+        <div class="briefing-counterpoint"><span class="counterpoint-mark" aria-hidden="true">?</span><div><span>The question worth asking</span><p id="briefing-question">Does new capacity translate into sustained demand?</p></div></div>
+        <div class="briefing-provenance"><span aria-hidden="true">◎</span><span id="briefing-sources">Company filings + industry reporting</span></div>
+        <a class="btn btn-orange briefing-subscribe" href="https://t.me/ai_infra_digest_bot" target="_blank" rel="noopener">Get the daily brief <span aria-hidden="true">↗</span></a>
+        <p class="briefing-note">Delivered on Telegram. Set your preferred time in the bot.</p>
+      </article>
     </div>
-    <div class="stats">
-      <div><span class="num" data-count="68">0</span> <span>RSS Feeds</span></div><span class="sep">•</span>
-      <div><span class="num" data-count="10">0</span> <span>Sectors</span></div><span class="sep">•</span>
-      <div><span class="num" data-count="35">0</span> <span>SEC Companies</span></div><span class="sep">•</span>
-      <div><span class="num" data-count="380">0</span> <span>Unit Tests</span></div>
-    </div>
-    <div class="gh-row">★ <a href="https://github.com/ixtaqq/ai-infra-digest" target="_blank" rel="noopener">Star on GitHub</a></div>
+    <div class="stats"><div><span class="num" data-count="68">68</span><span>news sources</span></div><div><span class="num" data-count="10">10</span><span>sectors connected</span></div><div><span class="num" data-count="35">35</span><span>companies tracked</span></div></div>
+    <button class="btn" id="palHint">Quick navigation</button>
   </div>
 </section>
+<div class="coverage-strip" aria-label="Coverage areas"><span class="strip-label">FOLLOW THE VALUE CHAIN</span><b>Semiconductors</b><span aria-hidden="true">↗</span><b>Cloud &amp; compute</b><span aria-hidden="true">↗</span><b>Datacenters</b><span aria-hidden="true">↗</span><b>Power &amp; cooling</b><span aria-hidden="true">↗</span><b>Capital &amp; earnings</b></div>
 
 <!-- ══════════ LIVE DASHBOARD ══════════ -->
 <section id="demo" style="padding-top:10px">
   <div class="wrap">
+    <div class="preview-heading"><h2>A wider view. A sharper signal.</h2><p>THE RESEARCH DESK / ILLUSTRATIVE PREVIEW</p></div>
     <div class="window" data-reveal>
       <div class="win-bar">
         <span class="dot r" aria-hidden="true"></span><span class="dot y" aria-hidden="true"></span><span class="dot g" aria-hidden="true"></span>
@@ -514,7 +525,7 @@ footer a:hover{color:var(--lime)}
             <span class="dashboard-preview-kicker">OVERVIEW / 08:14 MYT</span>
             <strong class="dashboard-preview-title">Infrastructure signal</strong>
           </div>
-          <span class="dashboard-preview-live">DATA UPDATED</span>
+          <span class="dashboard-preview-live">SAMPLE DATA</span>
         </div>
         <div class="dashboard-preview-stats">
           <div class="dashboard-preview-stat"><span>ARTICLES TODAY</span><strong>142</strong><small>+18 vs avg</small></div>
@@ -601,7 +612,7 @@ footer a:hover{color:var(--lime)}
       <div class="feat" data-reveal style="--d:.4s"><span class="tag">LAYER</span><span class="ic" aria-hidden="true">📈</span><h3>Intelligence Layer</h3><p>Materializes <code>daily_derived_metrics</code> every run. Market Pulse surfaces WoW movers ≥ 20%; <code>/trends NVDA 30d</code> renders a Unicode sparkline.</p></div>
       <div class="feat" data-reveal style="--d:.47s"><span class="tag">TRUST</span><span class="ic" aria-hidden="true">⚖️</span><h3>Trust-Weighted Ranking</h3><p>👍/👎 votes learn per-source multipliers. Cosine-similarity corroboration boosts stories confirmed by several outlets; ⚠️ bear cases challenge the rest.</p></div>
       <div class="feat" data-reveal style="--d:.54s"><span class="tag">OPTIONAL</span><span class="ic" aria-hidden="true">🔢</span><h3>Embeddings + pgvector</h3><p>When an embedding key is configured, OpenAI vectors in Supabase enable semantic corroboration and relevance gating. Without one, URL/Jaccard fallbacks keep the pipeline running.</p></div>
-      <div class="feat" data-reveal style="--d:.61s"><span class="tag">SHIP</span><span class="ic" aria-hidden="true">🖥️</span><h3>Premium Live Dashboard</h3><p>Graphite + copper terminal UI. Public read-only deployment config, 6 charts, SEC filings table, full-table search, expandable rows with bear cases, auto-refresh every 60s.</p></div>
+      <div class="feat" data-reveal style="--d:.61s"><span class="tag">SHIP</span><span class="ic" aria-hidden="true">🖥️</span><h3>Premium Live Dashboard</h3><p>An open research desk for sector trends, company filings, and market context. Search the archive, compare signals, and expand each story to explore its bear case.</p></div>
     </div>
     <div class="chips" data-reveal>
       <span class="chip" style="--d:.05s">Chips &amp; GPUs</span>
@@ -691,8 +702,10 @@ footer a:hover{color:var(--lime)}
     <div class="road" data-reveal>
       <div class="road-side">
         <div class="road-overview">
-          <div class="road-number" id="roadNumber" aria-hidden="true">19</div>
-          <div class="road-progress" id="roadProgress" style="--progress:100%"><span id="roadPercent">100%</span></div>
+          <span class="road-overview-label">Selected phases</span>
+          <div class="road-overview-value"><span class="road-number" id="roadNumber">19</span><span class="road-total">/ 19</span></div>
+          <div class="road-progress" id="roadProgress" aria-hidden="true"></div>
+          <div class="road-overview-foot"><span>Release archive</span><span id="roadChapter">09 / 09</span></div>
         </div>
         <div class="road-side-copy">
           <div class="road-phase" id="roadSidePhase">Phase XIX · Aug 22</div>
@@ -778,9 +791,9 @@ footer a:hover{color:var(--lime)}
     <h2><span class="mask"><span>Ready to build <span class="lime">your own?</span></span></span></h2>
     <p>Star the repository, deploy your own instance, and start receiving daily AI infrastructure intelligence.</p>
     <div class="setup-cta">
-      <a class="btn btn-orange" href="/dashboard/">🚀 View Live Dashboard</a>
+      <a class="btn btn-orange" href="/dashboard/">Explore the research desk ↗</a>
       <a class="btn" href="https://github.com/ixtaqq/ai-infra-digest" target="_blank" rel="noopener">★ Star on GitHub</a>
-      <a class="btn" href="https://t.me/ai_infra_digest_bot" target="_blank" rel="noopener">🤖 Try the Bot</a>
+      <a class="btn" href="https://t.me/ai_infra_digest_bot" target="_blank" rel="noopener">Get the daily brief →</a>
     </div>
   </div>
 </section>
@@ -800,7 +813,7 @@ footer a:hover{color:var(--lime)}
 (function(){
 "use strict";
 var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-var finePtr = window.matchMedia('(pointer:fine)').matches;
+var finePtr = false;
 var REPO = 'https://github.com/ixtaqq/ai-infra-digest';
 var BOT  = 'https://t.me/ai_infra_digest_bot';
 
@@ -1011,7 +1024,7 @@ var roadNext = document.getElementById('roadNext');
 function renderRoadmap(index, focusTab){
   roadIndex = Math.max(0,Math.min(ROADMAP.length-1,index));
   var item = ROADMAP[roadIndex];
-  var completed = parseInt(item.count,10);
+  var phaseRange = item.number.split(/\D+/).map(Number);
   document.getElementById('roadNumber').textContent = item.number;
   document.getElementById('roadSidePhase').textContent = item.phase;
   document.getElementById('roadSideTitle').textContent = item.title;
@@ -1019,8 +1032,13 @@ function renderRoadmap(index, focusTab){
   document.getElementById('roadPanelPhase').textContent = item.phase;
   document.getElementById('roadPanelTitle').textContent = item.title;
   document.getElementById('roadPanelCount').textContent = item.count;
-  document.getElementById('roadPercent').textContent = Math.round(completed/19*100) + '%';
-  document.getElementById('roadProgress').style.setProperty('--progress',(completed/19*100) + '%');
+  document.getElementById('roadChapter').textContent = String(roadIndex+1).padStart(2,'0') + ' / ' + String(ROADMAP.length).padStart(2,'0');
+  var phaseStrip = document.getElementById('roadProgress');
+  phaseStrip.replaceChildren.apply(phaseStrip,Array.from({length:19},function(_,i){
+    var mark = document.createElement('span');
+    mark.className = i+1 >= phaseRange[0] && i+1 <= phaseRange[phaseRange.length-1] ? 'selected' : '';
+    return mark;
+  }));
   var points = document.getElementById('roadPoints');
   points.replaceChildren.apply(points,item.points.map(function(point){var li=document.createElement('li');li.textContent=point;return li;}));
   var tags = document.getElementById('roadTags');
@@ -1100,7 +1118,7 @@ function rainLoop(){
 }
 sizeRain();
 window.addEventListener('resize', sizeRain);
-if (!reduce) requestAnimationFrame(rainLoop);
+// The editorial layout uses a static infrastructure illustration.
 
 /* ---------- feature spotlight ---------- */
 document.querySelectorAll('.feat').forEach(function(card){

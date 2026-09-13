@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Goldirham Stack — Analytics Dashboard</title>
   <meta name="description" content="Goldirham Stack — premium AI infrastructure analytics dashboard.">
-  <meta name="theme-color" content="#ff6b2b">
+  <meta name="theme-color" content="#f7f0e5">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Newsreader:ital,wght@0,400;0,500;1,400&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="/dashboard/config.js"></script>
   <style>
@@ -26,26 +26,26 @@
       --text: #f4efe9;
       --text-dim: #a49a8f;
       --text-muted: #6f675e;
-      --gold: #ff6b2b;          /* brand orange */
-      --gold-light: #ff8c4d;
-      --gold-dim: rgba(255,107,43,0.15);
-      --lime: #8cff00;
-      --lime-light: #b6ff5e;
+      --gold: #a44e35;          /* brand orange */
+      --gold-light: #9a7850;
+      --gold-dim: rgba(164,78,53,0.15);
+      --lime: #70876a;
+      --lime-light: #697e85;
       --border: rgba(255,255,255,0.08);
       --border-light: rgba(255,255,255,0.04);
       --danger: #ef4444;
       --warn: #f59e0b;
-      --bullish: #8cff00;
-      --bearish: #ff6b2b;
+      --bullish: #70876a;
+      --bearish: #a44e35;
       --neutral: var(--text-muted);
       --shadow-card: 0 1px 3px rgba(0,0,0,0.3), 0 0 0 1px var(--border);
-      --shadow-hover: 0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,107,43,0.28);
+      --shadow-hover: 0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(164,78,53,0.28);
       --radius: 10px;
       --radius-sm: 6px;
       --transition: cubic-bezier(0.2, 0.7, 0.2, 1);
       --sidebar-w: 220px;
       --header-h: 60px;
-      --sans: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+      --sans: 'Manrope', system-ui, -apple-system, sans-serif;
       --mono: 'IBM Plex Mono', ui-monospace, monospace;
     }
 
@@ -98,7 +98,7 @@
     @keyframes rise-in { from { transform: translateY(115%); } to { transform: none; } }
 
     body {
-      font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
@@ -107,7 +107,7 @@
       -moz-osx-font-smoothing: grayscale;
     }
 
-    ::selection { background: rgba(255,107,43,0.3); color: #fff; }
+    ::selection { background: rgba(164,78,53,0.3); color: #fff; }
     ::-webkit-scrollbar { width: 4px; height: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 2px; }
@@ -147,9 +147,9 @@
     .sidebar-ind {
       position: absolute; left: 0; right: 0; height: 34px;
       border-radius: 999px; z-index: 0; opacity: 0;
-      background: rgba(255,107,43,0.12);
-      border: 1px solid rgba(255,107,43,0.4);
-      box-shadow: inset 0 0 18px rgba(255,107,43,0.25);
+      background: rgba(164,78,53,0.12);
+      border: 1px solid rgba(164,78,53,0.4);
+      box-shadow: inset 0 0 18px rgba(164,78,53,0.25);
       transition: top .4s var(--transition), opacity .3s;
     }
     .sidebar-link {
@@ -237,8 +237,8 @@
     .live-chip {
       display: flex; align-items: center; gap: 7px;
       font-family: var(--mono); font-size: 9.5px; letter-spacing: .18em;
-      color: var(--lime); border: 1px solid rgba(140,255,0,.3);
-      background: rgba(140,255,0,.06); border-radius: 999px; padding: 5px 11px;
+      color: var(--lime); border: 1px solid rgba(164,78,53,.3);
+      background: rgba(164,78,53,.06); border-radius: 999px; padding: 5px 11px;
       white-space: nowrap;
     }
     .live-chip i {
@@ -259,7 +259,7 @@
       font-size: 11px; font-weight: 400;
       width: 200px;
       outline: none;
-      font-family: 'Space Grotesk', sans-serif;
+      font-family: 'Manrope', sans-serif;
       transition: all 0.2s var(--transition);
     }
     .header-search input:focus {
@@ -279,7 +279,7 @@
       transform: translateY(-50%);
       font-size: 8px; background: var(--bg-hover);
       color: var(--text-muted); padding: 1px 5px;
-      border-radius: 3px; font-family: 'Space Grotesk', sans-serif;
+      border-radius: 3px; font-family: 'Manrope', sans-serif;
       border: 1px solid var(--border);
       pointer-events: none;
     }
@@ -299,12 +299,12 @@
       padding: 7px 17px; font-size: 11px; font-weight: 700;
       cursor: pointer; transition: all 0.3s var(--transition);
       white-space: nowrap;
-      box-shadow: 0 4px 18px rgba(255,107,43,0.3);
+      box-shadow: 0 4px 18px rgba(164,78,53,0.3);
     }
     .header-btn-primary:hover {
       background: var(--gold-light);
       transform: translateY(-2px);
-      box-shadow: 0 10px 30px rgba(255,107,43,0.5);
+      box-shadow: 0 10px 30px rgba(164,78,53,0.5);
     }
 
     /* ─── Container ── */
@@ -328,7 +328,7 @@
     }
     .skeleton-card::after {
       content: ''; position: absolute; inset: 0;
-      background: linear-gradient(90deg, transparent, rgba(255,107,43,0.03), transparent);
+      background: linear-gradient(90deg, transparent, rgba(164,78,53,0.03), transparent);
       animation: shimmer 2s infinite; transform: translateX(-100%);
     }
     @keyframes shimmer { 100% { transform: translateX(100%); } }
@@ -337,7 +337,7 @@
     .skeleton-card .bar-lg { height: 24px; background: var(--border); border-radius: 2px; width: 45%; }
     .skeleton-card .bar-sm { height: 8px; background: var(--border-light); border-radius: 2px; width: 80%; }
     .skeleton-chart { height: 240px; background: var(--bg-card); border-radius: var(--radius); margin-bottom: 12px; border: 1px solid var(--border-light); position: relative; overflow: hidden; }
-    .skeleton-chart::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,107,43,0.03), transparent); animation: shimmer 2s infinite; transform: translateX(-100%); }
+    .skeleton-chart::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(164,78,53,0.03), transparent); animation: shimmer 2s infinite; transform: translateX(-100%); }
 
     /* ─── Header Greeting Area ── */
     .greeting-section {
@@ -367,7 +367,7 @@
       margin: -8px 0 18px; padding: 8px 10px;
       border-left: 2px solid var(--gold);
       color: var(--text-dim); font-size: 10px; line-height: 1.5;
-      background: rgba(255,107,43,0.035);
+      background: rgba(164,78,53,0.035);
     }
     .access-note strong { color: var(--gold-light); font-family: var(--mono); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
 
@@ -390,7 +390,7 @@
       outline: 2px solid var(--lime); outline-offset: -2px;
       background: var(--bg-hover);
     }
-    .article-row[aria-expanded="true"] { background: rgba(255,107,43,0.04); }
+    .article-row[aria-expanded="true"] { background: rgba(164,78,53,0.04); }
 
     /* ─── KPI Cards ── */
     .kpi-grid {
@@ -410,13 +410,13 @@
     /* mouse-tracked spotlight, same gesture as the landing page feature cards */
     .kpi-card::before, .chart-card::before {
       content: ''; position: absolute; inset: 0; pointer-events: none;
-      background: radial-gradient(340px 180px at var(--mx,50%) var(--my,0%), rgba(255,107,43,.12), transparent 60%);
+      background: radial-gradient(340px 180px at var(--mx,50%) var(--my,0%), rgba(164,78,53,.12), transparent 60%);
       opacity: 0; transition: opacity .4s;
     }
     .kpi-card:hover::before, .chart-card:hover::before { opacity: 1; }
     .kpi-card:hover {
       transform: translateY(-4px);
-      border-color: rgba(255,107,43,0.45);
+      border-color: rgba(164,78,53,0.45);
       box-shadow: var(--shadow-hover);
     }
     .kpi-card .kpi-label {
@@ -465,7 +465,7 @@
     }
     .chart-card:hover {
       transform: translateY(-3px);
-      border-color: rgba(255,107,43,0.35);
+      border-color: rgba(164,78,53,0.35);
       box-shadow: 0 14px 44px rgba(0,0,0,.45);
     }
     .chart-card > *, .chart-card canvas { position: relative; }
@@ -515,8 +515,8 @@
       font-family: var(--mono);
     }
     .chart-tabs button.active {
-      background: rgba(255,107,43,0.12);
-      border: 1px solid rgba(255,107,43,0.4);
+      background: rgba(164,78,53,0.12);
+      border: 1px solid rgba(164,78,53,0.4);
       color: var(--gold);
       font-weight: 600;
       padding: 2px 10px;
@@ -533,7 +533,7 @@
       padding: 20px 22px;
       transition: all 0.3s var(--transition);
     }
-    .plans-card:hover { border-color: rgba(255,107,43,0.3); }
+    .plans-card:hover { border-color: rgba(164,78,53,0.3); }
     .plans-card h3 {
       font-size: 10.5px; font-weight: 600;
       color: var(--text-dim); font-family: var(--mono);
@@ -568,8 +568,8 @@
 
     /* ─── Quote Widget ── */
     .quote-card {
-      background: linear-gradient(135deg, rgba(255,107,43,0.04), rgba(255,107,43,0.01));
-      border: 1px solid rgba(255,107,43,0.12);
+      background: linear-gradient(135deg, rgba(164,78,53,0.04), rgba(164,78,53,0.01));
+      border: 1px solid rgba(164,78,53,0.12);
       border-radius: var(--radius);
       padding: 20px 22px;
       text-align: center;
@@ -598,8 +598,8 @@
     }
 
     .card-ai {
-      background: rgba(255,107,43,0.02);
-      border-color: rgba(255,107,43,0.1);
+      background: rgba(164,78,53,0.02);
+      border-color: rgba(164,78,53,0.1);
       position: relative;
     }
     .card-ai h3 { color: var(--gold); }
@@ -614,7 +614,7 @@
       overflow-x: auto;
       transition: all 0.3s var(--transition);
     }
-    .table-card:hover { border-color: rgba(255,107,43,0.28); }
+    .table-card:hover { border-color: rgba(164,78,53,0.28); }
     .table-card > h3 {
       font-size: 10.5px; font-weight: 600;
       margin-bottom: 14px;
@@ -650,9 +650,9 @@
     .filter-pill:hover { border-color: var(--gold); color: var(--text); transform: translateY(-1px); }
     .filter-pill.active {
       background: var(--gold); color: #160a03; border-color: var(--gold); font-weight: 600;
-      box-shadow: 0 3px 14px rgba(255,107,43,.35);
+      box-shadow: 0 3px 14px rgba(164,78,53,.35);
     }
-    .filter-pill.impact-bullish.active { background: var(--lime); border-color: var(--lime); color: #0a0705; box-shadow: 0 3px 14px rgba(140,255,0,.35); }
+    .filter-pill.impact-bullish.active { background: var(--lime); border-color: var(--lime); color: #0a0705; box-shadow: 0 3px 14px rgba(164,78,53,.35); }
     .filter-pill.impact-bearish.active { background: var(--danger); border-color: var(--danger); color: #fff; box-shadow: none; }
     .filter-pill.impact-neutral.active { background: var(--text-dim); border-color: var(--text-dim); color: #0a0705; box-shadow: none; }
     .filter-search {
@@ -665,7 +665,7 @@
     .filter-clear {
       font-size: 10px; color: var(--text-muted); cursor: pointer;
       padding: 3px 8px; border-radius: 2px; border: 1px dashed var(--border);
-      background: transparent; transition: all 0.2s; font-family: 'Space Grotesk', sans-serif;
+      background: transparent; transition: all 0.2s; font-family: 'Manrope', sans-serif;
     }
     .filter-clear:hover { border-color: var(--danger); color: var(--danger); }
 
@@ -703,7 +703,7 @@
       font-weight: 600; font-size: 12px; margin-top: 8px;
       transition: all 0.2s var(--transition);
     }
-    .error-box button:hover { box-shadow: 0 0 20px rgba(255,107,43,0.3); }
+    .error-box button:hover { box-shadow: 0 0 20px rgba(164,78,53,0.3); }
 
     .config-form {
       max-width: 480px; margin: 24px auto;
@@ -725,7 +725,7 @@
       font-weight: 600; font-size: 12px; width: 100%;
       transition: all 0.2s var(--transition);
     }
-    .config-form button:hover { box-shadow: 0 0 20px rgba(255,107,43,0.3); }
+    .config-form button:hover { box-shadow: 0 0 20px rgba(164,78,53,0.3); }
     .config-form .note { font-size: 10px; color: var(--text-dim); margin-top: 8px; }
 
     .no-data-card {
@@ -752,7 +752,7 @@
       cursor: pointer; transition: all 0.2s var(--transition);
       font-family: 'IBM Plex Mono', monospace; color: var(--text-dim);
     }
-    .ticker-toggle button:hover { border-color: rgba(255,107,43,0.3); }
+    .ticker-toggle button:hover { border-color: rgba(164,78,53,0.3); }
 
     /* ─── Responsive ── */
     @media (max-width: 1024px) {
@@ -828,6 +828,9 @@
       .greeting-section h1 > span.rise { animation: none; }
     }
   </style>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/editorial.css">
+<link rel="stylesheet" href="/dashboard/desk.css">
 </head>
 <body>
 
@@ -841,8 +844,8 @@
 
   <!-- ─── Sidebar ── -->
   <aside class="sidebar">
-    <div class="sidebar-logo"><span class="spark" aria-hidden="true">✦</span>Goldirham</div>
-    <div class="sidebar-sub">Studio · <span class="accent">v19.0</span></div>
+    <a href="/" class="sidebar-logo" aria-label="Goldirham home"><span class="spark" aria-hidden="true">✦</span>Goldirham</a>
+    <div class="sidebar-sub">THE RESEARCH DESK</div>
 
     <nav class="sidebar-nav" aria-label="Dashboard sections">
       <span class="sidebar-ind" id="sidebarInd" aria-hidden="true"></span>
@@ -882,10 +885,10 @@
         <span class="header-greeting">Good morning, <span class="gold">Analyst</span>.</span>
       </div>
       <div class="header-right">
-        <span class="live-chip"><i aria-hidden="true"></i>LIVE</span>
+        <span class="live-chip"><i aria-hidden="true"></i>READ-ONLY</span>
         <div class="header-search" role="search">
           <span class="search-icon" aria-hidden="true">⌕</span>
-          <input type="search" aria-label="Search articles" placeholder="Search transactions..." id="globalSearch" onkeydown="if(event.key==='Enter')doGlobalSearch()" autocomplete="off">
+          <input type="search" aria-label="Search articles" placeholder="Search intelligence..." id="globalSearch" onkeydown="if(event.key==='Enter')doGlobalSearch()" autocomplete="off">
           <span class="kbd" aria-hidden="true">⌘K</span>
         </div>
         <button class="header-btn ambient-toggle" aria-label="Toggle ambient glow" onclick="document.getElementById('bgGlow').style.opacity = document.getElementById('bgGlow').style.opacity === '0' ? '0.5' : '0'" title="Toggle ambient glow">🌓</button>
@@ -921,12 +924,12 @@
         <!-- Greeting -->
         <div class="greeting-section" id="section-overview">
           <div class="date-row" id="dateRow"></div>
-          <h1>Good morning, <span class="gold">Analyst</span>.</h1>
+          <h1>Good morning, <span class="gold">Analyst</span>.</h1><p class="desk-intro">Your view of the infrastructure shaping AI. Follow the signals. Investigate the details.</p>
         </div>
 
         <div class="access-note" role="note">
           <strong>Public read-only access</strong>
-          <span>This dashboard uses Supabase's public client key. Row Level Security keeps writes and private tables off the browser.</span>
+          <span>Explore published intelligence, market activity, and pipeline performance. This view is read-only.</span>
         </div>
         <div id="partialLoadErrors" class="partial-load-errors" role="status" aria-live="polite" hidden></div>
 
@@ -938,7 +941,7 @@
           <div class="chart-card">
             <div class="chart-header">
               <div>
-                <h3>📊 Sector Activity</h3>
+                <h3>Sector Activity</h3>
                 <div class="chart-value" id="sectorChartValue">—</div>
                 <div class="chart-change" id="sectorChartChange"></div>
               </div>
@@ -953,22 +956,22 @@
           </div>
           <div>
             <div class="plans-card" style="margin-bottom:12px">
-              <h3>💰 Top Sectors</h3>
+              <h3>Top Sectors</h3>
               <div id="topSectors"></div>
             </div>
             <div class="quote-card">
               <div class="quote-icon">❝</div>
-              <blockquote>AI infrastructure spending pacing 22% ahead of forecast.</blockquote>
-              <div class="quote-attrib">— Goldirham Intelligence · Q4 2026</div>
+              <blockquote>Follow the capital. Understand the capacity. Question the consensus.</blockquote>
+              <div class="quote-attrib">The Goldirham research approach</div>
             </div>
           </div>
         </div>
 
         <!-- Charts Grid -->
         <div class="charts-grid" id="section-stocks">
-          <div class="chart-card"><h3>📈 Top Stock Movers</h3><canvas id="stockChart" role="img" aria-label="Bar chart showing top stock movers by price change" aria-describedby="stockChartFallback"></canvas><p class="chart-fallback" id="stockChartFallback">Loading stock mover chart data.</p></div>
+          <div class="chart-card"><h3>Top Stock Movers</h3><canvas id="stockChart" role="img" aria-label="Bar chart showing top stock movers by price change" aria-describedby="stockChartFallback"></canvas><p class="chart-fallback" id="stockChartFallback">Loading stock mover chart data.</p></div>
           <div class="chart-card" id="stockPriceCard">
-            <h3>💹 Stock Price History <span class="badge" id="tickerBadge" style="font-size:9px;background:var(--bg-hover);padding:2px 6px;border-radius:2px;color:var(--text-muted);font-weight:500;letter-spacing:0;text-transform:none">top 5</span></h3>
+            <h3>Stock Price History <span class="badge" id="tickerBadge" style="font-size:9px;background:var(--bg-hover);padding:2px 6px;border-radius:2px;color:var(--text-muted);font-weight:500;letter-spacing:0;text-transform:none">top 5</span></h3>
             <div class="ticker-toggle" id="tickerToggle"></div>
             <canvas id="stockPriceChart" role="img" aria-label="Line chart showing stock price history for selected tickers" aria-describedby="stockPriceChartFallback"></canvas>
             <p class="chart-fallback" id="stockPriceChartFallback">Loading stock price history.</p>
@@ -976,44 +979,44 @@
         </div>
 
         <div class="charts-grid">
-          <div class="chart-card"><h3>📅 Sector Trend Over Time</h3><canvas id="sectorTrendChart" role="img" aria-label="Line chart showing sector article activity over time" aria-describedby="sectorTrendChartFallback"></canvas><p class="chart-fallback" id="sectorTrendChartFallback">Loading sector trend chart data.</p></div>
-          <div class="chart-card"><h3>💸 Capex &amp; AI Spending <span class="badge" id="capexBadge" style="font-size:9px;background:var(--bg-hover);padding:2px 6px;border-radius:2px;color:var(--text-muted);font-weight:500;letter-spacing:0;text-transform:none">from SEC filings</span></h3><canvas id="capexChart" role="img" aria-label="Bar chart showing capex and AI revenue from SEC metrics" aria-describedby="capexChartFallback"></canvas><p class="chart-fallback" id="capexChartFallback">Loading capex and AI spending chart data.</p></div>
+          <div class="chart-card"><h3>Sector Trend Over Time</h3><canvas id="sectorTrendChart" role="img" aria-label="Line chart showing sector article activity over time" aria-describedby="sectorTrendChartFallback"></canvas><p class="chart-fallback" id="sectorTrendChartFallback">Loading sector trend chart data.</p></div>
+          <div class="chart-card"><h3>Capex &amp; AI Spending <span class="badge" id="capexBadge" style="font-size:9px;background:var(--bg-hover);padding:2px 6px;border-radius:2px;color:var(--text-muted);font-weight:500;letter-spacing:0;text-transform:none">from SEC filings</span></h3><canvas id="capexChart" role="img" aria-label="Bar chart showing capex and AI revenue from SEC metrics" aria-describedby="capexChartFallback"></canvas><p class="chart-fallback" id="capexChartFallback">Loading capex and AI spending chart data.</p></div>
         </div>
 
         <div class="charts-grid">
-          <div class="chart-card"><h3>⭐ Feedback Pulse <span class="badge" id="feedbackBadge" style="font-size:9px;background:var(--bg-hover);padding:2px 6px;border-radius:2px;color:var(--text-muted);font-weight:500;letter-spacing:0;text-transform:none">over time</span></h3><canvas id="feedbackChart" role="img" aria-label="Line chart showing feedback ratings and vote counts over time" aria-describedby="feedbackChartFallback"></canvas><p class="chart-fallback" id="feedbackChartFallback">Loading feedback chart data.</p></div>
-          <div class="chart-card card-ai"><h3>🔬 AI Token Usage</h3><canvas id="tokenChart" role="img" aria-label="Line chart showing daily AI token usage" aria-describedby="tokenChartFallback"></canvas><p class="chart-fallback" id="tokenChartFallback">Loading AI token usage chart data.</p></div>
+          <div class="chart-card"><h3>Feedback Pulse <span class="badge" id="feedbackBadge" style="font-size:9px;background:var(--bg-hover);padding:2px 6px;border-radius:2px;color:var(--text-muted);font-weight:500;letter-spacing:0;text-transform:none">over time</span></h3><canvas id="feedbackChart" role="img" aria-label="Line chart showing feedback ratings and vote counts over time" aria-describedby="feedbackChartFallback"></canvas><p class="chart-fallback" id="feedbackChartFallback">Loading feedback chart data.</p></div>
+          <div class="chart-card card-ai"><h3>AI Token Usage</h3><canvas id="tokenChart" role="img" aria-label="Line chart showing daily AI token usage" aria-describedby="tokenChartFallback"></canvas><p class="chart-fallback" id="tokenChartFallback">Loading AI token usage chart data.</p></div>
         </div>
 
         <div class="charts-grid">
-          <div class="chart-card"><h3>⚡ Digest Run Performance</h3><canvas id="digestPerfChart" role="img" aria-label="Line chart showing digest articles, token usage, and duration" aria-describedby="digestPerfChartFallback"></canvas><p class="chart-fallback" id="digestPerfChartFallback">Loading digest performance chart data.</p></div>
-          <div class="chart-card"><h3>📬 Delivery Performance</h3><div id="deliverySection" style="padding:4px 0"></div></div>
+          <div class="chart-card"><h3>Digest Run Performance</h3><canvas id="digestPerfChart" role="img" aria-label="Line chart showing digest articles, token usage, and duration" aria-describedby="digestPerfChartFallback"></canvas><p class="chart-fallback" id="digestPerfChartFallback">Loading digest performance chart data.</p></div>
+          <div class="chart-card"><h3>Delivery Performance</h3><div id="deliverySection" style="padding:4px 0"></div></div>
         </div>
 
         <!-- Pipeline Health -->
-        <div class="table-card" id="section-pipeline"><h3>🔌 Pipeline Health</h3><div id="pipelineHealth"></div></div>
+        <div class="table-card" id="section-pipeline"><h3>Pipeline Health</h3><div id="pipelineHealth"></div></div>
 
         <!-- Trending -->
-        <div class="table-card"><h3>🔥 Trending Now</h3><div id="trendingSection"></div></div>
+        <div class="table-card"><h3>Trending Now</h3><div id="trendingSection"></div></div>
 
         <!-- Feedback -->
-        <div class="table-card" id="section-feedback"><h3>💬 User Feedback</h3><div id="feedbackSection"></div></div>
+        <div class="table-card" id="section-feedback"><h3>User Feedback</h3><div id="feedbackSection"></div></div>
 
         <!-- Ranking Quality -->
-        <div class="table-card"><h3>📐 Ranking Quality <span class="badge" style="font-size:9px;background:var(--bg-hover);padding:2px 6px;border-radius:2px;color:var(--text-muted);font-weight:500;letter-spacing:0;text-transform:none">validated articles</span></h3><div id="rankingQualitySection"></div></div>
+        <div class="table-card"><h3>Ranking Quality <span class="badge" style="font-size:9px;background:var(--bg-hover);padding:2px 6px;border-radius:2px;color:var(--text-muted);font-weight:500;letter-spacing:0;text-transform:none">validated articles</span></h3><div id="rankingQualitySection"></div></div>
 
         <!-- SEC Filings -->
-        <div class="table-card" id="secSectionCard"><h3>📜 SEC Filings</h3><div id="secSection"></div></div>
+        <div class="table-card" id="secSectionCard"><h3>SEC Filings</h3><div id="secSection"></div></div>
 
         <!-- Thesis Snapshots (v10) -->
-        <div class="table-card" id="thesesCard"><h3>🧭 Bull/Bear Thesis Snapshots <span class="badge" style="font-size:9px;background:var(--bg-hover);padding:2px 6px;border-radius:2px;color:var(--text-muted);font-weight:500;letter-spacing:0;text-transform:none">weekly</span></h3><div id="thesesSection"></div></div>
+        <div class="table-card" id="thesesCard"><h3>Bull/Bear Thesis Snapshots <span class="badge" style="font-size:9px;background:var(--bg-hover);padding:2px 6px;border-radius:2px;color:var(--text-muted);font-weight:500;letter-spacing:0;text-transform:none">weekly</span></h3><div id="thesesSection"></div></div>
 
         <!-- Capex -->
-        <div class="table-card"><h3>💰 Capex Announcements</h3><table><thead><tr><th>Company</th><th>Amount</th><th>Category</th><th>Description</th></tr></thead><tbody id="capexBody"></tbody></table></div>
+        <div class="table-card"><h3>Capex Announcements</h3><table><thead><tr><th>Company</th><th>Amount</th><th>Category</th><th>Description</th></tr></thead><tbody id="capexBody"></tbody></table></div>
 
         <!-- Articles -->
         <div class="table-card" id="section-articles">
-          <h3>📰 Latest Articles</h3>
+          <h3>Latest Articles</h3>
           <form class="filter-bar" id="articleSearchForm" role="search" style="margin-bottom:8px" onsubmit="event.preventDefault();doFullTextSearch()">
             <label class="filter-label" for="fullTextSearch">Search articles</label>
             <input class="filter-search" id="fullTextSearch" type="search" aria-label="Search all articles" aria-describedby="searchStatus" placeholder="Search all articles..." style="width:220px" autocomplete="off">
@@ -1035,8 +1038,8 @@
           <table><thead><tr><th scope="col">Title</th><th scope="col">Category</th><th scope="col">Impact</th><th scope="col">Score</th><th scope="col">Stocks</th><th scope="col">Open</th></tr></thead><tbody id="articlesBody"></tbody></table>
           <div id="articlesCount" style="margin-top:8px;font-size:11px;color:var(--text-muted)"></div>
           <div id="paginationControls" style="margin-top:10px;display:flex;align-items:center;gap:8px">
-            <button id="loadMoreBtn" onclick="loadMoreArticles()" style="background:var(--bg-hover);border:1px solid var(--border);color:var(--text-dim);padding:6px 14px;border-radius:var(--radius-sm);cursor:pointer;font-size:11px;font-weight:500;font-family:'Space Grotesk', sans-serif;display:none">⬇️ Load More</button>
-            <button onclick="exportCSV()" style="background:var(--bg-hover);border:1px solid var(--border);color:var(--text-dim);padding:6px 14px;border-radius:var(--radius-sm);cursor:pointer;font-size:11px;font-weight:500;font-family:'Space Grotesk', sans-serif">📥 Export CSV</button>
+            <button id="loadMoreBtn" onclick="loadMoreArticles()" style="background:var(--bg-hover);border:1px solid var(--border);color:var(--text-dim);padding:6px 14px;border-radius:var(--radius-sm);cursor:pointer;font-size:11px;font-weight:500;font-family:'Manrope', sans-serif;display:none">⬇️ Load More</button>
+            <button onclick="exportCSV()" style="background:var(--bg-hover);border:1px solid var(--border);color:var(--text-dim);padding:6px 14px;border-radius:var(--radius-sm);cursor:pointer;font-size:11px;font-weight:500;font-family:'Manrope', sans-serif">📥 Export CSV</button>
             <span id="paginationInfo" style="font-size:10px;color:var(--text-muted)"></span>
           </div>
         </div>
@@ -1045,7 +1048,7 @@
     </div><!-- /container -->
   </div><!-- /main -->
 
-  <div id="bgGlow" style="position:fixed;top:-40%;left:-20%;width:80%;height:80%;background:radial-gradient(ellipse,rgba(255,107,43,0.04) 0%,transparent 70%);pointer-events:none;z-index:0;opacity:0.5"></div>
+  <div id="bgGlow" style="position:fixed;top:-40%;left:-20%;width:80%;height:80%;background:radial-gradient(ellipse,rgba(164,78,53,0.04) 0%,transparent 70%);pointer-events:none;z-index:0;opacity:0.5"></div>
 
   <script>
     /* ══════════════════════════════════════════════════
@@ -1105,7 +1108,7 @@
     let dashboardPartialErrors = [];
 
     let activeFilters = (() => {
-      try { return JSON.parse(localStorage.getItem('savedFilters') || '{}'); }
+      try { return { sector: null, impact: null, search: '', ...JSON.parse(localStorage.getItem('savedFilters') || '{}') }; }
       catch { return { sector: null, impact: null, search: '' }; }
     })();
     function saveFilters() {
@@ -1135,22 +1138,22 @@
 
     // Orange → lime ramp, matching the landing page palette.
     const TICKER_COLORS = [
-      '#ff6b2b', '#8cff00', '#ff8c4d', '#b6ff5e', '#ffab6b',
-      '#d4c04a', '#f59e0b',
-      '#ef4444', '#c2ff8f',
-      '#d97706', '#7ad100',
+      '#a44e35', '#70876a', '#9a7850', '#697e85', '#8f6d78',
+      '#a28642', '#f59e0b',
+      '#ef4444', '#567d77',
+      '#d97706', '#71814a',
     ];
 
     const SECTOR_COLORS = {
-      'Chips & GPUs': '#ff6b2b', 'Cloud & Hyperscalers': '#8cff00',
-      'Datacenters': '#ff8c4d', 'Networking': '#b6ff5e',
-      'Power & Utilities': '#ffab6b', 'Cooling Infrastructure': '#7ad100',
-      'AI Models & Labs': '#d4c04a', 'Semiconductor Manufacturing': '#ef4444',
+      'Chips & GPUs': '#a44e35', 'Cloud & Hyperscalers': '#70876a',
+      'Datacenters': '#9a7850', 'Networking': '#697e85',
+      'Power & Utilities': '#8f6d78', 'Cooling Infrastructure': '#71814a',
+      'AI Models & Labs': '#a28642', 'Semiconductor Manufacturing': '#ef4444',
       'M&A and Partnerships': '#f59e0b', 'Earnings & Guidance': '#d97706',
     };
 
     if (typeof Chart !== 'undefined') {
-      Chart.defaults.font.family = "'Space Grotesk', sans-serif";
+      Chart.defaults.font.family = "'Manrope', sans-serif";
       Chart.defaults.font.size = 11;
     }
 
@@ -1188,7 +1191,7 @@
       if (!open) return;
       panel.innerHTML = `
         <div class="config-form">
-          <h2>⚙ Connection settings</h2>
+          <h2>Connect your research desk.</h2><p class="config-intro">Bring your Goldirham data into view. Connect a public data source to explore articles, sector activity, and company filings.</p>
           <label for="cfgUrl">Supabase URL</label>
           <input id="cfgUrl" value="${escapeHtml(SUPABASE_URL)}" placeholder="https://xxx.supabase.co" spellcheck="false" autocomplete="url">
           <label for="cfgKey">Anon Public Key</label>
@@ -1332,13 +1335,13 @@
     function escapeHtml(s) { return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
     function safeHref(url) { return /^https?:\/\//i.test(url || '') ? escapeHtml(url) : '#'; }
 
-    function chartGridColor() { return 'rgba(255,255,255,0.055)'; }
-    function chartTextColor() { return 'rgba(244,239,233,0.38)'; }
+    function chartGridColor() { return getComputedStyle(document.documentElement).getPropertyValue('--border').trim(); }
+    function chartTextColor() { return getComputedStyle(document.documentElement).getPropertyValue('--text-dim').trim(); }
 
     function createGlassTooltip() {
       return {
         backgroundColor: 'rgba(12,8,5,0.94)',
-        borderColor: 'rgba(255,107,43,0.35)',
+        borderColor: 'rgba(164,78,53,0.35)',
         borderWidth: 1, padding: 11, cornerRadius: 8,
         titleColor: '#f4efe9',
         titleFont: { family: "'IBM Plex Mono', monospace", size: 11 },
@@ -1448,6 +1451,12 @@
       const msg = document.getElementById('loadingMsg');
 
       if (document.hidden) return;
+      if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+        loading.style.display = 'none';
+        content.style.display = 'none';
+        if (document.getElementById('configPanel').style.display === 'none') showConfig();
+        return;
+      }
       const revision = ++dashboardRevision;
       const articleRequest = articleRevision;
       const preserveArticleSearch = Boolean(articleSearchQuery) || allFetchedArticles.length > ARTICLES_PAGE_SIZE;
@@ -1669,8 +1678,8 @@
           labels: top.map(s => s.ticker),
           datasets: [{
             label: 'Price Change %', data: prices,
-            backgroundColor: prices.map(p => p >= 0 ? 'rgba(140,255,0,0.45)' : 'rgba(239,68,68,0.5)'),
-            borderColor: prices.map(p => p >= 0 ? '#8cff00' : '#ef4444'),
+            backgroundColor: prices.map(p => p >= 0 ? 'rgba(164,78,53,0.45)' : 'rgba(239,68,68,0.5)'),
+            borderColor: prices.map(p => p >= 0 ? '#70876a' : '#ef4444'),
             borderWidth: 1, borderRadius: 3, borderSkipped: false
           }]
         },
@@ -1769,7 +1778,7 @@
       if (!dates.length) { setChartFallback('sectorTrendChartFallback', 'No dated sector trend data is available for this range.'); return; }
       setChartFallback('sectorTrendChartFallback', `${dates.length} dates across ${allSectors.length} sectors.`);
       const datasets = allSectors.map(sector => {
-        const color = SECTOR_COLORS[sector] || '#ff6b2b';
+        const color = SECTOR_COLORS[sector] || '#a44e35';
         return { label: sector, data: dates.map(d => byDate[d][sector] || 0), backgroundColor: color + '22', borderColor: color, borderWidth: 1, fill: true, tension: 0.3, pointRadius: 0 };
       });
       const ctx = document.getElementById('sectorTrendChart').getContext('2d');
@@ -1809,8 +1818,8 @@
         data: {
           labels: dates,
           datasets: [
-            { label: 'Capex ($M)', data: capexData, backgroundColor: 'rgba(255,107,43,0.5)', borderColor: '#ff6b2b', borderWidth: 1, borderRadius: 3, borderSkipped: false, yAxisID: 'y' },
-            { label: 'AI Revenue ($M)', data: aiRevData, backgroundColor: 'rgba(140,255,0,0.35)', borderColor: '#8cff00', borderWidth: 1, borderRadius: 3, borderSkipped: false, yAxisID: 'y' },
+            { label: 'Capex ($M)', data: capexData, backgroundColor: 'rgba(164,78,53,0.5)', borderColor: '#a44e35', borderWidth: 1, borderRadius: 3, borderSkipped: false, yAxisID: 'y' },
+            { label: 'AI Revenue ($M)', data: aiRevData, backgroundColor: 'rgba(164,78,53,0.35)', borderColor: '#70876a', borderWidth: 1, borderRadius: 3, borderSkipped: false, yAxisID: 'y' },
           ]
         },
         options: {
@@ -1848,7 +1857,7 @@
         data: {
           labels: valid.map(v => v.date),
           datasets: [
-            { label: 'Avg Rating', data: valid.map(v => v.avg), borderColor: '#ff6b2b', backgroundColor: 'rgba(255,107,43,0.06)', fill: true, tension: 0.35, pointRadius: 3, pointHoverRadius: 6, borderWidth: 2 },
+            { label: 'Avg Rating', data: valid.map(v => v.avg), borderColor: '#a44e35', backgroundColor: 'rgba(164,78,53,0.06)', fill: true, tension: 0.35, pointRadius: 3, pointHoverRadius: 6, borderWidth: 2 },
             { label: 'Votes', data: valid.map(v => v.votes), borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.06)', fill: true, tension: 0.35, pointRadius: 2, pointHoverRadius: 5, borderWidth: 1, yAxisID: 'y1' },
           ]
         },
@@ -1881,9 +1890,9 @@
         data: {
           labels: dates,
           datasets: [
-            { label: 'Articles', data: sorted.map(d => d.articles_processed || 0), borderColor: '#ff6b2b', backgroundColor: 'rgba(255,107,43,0.06)', fill: true, tension: 0.35, pointRadius: 2, pointHoverRadius: 5, yAxisID: 'y' },
+            { label: 'Articles', data: sorted.map(d => d.articles_processed || 0), borderColor: '#a44e35', backgroundColor: 'rgba(164,78,53,0.06)', fill: true, tension: 0.35, pointRadius: 2, pointHoverRadius: 5, yAxisID: 'y' },
             { label: 'Tokens (K)', data: sorted.map(d => (d.total_tokens_used || 0) / 1000), borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.06)', fill: true, tension: 0.35, pointRadius: 2, pointHoverRadius: 5, yAxisID: 'y1' },
-            { label: 'Duration (s)', data: sorted.map(d => d.duration_seconds || 0), borderColor: '#8cff00', backgroundColor: 'rgba(140,255,0,0.07)', fill: true, tension: 0.35, pointRadius: 2, pointHoverRadius: 5, yAxisID: 'y1' },
+            { label: 'Duration (s)', data: sorted.map(d => d.duration_seconds || 0), borderColor: '#70876a', backgroundColor: 'rgba(164,78,53,0.07)', fill: true, tension: 0.35, pointRadius: 2, pointHoverRadius: 5, yAxisID: 'y1' },
           ]
         },
         options: {
@@ -1911,7 +1920,7 @@
       const c = chartTextColor(), gc = chartGridColor();
       charts.token = new Chart(ctx, {
         type: 'line',
-        data: { labels: recent.map(m => fmtDate(m.date)), datasets: [{ label: 'Tokens', data: recent.map(m => m.total_tokens_used || 0), borderColor: '#ff6b2b', backgroundColor: 'rgba(255,107,43,0.06)', fill: true, tension: 0.35, pointRadius: 2, pointHoverRadius: 5, borderWidth: 2 }] },
+        data: { labels: recent.map(m => fmtDate(m.date)), datasets: [{ label: 'Tokens', data: recent.map(m => m.total_tokens_used || 0), borderColor: '#a44e35', backgroundColor: 'rgba(164,78,53,0.06)', fill: true, tension: 0.35, pointRadius: 2, pointHoverRadius: 5, borderWidth: 2 }] },
         options: {
           responsive: true,
           plugins: { legend: { display: false }, tooltip: { ...createGlassTooltip(), callbacks: { label: (ctx) => `${Number(ctx.raw).toLocaleString()} tokens` } } },
@@ -2004,7 +2013,7 @@
         detailRow.style.display = 'table-row';
         detailRow.setAttribute('aria-hidden', 'false');
         chevron.style.transform = 'rotate(90deg)';
-        row.style.background = 'rgba(255,107,43,0.04)';
+        row.style.background = 'rgba(164,78,53,0.04)';
         row.setAttribute('aria-expanded', 'true');
         _expandedArticleIdx = idx;
       } else {
@@ -2055,11 +2064,11 @@
 
         const detailRow = `<tr id="article-detail-${i}" aria-hidden="true" hidden style="display:none">` +
           `<td colspan="6" style="padding:0">` +
-          `<div style="padding:12px 14px 14px 28px;background:rgba(255,107,43,0.03);border-top:1px solid var(--border-light);border-bottom:1px solid var(--border-light)">` +
+          `<div style="padding:12px 14px 14px 28px;background:rgba(164,78,53,0.03);border-top:1px solid var(--border-light);border-bottom:1px solid var(--border-light)">` +
           (summary ? `<div style="font-size:12px;color:var(--text-dim);margin-bottom:8px;line-height:1.6">${summary}</div>` : '') +
           (reason ? `<div style="font-size:11px;color:var(--text-muted);font-style:italic;margin-bottom:8px">&#128161; ${reason}</div>` : '') +
           rankingDetail +
-          (bearCase ? `<div style="font-size:11px;color:#e0b257;font-style:italic;margin-bottom:10px;padding:6px 10px;background:rgba(224,178,87,0.06);border-left:2px solid rgba(224,178,87,0.4);border-radius:2px">⚠️ ${escapeHtml(bearCase)}</div>` : '') +
+          (bearCase ? `<div style="font-size:11px;color:#866523;font-style:italic;margin-bottom:10px;padding:6px 10px;background:rgba(224,178,87,0.06);border-left:2px solid rgba(224,178,87,0.4);border-radius:2px">⚠️ ${escapeHtml(bearCase)}</div>` : '') +
           `<div style="display:flex;align-items:center;gap:8px">` +
           `<a href="${safeUrl}" target="_blank" rel="noopener" aria-label="Read full article in a new tab" onclick="event.stopPropagation()" style="font-size:11px;color:var(--gold);text-decoration:none">Read full article &#8594;</a>` +
           thumbs +
@@ -2136,7 +2145,7 @@
       </div>`;
       html += `<table><thead><tr><th>Company</th><th>Form</th><th>Date</th><th>Capex</th><th>AI Revenue</th><th>Margins</th><th>Guide</th><th>Impact</th></tr></thead><tbody>`;
       for (const f of filings.slice(0, 20)) {
-        const formColor = f.form_type === '8-K' ? 'var(--warn)' : f.form_type === '10-Q' ? 'var(--gold)' : '#ff6b2b';
+        const formColor = f.form_type === '8-K' ? 'var(--warn)' : f.form_type === '10-Q' ? 'var(--gold)' : '#a44e35';
         const impactColor = (f.impact_score || 0) >= 8 ? 'var(--danger)' : (f.impact_score || 0) >= 6 ? 'var(--warn)' : 'var(--text-muted)';
         const fmtCapex = f.capex !== null && f.capex !== undefined ? `$${f.capex.toLocaleString()}M` : '—';
         const fmtAiRev = f.ai_revenue !== null && f.ai_revenue !== undefined ? `$${f.ai_revenue.toLocaleString()}M` : '—';
@@ -2257,7 +2266,7 @@
       let html = `<div style="display:flex;gap:14px;margin-bottom:10px;flex-wrap:wrap;align-items:center"><span style="font-size:20px">${'⭐'.repeat(Math.round(parseFloat(avg)))}</span><span style="font-size:18px;font-weight:700">${avg}</span><span style="font-size:11px;color:var(--text-dim)">/ 5 · ${totals.votes} vote${totals.votes !== 1 ? 's' : ''}</span></div>`;
       for (let i = 5; i >= 1; i--) {
         const c = dist[i - 1], p = (c / totals.votes * 100).toFixed(0), w = (c / maxD * 100).toFixed(0);
-        html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;font-size:11px"><span style="width:18px;text-align:right;color:var(--text-dim)">${i}★</span><div style="flex:1;height:8px;background:var(--border-light);border-radius:2px;overflow:hidden"><div style="height:100%;width:${w}%;background:${['#ef4444','#f97316','#f59e0b','#b6ff5e','#8cff00'][i - 1]};border-radius:2px"></div></div><span style="width:36px;color:var(--text-muted);font-family:'IBM Plex Mono', monospace;font-size:10px">${c} (${p}%)</span></div>`;
+        html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;font-size:11px"><span style="width:18px;text-align:right;color:var(--text-dim)">${i}★</span><div style="flex:1;height:8px;background:var(--border-light);border-radius:2px;overflow:hidden"><div style="height:100%;width:${w}%;background:${['#ef4444','#f97316','#f59e0b','#697e85','#70876a'][i - 1]};border-radius:2px"></div></div><span style="width:36px;color:var(--text-muted);font-family:'IBM Plex Mono', monospace;font-size:10px">${c} (${p}%)</span></div>`;
       }
       const commentCount = feedbackDaily.reduce((sum, row) => sum + Number(row.comment_count || 0), 0);
       html += `<p style="margin:10px 0 0;color:var(--text-muted);font-size:10px">${commentCount} written response${commentCount === 1 ? '' : 's'} retained privately; only aggregate ratings are shown here.</p>`;
@@ -2465,7 +2474,7 @@
   (function(){
     "use strict";
     var reduce  = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    var finePtr = window.matchMedia('(pointer:fine)').matches;
+    var finePtr = false;
 
     /* ── custom cursor ── */
     if (finePtr && !reduce) {
