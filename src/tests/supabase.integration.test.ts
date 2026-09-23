@@ -353,11 +353,10 @@ describe("Supabase Integration", () => {
       expect(watches[0].ticker).toBe("NVDA");
     });
 
-    it("should return [] on HTTP error", async () => {
+    it("propagates HTTP errors instead of hiding missing watches", async () => {
       mockFetch.mockResolvedValueOnce({ ok: false, status: 500 });
       const { supabase } = await import("../utils/supabase");
-      const watches = await supabase.getAllPriceWatches();
-      expect(watches).toEqual([]);
+      await expect(supabase.getAllPriceWatches()).rejects.toThrow("HTTP 500");
     });
   });
 

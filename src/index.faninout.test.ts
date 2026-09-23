@@ -20,6 +20,9 @@ const h = vi.hoisted(() => ({
   queryRows: vi.fn(),
   getAllPriceWatches: vi.fn(),
   deletePriceWatchesByIds: vi.fn(),
+  completePriceWatch: vi.fn(),
+  claimHighImpactAlert: vi.fn(),
+  logHighImpactAlert: vi.fn(),
   claimUserDelivery: vi.fn(),
   logUserDelivery: vi.fn(),
   recordProductEvent: vi.fn(),
@@ -91,6 +94,9 @@ vi.mock("./utils/supabase", () => ({
     queryRows: h.queryRows,
     getAllPriceWatches: h.getAllPriceWatches,
     deletePriceWatchesByIds: h.deletePriceWatchesByIds,
+    completePriceWatch: h.completePriceWatch,
+    claimHighImpactAlert: h.claimHighImpactAlert,
+    logHighImpactAlert: h.logHighImpactAlert,
     claimUserDelivery: h.claimUserDelivery,
     logUserDelivery: h.logUserDelivery,
     recordProductEvent: h.recordProductEvent,
@@ -158,6 +164,9 @@ beforeEach(() => {
   h.isConfigured.mockReset().mockReturnValue(false);
   h.queryRows.mockReset().mockResolvedValue([]);
   h.getAllPriceWatches.mockReset().mockResolvedValue([]);
+  h.claimHighImpactAlert.mockReset().mockResolvedValue(true);
+  h.logHighImpactAlert.mockReset().mockResolvedValue(true);
+  h.completePriceWatch.mockReset().mockResolvedValue(true);
   h.deletePriceWatchesByIds.mockReset().mockResolvedValue(true);
   h.claimUserDelivery.mockReset().mockResolvedValue(true);
   h.logUserDelivery.mockReset().mockResolvedValue(true);
@@ -347,10 +356,10 @@ describe("price watch check-and-notify", () => {
   it("sends one combined notification and deletes the watch once triggered", async () => {
     h.isConfigured.mockReturnValue(true);
     h.getAllPriceWatches.mockResolvedValue([
-      { id: 1, chat_id: 101, ticker: "NVDA", threshold: 130, direction: "above" },
+      { id: 1, revision: "r1", chat_id: 101, ticker: "NVDA", threshold: 130, direction: "above" },
     ]);
     h.fetchStockPrices.mockResolvedValue(
-      new Map([["NVDA", { ticker: "NVDA", price: 135, change: 5, changePercent: 3.8, previousClose: 130 }]])
+      new Map([["NVDA", { ticker: "NVDA", observedAt: new Date().toISOString(), price: 135, change: 5, changePercent: 3.8, previousClose: 130 }]])
     );
 
     const generated = await generateDigest();
@@ -363,16 +372,16 @@ describe("price watch check-and-notify", () => {
     );
     expect(watchCall).toBeDefined();
     expect(watchCall![1]).toContain("NVDA");
-    expect(h.deletePriceWatchesByIds).toHaveBeenCalledWith([1]);
+    expect(h.completePriceWatch).toHaveBeenCalledWith(1, "r1");
   });
 
   it("does not notify or delete when the watch hasn't triggered", async () => {
     h.isConfigured.mockReturnValue(true);
     h.getAllPriceWatches.mockResolvedValue([
-      { id: 1, chat_id: 101, ticker: "NVDA", threshold: 130, direction: "above" },
+      { id: 1, revision: "r1", chat_id: 101, ticker: "NVDA", threshold: 130, direction: "above" },
     ]);
     h.fetchStockPrices.mockResolvedValue(
-      new Map([["NVDA", { ticker: "NVDA", price: 125, change: -5, changePercent: -3.8, previousClose: 130 }]])
+      new Map([["NVDA", { ticker: "NVDA", observedAt: new Date().toISOString(), price: 125, change: -5, changePercent: -3.8, previousClose: 130 }]])
     );
 
     const generated = await generateDigest();
@@ -382,33 +391,34 @@ describe("price watch check-and-notify", () => {
     expect(h.deletePriceWatchesByIds).not.toHaveBeenCalled();
   });
 
-  it("combines multiple triggered watches for the same user into a single message", async () => {
+  it("tracks each triggered watch independently", async () => {
     h.isConfigured.mockReturnValue(true);
     h.getAllPriceWatches.mockResolvedValue([
-      { id: 1, chat_id: 101, ticker: "NVDA", threshold: 130, direction: "above" },
-      { id: 2, chat_id: 101, ticker: "TSLA", threshold: 200, direction: "below" },
+      { id: 1, revision: "r1", chat_id: 101, ticker: "NVDA", threshold: 130, direction: "above" },
+      { id: 2, revision: "r2", chat_id: 101, ticker: "TSLA", threshold: 200, direction: "below" },
     ]);
     h.fetchStockPrices.mockResolvedValue(
       new Map([
-        ["NVDA", { ticker: "NVDA", price: 135, change: 5, changePercent: 3.8, previousClose: 130 }],
-        ["TSLA", { ticker: "TSLA", price: 190, change: -10, changePercent: -5, previousClose: 200 }],
+        ["NVDA", { ticker: "NVDA", observedAt: new Date().toISOString(), price: 135, change: 5, changePercent: 3.8, previousClose: 130 }],
+        ["TSLA", { ticker: "TSLA", observedAt: new Date().toISOString(), price: 190, change: -10, changePercent: -5, previousClose: 200 }],
       ])
     );
 
     const generated = await generateDigest();
     await deliverDigest(generated!, 101);
 
-    expect(h.sendDigestMessageToUser).toHaveBeenCalledTimes(2); // digest + ONE combined watch message
-    expect(h.deletePriceWatchesByIds).toHaveBeenCalledWith([1, 2]);
+    expect(h.sendDigestMessageToUser).toHaveBeenCalledTimes(3); // digest and two independently tracked watches
+    expect(h.completePriceWatch).toHaveBeenCalledWith(1, "r1");
+    expect(h.completePriceWatch).toHaveBeenCalledWith(2, "r2");
   });
 
   it("skips watch checking entirely for the legacy default-chat path (no targetChatId)", async () => {
     h.isConfigured.mockReturnValue(true);
     h.getAllPriceWatches.mockResolvedValue([
-      { id: 1, chat_id: 101, ticker: "NVDA", threshold: 130, direction: "above" },
+      { id: 1, revision: "r1", chat_id: 101, ticker: "NVDA", threshold: 130, direction: "above" },
     ]);
     h.fetchStockPrices.mockResolvedValue(
-      new Map([["NVDA", { ticker: "NVDA", price: 135, change: 5, changePercent: 3.8, previousClose: 130 }]])
+      new Map([["NVDA", { ticker: "NVDA", observedAt: new Date().toISOString(), price: 135, change: 5, changePercent: 3.8, previousClose: 130 }]])
     );
 
     const generated = await generateDigest();
@@ -421,10 +431,10 @@ describe("price watch check-and-notify", () => {
   it("does not delete the watch when the notification send fails", async () => {
     h.isConfigured.mockReturnValue(true);
     h.getAllPriceWatches.mockResolvedValue([
-      { id: 1, chat_id: 101, ticker: "NVDA", threshold: 130, direction: "above" },
+      { id: 1, revision: "r1", chat_id: 101, ticker: "NVDA", threshold: 130, direction: "above" },
     ]);
     h.fetchStockPrices.mockResolvedValue(
-      new Map([["NVDA", { ticker: "NVDA", price: 135, change: 5, changePercent: 3.8, previousClose: 130 }]])
+      new Map([["NVDA", { ticker: "NVDA", observedAt: new Date().toISOString(), price: 135, change: 5, changePercent: 3.8, previousClose: 130 }]])
     );
     h.sendDigestMessageToUser
       .mockResolvedValueOnce({ success: true, messageId: 1 }) // the digest send
@@ -439,7 +449,7 @@ describe("price watch check-and-notify", () => {
   it("prepends watched tickers so they survive fetchStockPrices' 25-ticker cap", async () => {
     h.isConfigured.mockReturnValue(true);
     h.getAllPriceWatches.mockResolvedValue([
-      { id: 1, chat_id: 101, ticker: "ZZZZ", threshold: 10, direction: "above" },
+      { id: 1, revision: "r1", chat_id: 101, ticker: "ZZZZ", threshold: 10, direction: "above" },
     ]);
     h.processArticles.mockResolvedValueOnce({
       ...fakeDigest,

@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { inferDirection, isTriggered } from "./price-watch";
+import { inferDirection, isTriggered, isFreshQuote } from "./price-watch";
+
+it("rejects absent, stale and future quote timestamps", () => {
+  const now = Date.parse("2026-09-22T12:00:00Z");
+  expect(isFreshQuote({ price: 100 }, now)).toBe(false);
+  expect(isFreshQuote({ price: 100, observedAt: "2026-09-22T11:00:00Z" }, now)).toBe(false);
+  expect(isFreshQuote({ price: 100, observedAt: "2026-09-23T12:00:00Z" }, now)).toBe(false);
+  expect(isFreshQuote({ price: 100, observedAt: "2026-09-22T11:55:00Z" }, now)).toBe(true);
+});
 
 describe("inferDirection", () => {
   it("infers 'above' when the threshold is above the current price", () => {

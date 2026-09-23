@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { AsyncLocalStorage } from "async_hooks";
 import { logger } from "./logger";
 import { supabase } from "./supabase";
+import { reserveAttempt, settleAttempt } from "./budget-reservations";
 
 export interface AIAttempt {
   id: string;
@@ -35,6 +36,7 @@ export function accountedFetch(stage: string, provider: string): typeof fetch {
       status: "failed", duration_ms: 0, prompt_tokens: null, completion_tokens: null,
       total_tokens: null, reported_cost: null,
     };
+    const reserved = await reserveAttempt(attempt.id, input, init);
     try {
       const timeout = AbortSignal.timeout(180_000);
       const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
@@ -50,6 +52,10 @@ export function accountedFetch(stage: string, provider: string): typeof fetch {
       } catch { /* Missing or unreadable usage is explicitly unknown. */ }
       return response;
     } finally {
+      if (reserved) {
+        try { await settleAttempt(attempt.id, attempt.reported_cost, attempt.prompt_tokens, attempt.completion_tokens); }
+        catch { logger.error("AI budget settlement failed; full reservation remains charged"); }
+      }
       attempt.duration_ms = Date.now() - started;
       attempts.push(attempt);
       accountingScope.getStore()?.push(attempt);

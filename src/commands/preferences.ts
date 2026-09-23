@@ -10,6 +10,13 @@ import { fetchStockPrices } from "../utils/stocks";
 import { supabase } from "../utils/supabase";
 
 export function registerPreferenceCommands(): void {
+  registerCommand("personalization", async ctx => {
+    const mode = ctx.text.trim().split(/\s+/)[1];
+    if (mode !== "only" && mode !== "prioritize") return "Use /personalization prioritize or /personalization only. Only mode includes just your watched companies.";
+    if (!supabase.isConfigured()) return "Preferences are temporarily unavailable.";
+    const saved = await supabase.upsertUserPreferences({ chat_id: ctx.chatId, watchlist_mode: mode });
+    return saved ? `Watchlist mode: ${mode}. This applies to scheduled briefings and /digest.` : "Could not save your preference. Please try again.";
+  });
   registerCommand("delivery", async (ctx) => {
     if (!supabase.isConfigured()) {
       return "Supabase not configured. Personal delivery settings require a database.";
@@ -69,7 +76,7 @@ export function registerPreferenceCommands(): void {
         emailVerificationHash(ctx.chatId, code),
         expiresAt
       );
-      if (!created) return "Could not start email verification. Please try again later.";
+      if (!created) return "Could not start email verification. Wait at least 60 seconds before requesting another code; each destination is limited to five requests per hour.";
 
       const sent = await sendEmailVerification(email, code);
       return sent
@@ -160,7 +167,7 @@ export function registerPreferenceCommands(): void {
 
   registerCommand("watch", async (ctx) => {
     if (!supabase.isConfigured()) {
-      return "Supabase not configured. Price watches require a database.";
+      return "Price watches are temporarily unavailable. Please try again later.";
     }
 
     const parts = ctx.text.split(/\s+/).slice(1);
@@ -168,8 +175,9 @@ export function registerPreferenceCommands(): void {
 
     const usage =
       `<b>Price Watch</b>\n\n` +
+      `Checked at daily delivery using quotes no older than 15 minutes. This is a sampled threshold check, not a real-time crossing alert.\n\n` +
       `<b>Commands:</b>\n` +
-      `• <code>/watch NVDA 130</code> — Notify once NVDA crosses $130\n` +
+      `• <code>/watch NVDA 130</code> — Notify when a daily sample meets the $130 threshold\n` +
       `• <code>/watch NVDA off</code> — Clear a watch\n` +
       `• <code>/watch list</code> — Show active watches`;
 
@@ -202,21 +210,14 @@ export function registerPreferenceCommands(): void {
     }
 
     const threshold = parseFloat(second);
-    if (isNaN(threshold) || threshold <= 0) {
+    if (!Number.isFinite(threshold) || threshold <= 0) {
       return `Price must be a positive number.\n\n${usage}`;
     }
 
-    // Synchronous price lookup to infer direction — timeboxed so a slow/hanging
-    // Yahoo Finance response can't hang this interactive command indefinitely.
-    // Does not touch fetchStockPrices()'s shared batch-path behavior.
-    const TIMEOUT_MS = 8000;
-    const timeout = new Promise<Map<string, import("../utils/stocks").StockPrice>>((resolve) =>
-      setTimeout(() => resolve(new Map()), TIMEOUT_MS)
-    );
-    const prices = await Promise.race([fetchStockPrices([ticker]), timeout]);
+    const prices = await fetchStockPrices([ticker]);
     const currentPrice = prices.get(ticker)?.price;
 
-    if (currentPrice === undefined) {
+    if (currentPrice === undefined || !Number.isFinite(currentPrice) || currentPrice <= 0) {
       return `Could not fetch a price for <b>${escapeHtml(ticker)}</b> — check the symbol and try again.`;
     }
 
@@ -233,7 +234,7 @@ export function registerPreferenceCommands(): void {
     const arrow = direction === "above" ? "rises to" : "drops to";
     return (
       `🔔 Watching <b>${escapeHtml(ticker)}</b> — you'll be notified once it ${arrow} $${threshold} ` +
-      `(currently $${currentPrice.toFixed(2)}).`
+      `(last available quote $${currentPrice.toFixed(2)}). Checked at daily delivery, not in real time.`
     );
   });
 
@@ -267,20 +268,20 @@ export function registerPreferenceCommands(): void {
       const today = todayInTimezone(config.app.timezone);
       const saved = await supabase.submitDigestFeedback(ctx.chatId, today, rating, comment || undefined);
       if (!saved) {
-        return `✅ Thanks for your ${rating}/5 rating! (Couldn't save to database, but your feedback is noted.)`;
+        return "Your feedback could not be saved. Please try again later.";
       }
 
       return `✅ Thanks for your feedback!\n\n` +
         `Your rating: ${rating}/5\n` +
         `Your feedback was recorded privately to improve the digest.`;
     } catch {
-      return `✅ Thanks for your ${rating}/5 rating! (Couldn't save to database, but your feedback is noted.)`;
+      return "Your feedback could not be saved. Please try again later.";
     }
   });
 }
 
 export function isValidEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  return value.length <= 320 && /^[^\s@,;<>()[\]\r\n]+@[^\s@,;<>()[\]\r\n]+\.[^\s@,;<>()[\]\r\n]+$/.test(value);
 }
 
 export function isValidSlackWebhook(value: string): boolean {

@@ -307,7 +307,7 @@ describe("sendHighImpactAlerts", () => {
     expect(h.logHighImpactAlert).not.toHaveBeenCalled();
   });
 
-  it("releases a claimed alert for retry when Telegram sending fails", async () => {
+  it("quarantines a claimed alert when the Telegram outcome is unknown", async () => {
     h.sendMessage.mockRejectedValueOnce(new Error("telegram unavailable"));
 
     await sendHighImpactAlerts([article({ impactScore: 9 })]);
@@ -315,7 +315,7 @@ describe("sendHighImpactAlerts", () => {
     expect(h.logHighImpactAlert).toHaveBeenCalledWith(
       123,
       expect.stringMatching(/^[0-9a-f]{64}$/),
-      "failed",
+      "ambiguous",
       "telegram unavailable"
     );
   });

@@ -1,4 +1,6 @@
 import { config } from "../config";
+import { randomUUID } from "node:crypto";
+import { todayInTimezone } from "../utils/helpers";
 import { deliverDigest } from "../delivery/deliver";
 import { sendValidationFollowUp } from "../sender/telegram";
 import { logger } from "../utils/logger";
@@ -12,7 +14,29 @@ import {
 } from "./publication";
 
 export async function runPipeline(targetChatId?: number): Promise<boolean> {
-  return withAIAccounting(() => runEditorialPipeline(targetChatId));
+  return withAIAccounting(async () => {
+    if (!supabase.isConfigured()) return runEditorialPipeline(targetChatId);
+    const date = todayInTimezone(config.app.timezone);
+    const existing = await supabase.getDigestPublication(date);
+    if (existing) {
+      const edition = deserializeDigestPublication(existing.payload, await supabase.getAllPriceWatches(), Date.now(), existing.id);
+      if (targetChatId) return (await deliverDigest(edition, targetChatId)).success;
+      const chat = Number(config.telegram.chatId);
+      if (!Number.isSafeInteger(chat) || chat === 0) throw new Error("Invalid default delivery chat");
+      if (!await supabase.claimUserDelivery(chat, date)) return supabase.wasUserDeliveredToday(chat, date);
+      return (await deliverDigest(edition, undefined, undefined, undefined, result =>
+        supabase.logUserDelivery(chat, date, result.success ? "success" : result.ambiguous ? "ambiguous" : "failed", result.error, existing.id))).success;
+    }
+    const owner = randomUUID();
+    const claimed = await supabase.requiredRpc<boolean>("claim_editorial_run", { p_date: date, p_owner: owner });
+    if (!claimed) throw new Error("Editorial generation is already claimed; investigate an abandoned claim before retrying");
+    try {
+      return await runEditorialPipeline(targetChatId);
+    } finally {
+      const published = await supabase.getDigestPublication(date);
+      await supabase.requiredRpc("finish_editorial_run", { p_date: date, p_owner: owner, p_status: published ? "published" : "failed" });
+    }
+  });
 }
 
 async function runEditorialPipeline(targetChatId?: number): Promise<boolean> {
@@ -90,7 +114,7 @@ async function runEditorialPipeline(targetChatId?: number): Promise<boolean> {
       supabase.isConfigured() &&
       deliveryEdition.publicationId !== undefined &&
       Number.isSafeInteger(defaultChatId) &&
-      defaultChatId > 0;
+      defaultChatId !== 0;
 
     if (shouldClaimDefault) {
       const claimed = await supabase.claimUserDelivery(defaultChatId, generated.runDate);

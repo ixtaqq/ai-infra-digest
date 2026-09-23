@@ -6,11 +6,11 @@ export interface StockPrice {
   change: number;       // Absolute change
   changePercent: number; // Percentage change
   previousClose: number;
+  observedAt?: string;
 }
 
 const YAHOO_FINANCE_URL =
   "https://query1.finance.yahoo.com/v8/finance/chart";
-const MAX_TICKERS = 25;
 const STOCK_FETCH_BATCH_SIZE = 5;
 
 // Complete AI Infrastructure Universe — all tickers across 10 sectors
@@ -53,6 +53,7 @@ async function fetchPrice(ticker: string): Promise<StockPrice | null> {
   try {
     const url = `${YAHOO_FINANCE_URL}/${TICKER_MAP[ticker] || ticker}?range=5d&interval=1d`;
     const response = await fetch(url, {
+      signal: AbortSignal.timeout(8_000),
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
       },
@@ -68,6 +69,7 @@ async function fetchPrice(ticker: string): Promise<StockPrice | null> {
         result?: Array<{
           meta?: {
             regularMarketPrice?: number;
+            regularMarketTime?: number;
             previousClose?: number;
             currency?: string;
           };
@@ -85,8 +87,10 @@ async function fetchPrice(ticker: string): Promise<StockPrice | null> {
     if (!result?.meta) return null;
 
     const meta = result.meta;
-    const price = meta.regularMarketPrice ?? 0;
-    const prevClose = meta.previousClose ?? price;
+    const price = meta.regularMarketPrice;
+    if (typeof price !== "number" || !Number.isFinite(price) || price <= 0) return null;
+    const prevClose = typeof meta.previousClose === "number" && Number.isFinite(meta.previousClose) && meta.previousClose > 0
+      ? meta.previousClose : price;
     const change = price - prevClose;
     const changePercent = prevClose > 0 ? (change / prevClose) * 100 : 0;
 
@@ -96,6 +100,9 @@ async function fetchPrice(ticker: string): Promise<StockPrice | null> {
       change,
       changePercent,
       previousClose: prevClose,
+      observedAt: typeof meta.regularMarketTime === "number" && Number.isFinite(meta.regularMarketTime)
+        && meta.regularMarketTime > 0 && meta.regularMarketTime <= Date.now() / 1000 + 60
+        ? new Date(meta.regularMarketTime * 1000).toISOString() : undefined,
     };
   } catch (error) {
     logger.debug(`Failed to fetch ${ticker}: ${(error as Error).message}`);
@@ -106,9 +113,8 @@ async function fetchPrice(ticker: string): Promise<StockPrice | null> {
 export async function fetchStockPrices(
   tickers: string[]
 ): Promise<Map<string, StockPrice>> {
-  const uniqueTickers = [...new Set(tickers)]
-    .filter((t) => TICKER_MAP[t] || t.length <= 5)
-    .slice(0, MAX_TICKERS);
+  const uniqueTickers = [...new Set(tickers.map(ticker => ticker.toUpperCase()))]
+    .filter(ticker => /^[A-Z0-9][A-Z0-9.-]{0,9}$/.test(ticker));
 
   if (uniqueTickers.length === 0) return new Map();
 

@@ -10,7 +10,7 @@
  * race, last write wins, both results are equivalent.
  */
 
-import { config } from "../config";
+import { supabase } from "./supabase";
 import { logger } from "./logger";
 import { sendAdminAlert } from "../sender/telegram";
 
@@ -48,31 +48,16 @@ function approvalToMultiplier(up: number, down: number): number {
 }
 
 async function fetchRawValidations(): Promise<ValidationRow[]> {
-  const url = config.app.supabaseUrl;
-  const key = config.app.supabaseServiceKey;
-  if (!url || !key) return [];
-
-  const since = new Date();
-  since.setUTCDate(since.getUTCDate() - 30);
-  const sinceStr = since.toISOString().split("T")[0];
-
+  if (!supabase.isConfigured()) return [];
+  const since = new Date(Date.now() - 30 * 86400000).toISOString();
   try {
-    const res = await fetch(
-      `${url}/rest/v1/article_validations` +
-        `?select=rating,articles(source,category)` +
-        `&created_at=gte.${sinceStr}`,
-      {
-        headers: {
-          apikey: key,
-          Authorization: `Bearer ${key}`,
-        },
-      }
-    );
-    if (!res.ok) {
-      logger.warn(`trust-scores: fetch HTTP ${res.status}`);
-      return [];
+    const rows: ValidationRow[] = [];
+    for (let offset = 0; ; offset += 500) {
+      const page = await supabase.requiredRows<ValidationRow>("article_validations",
+        `select=rating,articles(source,category)&created_at=gte.${encodeURIComponent(since)}&order=id.asc&limit=500&offset=${offset}`);
+      rows.push(...page);
+      if (page.length < 500) return rows;
     }
-    return (await res.json()) as ValidationRow[];
   } catch (err) {
     logger.warn(`trust-scores: fetch error — ${(err as Error).message}`);
     return [];

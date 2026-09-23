@@ -5,10 +5,9 @@ import { sendSlackDigest } from "../sender/slack";
 import { sendDigestMessage, sendDigestMessageToUser } from "../sender/telegram";
 import type { SendResult } from "../sender/telegram";
 import type { GeneratedDigest } from "../pipeline/types";
-import { escapeHtml } from "../utils/escape";
 import { logger } from "../utils/logger";
 import { emitDigestDelivery, emitError } from "../utils/metrics";
-import { isTriggered } from "../utils/price-watch";
+import { deliverPriceWatches } from "./watches";
 import { supabase } from "../utils/supabase";
 import type { UserPreferencesData } from "../utils/supabase";
 import { todayInTimezone } from "../utils/helpers";
@@ -60,9 +59,12 @@ export async function deliverDigest(
     : generated.runDate;
   const personalization = userPrefs ? personalizeDigest(digest, userPrefs) : undefined;
   const isPersonalized = personalization?.applied ?? false;
-  const messageToSend = isPersonalized
+  const messageToSend = personalization && !personalization.digest.articles.length
+    ? `No articles in the ${generated.runDate} edition match your filters. ${userPrefs?.watchlist_mode === "only" && !userPrefs.watchlist?.length ? "Your watchlist is empty. Add companies with /watchlist NVDA AMD." : "Adjust /settings or /watchlist to see more coverage."}`
+    : isPersonalized
     ? formatDigestTelegram(personalization!.digest, {
         stockPrices,
+        editionDate: generated.runDate,
         secExtracts: secExtracts.length > 0 ? secExtracts : undefined,
         earningsAnalyses: earningsAnalyses.length > 0 ? earningsAnalyses : undefined,
         personalizationNote: personalization!.note,
@@ -154,26 +156,10 @@ export async function deliverDigest(
   }
 
   if (targetChatId && sendResult.success) {
-    const triggered = generated.activeWatches
-      .filter((watch) => watch.chat_id === targetChatId)
-      .filter((watch) => {
-        const price = stockPrices.get(watch.ticker)?.price;
-        return price !== undefined && isTriggered(watch, price);
-      });
-
-    if (triggered.length > 0) {
-      const lines = ["🔔 <b>Price Watch</b>", ""];
-      for (const watch of triggered) {
-        const price = stockPrices.get(watch.ticker)!.price;
-        const direction = watch.direction === "above" ? "crossed above" : "dropped below";
-        lines.push(
-          `<b>${escapeHtml(watch.ticker)}</b> ${direction} $${watch.threshold} (now $${price.toFixed(2)})`
-        );
-      }
-      const watchResult = await sendDigestMessageToUser(targetChatId, lines.join("\n"));
-      if (watchResult.success && supabase.isConfigured()) {
-        await supabase.deletePriceWatchesByIds(triggered.map((watch) => watch.id));
-      }
+    try {
+      await deliverPriceWatches(targetChatId, generated.activeWatches);
+    } catch (error) {
+      logger.error(`Price watch check failed after primary delivery: ${(error as Error).message}`);
     }
   }
 

@@ -1,7 +1,7 @@
 # Always-on Telegram webhook server (interactive commands in production).
 # Build context = this directory (ai-infra-digest/).
 # Deploy on Render / Railway / Fly.io / any container host.
-FROM node:22-slim
+FROM node:22-slim AS build
 
 WORKDIR /app
 
@@ -16,6 +16,13 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
+FROM node:22-slim AS runtime
+WORKDIR /app
+COPY --from=build /app/package.json /app/package-lock.json ./
+COPY --from=build /app/scripts/patch-node-telegram-bot-api.cjs ./scripts/patch-node-telegram-bot-api.cjs
+RUN npm ci --omit=dev
+COPY --from=build --chown=node:node /app/dist ./dist
+RUN install -d -o node -g node /app/.cache /app/.ai-cache /app/logs
 ENV NODE_ENV=production
 # Hosts inject PORT; the webhook server reads process.env.PORT (default 3000).
 EXPOSE 3000

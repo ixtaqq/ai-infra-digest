@@ -1,3 +1,9 @@
+## Roadmap implementation
+
+The working tree includes published-briefing retrieval, conservative alert/watch delivery, a durable webhook inbox, generation claims, optional budget reservations, and a reader page at `/briefing/`. See [implementation status, verification limits, and rollout sequence](docs/roadmap-implementation.md) before deploying. New database migrations must accompany the matching server and website code.
+
+Use Node 22 (`.nvmrc`). `/digest` and `/last` read the latest edition without spending on AI. `/personalization prioritize|only` controls watchlist behavior. `/watch` checks fresh quotes at daily delivery; it is not a real-time market monitor.
+
 # 🏆 Goldirham Stack
 
 **Daily intelligence for the AI infrastructure age.** A pipeline that collects 68 RSS feeds, analyzes news with AI, extracts SEC filings from 35 companies, and delivers a personalized morning digest via Telegram at each user's preferred time.
@@ -219,7 +225,7 @@ and their daily aggregate rows.
 - **Structured error events** — AI 429, Yahoo Finance failures, Supabase errors all emit `ErrorEvent` with recovery suggestions
 
 ### 🧪 Testing & CI
-- **380 passing unit tests** with **Vitest** in the offline CI gate (`npm run test:unit`, 54 test files):
+- **Offline Vitest regression tests** in the CI gate (`npm run test:unit`):
   - Deduplication + cosine similarity: 9 unit tests (`cosineSimilarity` — identical, orthogonal, mismatched length, zero vectors; `deduplicateArticles` — 5 cases, now async)
   - Keyword matching: 13 unit tests
   - Stock price fetching: 3 unit tests
@@ -247,7 +253,7 @@ and their daily aggregate rows.
   - Supabase boundary tests: 28 mocked REST-response tests — no live credentials
   - Telegram boundary tests: 9 mocked Bot API tests — no live credentials
   - Stocks boundary tests: 8 mocked Yahoo Finance tests — no live credentials
-- **`npm run test:unit`** is the passing offline gate. **`npm test`** also includes the three integration-labelled mocked suites; the current repository run reports **425 passing tests across 57 files** (including **380 unit tests across 54 files**).
+- **`npm run test:unit`** is the passing offline gate. **`npm test`** also includes the three integration-labelled mocked suites; see [roadmap implementation and verification](docs/roadmap-implementation.md) for the latest full-suite evidence.
 - **CI workflow** — `.github/workflows/ci.yml` runs lint, both the unit and full test suites, responsive website verification, dependency audit, and blocking Semgrep on every push/PR to main; it also validates Supabase migrations locally with Docker. All current workflows declare explicit `permissions: contents: read` and run on Node 22.
 - **CodeQL** (v13) — `.github/workflows/codeql.yml` runs static security analysis (`javascript-typescript`, `security-extended` query pack) on every push/PR plus a weekly full scan; `github/codeql-action` steps SHA-pinned like every other action in this repo
 - **TypeScript strict mode** — entire project compiles cleanly with zero errors (`tsc --noEmit`)
@@ -392,8 +398,8 @@ npm run scheduler    # Run per-user delivery check
 npm run webhook      # Start always-on webhook server (tsx, local dev)
 npm run preflight    # Validate local configuration without network calls
 npm run preflight:network # Read-only authentication checks; sends nothing
-npm run test:unit    # Run 380 unit tests (offline, no credentials needed)
-npm run verify:website # Check dashboard layout at 320/768/1024/1440px in headless Edge/Chrome
+npm run test:unit    # Run unit tests (offline, no credentials needed)
+npm run verify:website # Check dashboard and briefing behavior at 320/768/1024/1440px in headless Edge/Chrome
 npm test             # Run the full suite, including mocked integration-labelled tests
 
 # Backfill historical derived metrics (run once after first pipeline runs)
@@ -488,7 +494,7 @@ This command requires the local Supabase/Docker stack but does not require Supab
 
 ### CI
 
-`.github/workflows/ci.yml` — runs on every push and PR to `main`. Executes `tsc --noEmit`, 380 unit tests across 54 files, the full 425-test suite across 57 files, credential-free responsive website verification, dependency audit, blocking Semgrep static analysis, and local Supabase migration validation.
+`.github/workflows/ci.yml` — runs on every push and PR to `main`. Executes `tsc --noEmit`, unit tests, the full mocked integration suite, credential-free responsive website verification, dependency audit, blocking Semgrep static analysis, and local Supabase migration validation.
 
 ### CodeQL
 

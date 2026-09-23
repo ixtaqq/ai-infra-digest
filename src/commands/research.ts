@@ -5,11 +5,12 @@ import { supabase } from "../utils/supabase";
 export function registerResearchCommands(): void {
   registerCommand("sec", async (ctx) => {
     if (!supabase.isConfigured()) {
-      return "Supabase not configured. Run the daily digest to start SEC filing analysis.";
+      return "Filing research is temporarily unavailable. Please try again later.";
     }
 
     const parts = ctx.text.split(/\s+/).slice(1);
     const ticker = parts[0]?.toUpperCase();
+    if (ticker && !/^[A-Z]{1,6}([.-][A-Z]{1,2})?$/.test(ticker)) return "Enter a valid company ticker, such as NVDA.";
 
     try {
       const params = ticker
@@ -18,8 +19,8 @@ export function registerResearchCommands(): void {
       const filings = await supabase.queryRows<Record<string, unknown>>("sec_filings", params);
       if (!filings.length) {
         return ticker
-          ? `No SEC filings found for <b>${ticker}</b>. Run the daily digest to populate filing data.`
-          : "No SEC filings yet. Run the daily digest to start filing analysis.";
+          ? `No SEC filings found for <b>${ticker}</b>. Please check back after the next edition.`
+          : "No SEC filings yet. Please check back after the next edition.";
       }
 
       const lines: string[] = [];
@@ -76,11 +77,12 @@ export function registerResearchCommands(): void {
 
   registerCommand("coverage", async (ctx) => {
     if (!supabase.isConfigured()) {
-      return "Supabase not configured. Coverage history requires a database.";
+      return "Coverage history is temporarily unavailable. Please try again later.";
     }
 
     const parts = ctx.text.split(/\s+/).slice(1);
     const ticker = parts[0]?.toUpperCase();
+    if (ticker && !/^[A-Z]{1,6}([.-][A-Z]{1,2})?$/.test(ticker)) return "Enter a valid company ticker, such as NVDA.";
     if (!ticker) {
       return (
         `📰 <b>Coverage</b>\n\n` +
@@ -91,7 +93,8 @@ export function registerResearchCommands(): void {
       );
     }
 
-    const days = parseInt(parts[1], 10) || 14;
+    const days = parts[1] === undefined ? 14 : Number(parts[1]);
+    if (!Number.isInteger(days) || days < 1 || days > 365) return "Choose a coverage period from 1 to 365 days.";
     const cutoff = new Date(Date.now() - days * 86400000).toISOString();
 
     try {
@@ -126,11 +129,12 @@ export function registerResearchCommands(): void {
 
   registerCommand("thesis", async (ctx) => {
     if (!supabase.isConfigured()) {
-      return "Supabase not configured. Thesis snapshots require a database.";
+      return "Thesis snapshots are temporarily unavailable. Please try again later.";
     }
 
     const parts = ctx.text.split(/\s+/).slice(1);
     const ticker = parts[0]?.toUpperCase();
+    if (ticker && !/^[A-Z]{1,6}([.-][A-Z]{1,2})?$/.test(ticker)) return "Enter a valid company ticker, such as NVDA.";
 
     type ThesisFields = {
       ticker: string;

@@ -1,4 +1,4 @@
-#!/usr/bin/env tsx
+import { mapConcurrent } from "./utils/concurrency";
 /**
  * Scheduled Delivery Runner
  *
@@ -122,8 +122,7 @@ export async function schedulerMain(): Promise<void> {
   // guarantee — deliverDigest() atomically claims each (chat_id, local date) slot
   // right before sending, which is what actually prevents double delivery from
   // overlapping scheduler runs.
-  const toDeliver = await Promise.all(
-    dueUsers.map(async (user) => {
+  const toDeliver = await mapConcurrent(dueUsers, 5, async (user) => {
       const deliveryDate = getDeliveryDate(user.timezone, now);
       const alreadyDelivered = await supabase.wasUserDeliveredToday(user.chat_id, deliveryDate);
       if (alreadyDelivered) {
@@ -131,8 +130,7 @@ export async function schedulerMain(): Promise<void> {
         return null;
       }
       return { user, deliveryDate };
-    })
-  );
+    });
 
   const pendingUsers = toDeliver.filter(
     (entry): entry is { user: (typeof users)[number]; deliveryDate: string } => entry !== null
@@ -195,12 +193,13 @@ export async function schedulerMain(): Promise<void> {
     articleIds: Map<string, number>;
   }[] = [];
 
-  for (const { user, deliveryDate } of pendingUsers) {
+  await getPublication();
+  await mapConcurrent(pendingUsers, 3, async ({ user, deliveryDate }) => {
     try {
       const currentPublication = await getPublication();
       if (!currentPublication) {
         failCount++;
-        continue;
+        return;
       }
       const result = await deliverDigest(
         currentPublication.generated,
@@ -222,7 +221,7 @@ export async function schedulerMain(): Promise<void> {
       failCount++;
       logger.error(`Delivery failed for user ${user.chat_id}: ${(error as Error).message}`);
     }
-  }
+  });
 
   // Publications retain the article identity map created by the editorial run,
   // so validation buttons do not require a second persistence pass.

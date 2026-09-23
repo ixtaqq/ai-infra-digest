@@ -8,7 +8,7 @@ import { getTrustScores } from "../utils/trust-scores";
 export function registerTrendCommands(): void {
   registerCommand("trending", async (ctx) => {
     if (!supabase.isConfigured()) {
-      return "Supabase not configured. Run the digest first to see trends.";
+      return "Trends are temporarily unavailable. Please try again later.";
     }
 
     try {
@@ -17,7 +17,7 @@ export function registerTrendCommands(): void {
         "daily_metrics",
         `select=date,trending_json,trending_entities&date=gte.${encodeURIComponent(sevenDaysAgo)}&order=date.desc`
       );
-      if (!metrics.length) return "No trending data available yet. Run the daily digest first.";
+      if (!metrics.length) return "No trending data available yet. Please check back after the next edition.";
 
       const latest = metrics.find((m) => m.trending_json);
       if (!latest) return "No trending data available yet.";
@@ -59,7 +59,7 @@ export function registerTrendCommands(): void {
 
   registerCommand("trends", async (ctx) => {
     if (!supabase.isConfigured()) {
-      return "Supabase not configured. Run the digest first to populate trends.";
+      return "Trends are temporarily unavailable. Please try again later.";
     }
 
     // Parse "/trends NVDA 30d" or "/trends sector Datacenters 30d"
@@ -73,7 +73,7 @@ export function registerTrendCommands(): void {
     try {
       const rows = await queryDerivedMetrics(entityTypePart, entity, days);
       if (!rows.length) {
-        return `No data found for <b>${escapeHtml(entity)}</b> over the last ${days} days. Run more digests to build history.`;
+        return `No data found for <b>${escapeHtml(entity)}</b> over the last ${days} days. More published editions are needed to build this history.`;
       }
 
       // Sparkline from mention_count
@@ -120,7 +120,7 @@ export function registerTrendCommands(): void {
 
   registerCommand("sources quality", async () => {
     if (!supabase.isConfigured()) {
-      return "Supabase not configured. Connect it to track source quality.";
+      return "Source quality is temporarily unavailable. Please try again later.";
     }
     try {
       const scores = await getTrustScores();

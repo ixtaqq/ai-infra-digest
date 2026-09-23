@@ -145,6 +145,11 @@ async function verify() {
       allFetchedArticles = fixtures.slice(0, 20); allArticlesCache = allFetchedArticles;
       articlePage = 0; articleSearchQuery = ''; hasMoreArticles = true;
       renderArticles(allFetchedArticles, false);
+      const row = document.getElementById('article-row-0');
+      row.click();
+      const clickExpanded = row.getAttribute('aria-expanded') === 'true';
+      row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      const keyboardCollapsed = row.getAttribute('aria-expanded') === 'false';
       const counts = [document.querySelectorAll('#articlesBody tr[id^="article-detail-"]').length];
       await loadMoreArticles();
       counts.push(document.querySelectorAll('#articlesBody tr[id^="article-detail-"]').length);
@@ -164,9 +169,9 @@ async function verify() {
       await older;
       const latestSearchWon = allFetchedArticles.length === 1 && allFetchedArticles[0].id === 45;
       fetchArticlePage = originalFetch;
-      return { counts, complete, lastReachable, latestSearchWon };
+      return { counts, complete, lastReachable, latestSearchWon, clickExpanded, keyboardCollapsed };
     })()`);
-    if (JSON.stringify(pagination.counts) !== '[20,40,45]' || !pagination.complete || !pagination.lastReachable || !pagination.latestSearchWon) {
+    if (JSON.stringify(pagination.counts) !== '[20,40,45]' || !pagination.complete || !pagination.lastReachable || !pagination.latestSearchWon || !pagination.clickExpanded || !pagination.keyboardCollapsed) {
       throw new Error('Accumulated pagination regression: ' + JSON.stringify(pagination));
     }
 
@@ -190,10 +195,44 @@ async function verify() {
     results.push({ width, pagination, ...evaluation });
   }
 
-  console.log(JSON.stringify({ results, browserErrors }, null, 2));
+  const readerResults = [];
+  for (const width of [320, 768, 1024, 1440]) {
+    await call("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 769 });
+    await call("Page.navigate", { url: new URL('/briefing/', targetUrl).href });
+    await waitUntilReady();
+    const reader = await evaluate(`(async () => {
+      Object.assign(readerConfig, { url: 'https://fixture.invalid', key: 'fixture-public' });
+      const original = GoldirhamData.query;
+      GoldirhamData.query = async (_url, _key, table) => {
+        if (table === 'public_editions') return [{ publication_date: '2026-01-01', published_at: '2026-01-01T00:00:00Z', summary: 'Fixture briefing', market_outlook: 'Fixture outlook', articles: [{ title: '<img src=x onerror=alert(1)>', summary: 'Source evidence', source: 'Fixture', url: 'javascript:alert(1)', affectedStocks: ['NVDA'], bearCase: 'Counterargument fixture' }] }];
+        if (table === 'articles') return [{ title: 'Company coverage', summary: 'Dated evidence', created_at: '2026-01-01T00:00:00Z', url: 'https://example.com/source' }];
+        if (table === 'sec_filings') throw new Error('Fixture unavailable');
+        return [];
+      };
+      await loadEdition(); await loadCompany('NVDA');
+      const result = {
+        width: innerWidth,
+        overflow: document.documentElement.scrollWidth > innerWidth + 1,
+        editionVisible: !document.getElementById('edition').hidden,
+        staleLabel: document.getElementById('status').textContent.includes('newer briefing'),
+        literalTitle: document.querySelector('#stories h3').textContent.includes('<img'),
+        unsafeLinks: document.querySelectorAll('a[href^="javascript:"], #stories img').length,
+        companyCoverage: document.getElementById('evidence').textContent.includes('Company coverage'),
+        partialState: document.getElementById('evidence').textContent.includes('could not load'),
+      };
+      GoldirhamData.query = async () => { throw new Error('Fixture offline'); };
+      await loadEdition(); result.retryVisible = !document.getElementById('retry').hidden;
+      GoldirhamData.query = original;
+      return result;
+    })()`);
+    readerResults.push(reader);
+  }
+
+  console.log(JSON.stringify({ results, readerResults, browserErrors }, null, 2));
 
   if (
     browserErrors.length > 0 ||
+    readerResults.some(result => result.overflow || !result.editionVisible || !result.staleLabel || !result.literalTitle || result.unsafeLinks || !result.companyCoverage || !result.partialState || !result.retryVisible) ||
     results.some((result) =>
       result.overflow ||
       !result.headingWithinViewport ||
