@@ -1,6 +1,6 @@
 ## Roadmap implementation
 
-The working tree includes published-briefing retrieval, conservative alert/watch delivery, a durable webhook inbox, generation claims, optional budget reservations, and a reader page at `/briefing/`. See [implementation status, verification limits, and rollout sequence](docs/roadmap-implementation.md) before deploying. New database migrations must accompany the matching server and website code.
+Version 1.1.0 includes published-briefing retrieval, conservative alert/watch delivery, a durable webhook inbox, generation claims, optional budget reservations, and a reader page at `/briefing/`. See the [release notes](docs/releases/v1.1.0.md) and [production rollout record](docs/roadmap-implementation.md). New database migrations must accompany the matching server and website code.
 
 Use Node 22 (`.nvmrc`). `/digest` and `/last` read the latest edition without spending on AI. `/personalization prioritize|only` controls watchlist behavior. `/watch` checks fresh quotes at daily delivery; it is not a real-time market monitor.
 
@@ -14,15 +14,15 @@ Covers the **full AI infrastructure value chain**: power generation → cooling 
 
 ## Release status
 
-The checked-in package version is **`1.0.1`** (`package.json`). The phase and `vN` labels below are implementation milestones, not package-version claims. The scheduled GitHub Actions jobs execute the current `main` branch; optional stages still depend on the credentials configured for each deployment.
+The checked-in package version is **`1.1.0`** (`package.json`). The phase and `vN` labels below are implementation milestones, not package-version claims. The scheduled GitHub Actions jobs execute the current `main` branch; optional stages still depend on the credentials configured for each deployment.
 
-Local stabilization work dated **2026-09-06** implements the two prioritized reliability milestones. See [changes, rollout, recovery, and remaining gates](docs/stabilization.md). These changes have not been deployed.
+The September 2026 reader and reliability release is deployed. See [what shipped and what still needs live verification](docs/releases/v1.1.0.md). The earlier [stabilization record](docs/stabilization.md) documents its own historical local verification state.
 
 ### Deployment-dependent capabilities
 
 These capabilities are implemented in the repository but are opt-in at runtime. Missing or unusable optional credentials affect only the relevant stage.
 
-| Capability | Enable with | Behavior without a working key | Current scheduled production |
+| Capability | Enable with | Behavior without a working key | Last verified production configuration |
 |---|---|---|---|
 | **Embeddings** | `OPENAI_EMBEDDING_API_KEY` (or local `OPENAI_API_KEY`) | Uses URL/Jaccard fallbacks; vector enrichment and semantic relevance filtering are skipped or degraded | **Disabled** — no `OPENAI_EMBEDDING_API_KEY` secret is configured |
 | **Earnings transcripts** | `ROIC_AI_API_KEY` | Earnings collection and analysis are skipped | **Disabled** — no `ROIC_AI_API_KEY` secret is configured |

@@ -1,6 +1,6 @@
 {
   "name": "ai-infra-digest",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "\ud83d\ude80 AI Infrastructure Daily Digest - Telegram bot delivering personalized AI infrastructure intelligence",
   "main": "dist/index.js",
   "scripts": {
