@@ -1,6 +1,6 @@
 # Roadmap implementation and release checklist
 
-Status: local implementation, not deployed. The roadmap release names are milestones, not changes to the existing package or migration version history.
+Status: implemented release deployed on 2026-09-24 through PR #8. See the production rollout record below for live verification and remaining limits. The roadmap release names are milestones, not changes to the existing package or migration version history.
 
 ## Implemented
 
@@ -84,7 +84,7 @@ The upgraded Vitest also emits a non-blocking warning about ESM syntax in Common
 
 1. Review the four migrations and this verification record. To reproduce locally, run `npx supabase db start`, `npx supabase db push --local --yes`, `npx supabase test db --local`, `npx supabase db lint --local --fail-on error`, `npm run build`, `npm run verify:local-api`, and `npm run verify:local-concurrency`. The last check requires an idle local inbox.
 2. Run Node 22 lint, full tests, browser verification, audit, and `docker build --tag goldirham-webhook:local .`.
-3. Stop old editorial, scheduler, and webhook workers before the production migration. Old alert workers must not run against the new outcome policy.
+3. Stop old editorial, scheduler, and webhook workers before merging migration-bearing releases. Supabase's GitHub integration automatically applies migrations from `main`, and Render automatically deploys that branch. Pausing only before a later CLI push is too late. Old alert workers must not run against the new outcome policy.
 4. After an authorized backup and migration review, apply in order: `20260922173201_foundation_delivery_safety.sql`, `20260922174405_reader_and_operations.sql`, `20260923091225_inbox_claim_serialization.sql`, `20260923094449_service_role_private_operations_grants.sql`. These are canonical migration files; historical schema snapshots are not deployment inputs.
 5. Deploy the matching server and website build. Website build requires `SUPABASE_URL` and a public anon/publishable key; missing/privileged keys fail the build. Never put a service key in browser configuration.
 6. With separately authorized test recipients, exercise onboarding → published retrieval → scheduled delivery → repeated retrieval → stop/delete; verify an uncertain alert is quarantined. Confirm inbox acceptance survives a worker restart and private rows remain unreadable through the public API.
@@ -100,7 +100,7 @@ The upgraded Vitest also emits a non-blocking warning about ESM syntax in Common
 | v3 | Preference-aware alert job, quiet hours/frequency limits, evidence-change summaries, and independently durable email/Slack copies. These remain conditional on demonstrated use, healthy credentials and reviewed costs, as specified in the roadmap. |
 | v4 | Set-based due-user batches; demand-driven always-on workers; measured public-read caching/indexes; deployed correlation/latency/queue monitoring; backup restore and deletion/retention drills. Production environment access and agreed service objectives are prerequisites. |
 
-The controlled rollout and its Git commit/push were authorized on 2026-09-23. Production mutation remains gated on deployment access, stopping the old workers, and a verified database backup. Real-recipient tests remain a separate step.
+The controlled rollout and its Git commit/push were authorized on 2026-09-23 and completed on 2026-09-24. Real-recipient tests remain a separate step.
 
 ## Production preflight on 2026-09-23
 
@@ -203,3 +203,66 @@ Error: Connection terminated unexpectedly
 ```
 
 Subsequent database tests, lint, real HTTP contracts, and concurrent claims all passed. This warning concerns the CLI's cached catalog, not an unapplied migration.
+
+## Production rollout — 2026-09-24
+
+- [PR #8](https://github.com/ixtaqq/ai-infra-digest/pull/8) merged as `e0ee09bc5be3e052e69b1605f8d85072ca02d444`. Node 22 CI and CodeQL passed on the release branch and on the merge commit. The post-merge database job passed on retry after the registry failure recorded below.
+- The user saved a new GitHub Actions bot secret at 06:20 UTC and updated Render. Render successfully registered the Telegram webhook at 06:27 UTC and again with the new release at 06:34 UTC. Secret values were not committed or printed. GitHub's secret-update timestamp is verified; an actual scheduled send using that secret has not yet been observed.
+- Before merging, all four production workflows were disabled and no jobs were running or queued. Supabase's existing GitHub integration then applied the four migrations automatically: its main-branch check ran from 06:34:10 to 06:34:19 UTC. Render completed the matching deployment at approximately 06:34:39 UTC. This means automatic migrations preceded the intended manual database step and overlapped the old webhook deployment briefly; the planned stop-before-migration ordering was not fully achieved. Scheduled alert workers were already paused. Future releases must stop the webhook before merging, or explicitly coordinate the integration first.
+- After the matching Render deployment was live, the service was temporarily suspended; its public health endpoint returned 503. `npx supabase db push --linked --yes` reported `Remote database is up to date.` All 36 migration versions match locally and remotely. The service was resumed after read-only schema and permission checks. Render deployment: `dep-daqc8hvf3r2c7397aqc0`.
+- The database backup is outside the repository at `%USERPROFILE%/.codex/backups/ai-infra-digest/20260924-141951/`. Public application schema, migration history, data and roles were exported, file structure checked, and SHA-256 hashes rechecked before the cutover. Its manifest records `restoreTested: false`; this was not a restore drill.
+- Vercel hosted build `dpl_22o2Xxmd75k4tYz9fFzKRx5EnsbB` was verified with `vercel curl`, then promoted to [goldirham-stack.vercel.app](https://goldirham-stack.vercel.app). The source was a clean staging copy of tracked website files plus generated public configuration and project identity. No private environment files were uploaded. The public configuration contains a publishable key.
+- All four production workflows are active again. No manual pipeline run, paid model request, test message, or delivery reconciliation was performed.
+
+### Live checks
+
+| Check | Result |
+| --- | --- |
+| Render `/health` after resume | HTTP 200, `ok` |
+| Unauthenticated webhook POST | HTTP 403; no update accepted |
+| Briefing and dashboard pages and their scripts | HTTP 200 with correct HTML/JavaScript content types |
+| Public reader projection | 25 editions, matching 25 canonical publications; latest edition 2026-09-23 |
+| Public latest-feed-health RPC | HTTP 200, 68 feeds |
+| Public stock-mention aggregate RPC | HTTP 200, 10 aggregated ticker rows |
+| Anonymous inbox and preference reads | HTTP 401 for both |
+| Worker inbox write/accept privileges | Present; anonymous accept execution denied |
+| Alert claim and inbox serialization definitions | Failed-only alert retry and advisory-lock serialization present |
+| Operational state after resume | Zero unresolved digests, alerts, inbox items or running editorial claims |
+| Live reader/company journey | Current saved briefing rendered; NVDA coverage, thesis history and dated price rendered; missing filing extracts and capped history disclosed |
+| Live dashboard | Loaded production articles and 68-feed status |
+
+Supabase's security advisor reports six informational `rls_enabled_no_policy` notices for intentionally private service-only tables. Public privileges are revoked and the public HTTP checks above were denied; adding permissive policies would weaken their intended boundary. See [the advisor explanation](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy).
+
+### Release-tool failures and recovery
+
+The local Windows website build failed:
+
+```text
+npx vercel build --prod --scope aizattaqq-s-projects
+Error: spawn cmd.exe ENOENT
+```
+
+The website configuration generator succeeded under Node 22. A clean hosted build and subsequent promotion succeeded instead; the failed local build is not counted as passing.
+
+The first post-merge database test job failed while pulling its test runner, before executing the database assertions:
+
+```text
+npx supabase test db --local
+Unable to find image 'public.ecr.aws/supabase/pg_prove:3.36' locally
+3.36: Pulling from supabase/pg_prove
+docker: toomanyrequests: Rate exceeded
+error running container: exit 125
+```
+
+`gh run rerun 35965084993 --failed` passed. Production data was not used by CI.
+
+Two initial read-only inspection queries used incorrect identifiers and were corrected using the canonical schema:
+
+```text
+ERROR: 42883: function "public.claim_alert_delivery(bigint,date,text,integer)" does not exist
+ERROR: 42P01: relation "public.users" does not exist
+```
+
+The actual identifiers are `claim_high_impact_alert(bigint,text,integer)` and `user_preferences`; the corrected checks passed without modifying data.
+
+Remaining operational evidence: real-recipient command/delivery checks, SMTP/Slack credential health, successful future generation within provider rate limits, and a database restore drill. The latest saved edition was dated September 23 at verification time. Enforced budget mode and unreviewed provider pricing were not enabled.
