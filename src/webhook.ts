@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+import { acceptUpdate, drainInbox, updateSchema } from "./delivery/inbox";
 /**
  * Telegram Webhook Server
  *
@@ -128,7 +128,9 @@ export function decideWebhook(opts: {
     return { status: 400, body: "bad request" };
   }
 
-  return { status: 200, body: "ok", update };
+  const parsed = updateSchema.safeParse(update);
+  if (!parsed.success) return { status: 400, body: "bad request" };
+  return { status: 200, body: "ok", update: parsed.data };
 }
 
 function createServer(secret: string): http.Server {
@@ -151,7 +153,7 @@ function createServer(secret: string): http.Server {
         req.destroy();
       }
     });
-    req.on("end", () => {
+    req.on("end", async () => {
       if (responded) return;
       const decision = decideWebhook({
         method: req.method,
@@ -165,9 +167,12 @@ function createServer(secret: string): http.Server {
 
       if (decision.update !== undefined) {
         try {
-          handleWebhookUpdate(decision.update as Parameters<typeof handleWebhookUpdate>[0]);
+          await acceptUpdate(decision.update);
         } catch (err) {
-          logger.warn(`Failed to process Telegram update: ${(err as Error).message}`);
+          logger.warn(`Failed to accept Telegram update: ${(err as Error).message}`);
+          res.writeHead(503);
+          res.end("temporarily unavailable");
+          return;
         }
       }
 
@@ -199,7 +204,17 @@ async function main(): Promise<void> {
   const webhookPath = process.env.WEBHOOK_PATH || "/telegram/webhook";
   const publicUrl = process.env.WEBHOOK_URL;
 
+  let draining = false;
+  const drain = async () => {
+    if (draining) return;
+    draining = true;
+    try { await drainInbox(payload => handleWebhookUpdate(payload as Parameters<typeof handleWebhookUpdate>[0])); }
+    catch (error) { logger.error(`Inbox worker failed: ${(error as Error).message}`); }
+    finally { draining = false; }
+  };
+  const worker = setInterval(() => { void drain(); }, 1000);
   const server = createServer(secret);
+  server.on("close", () => clearInterval(worker));
   server.listen(port, async () => {
     logger.info(`Telegram webhook server listening on :${port}${webhookPath}`);
 

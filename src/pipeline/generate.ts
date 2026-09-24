@@ -1,3 +1,4 @@
+import { selectSourceDiverseArticles } from "../evaluation/selection";
 import { createHash } from "crypto";
 import { config } from "../config";
 import { collectEarningsTranscripts } from "../collector/earnings";
@@ -13,7 +14,7 @@ import { generateEmbeddings } from "../processor/embeddings";
 import { embedSeeds, passesSemanticGate } from "../processor/relevance";
 import { analyzeSECFilings } from "../processor/sec";
 import type { SECFinancialExtract } from "../processor/sec";
-import { sendDigestMessage } from "../sender/telegram";
+import { sendDigestMessage, sendDigestMessageToUser } from "../sender/telegram";
 import { getCached, setCached } from "../utils/ai-cache";
 import { isMonthlyBudgetExceeded } from "../utils/budget";
 import {
@@ -204,9 +205,9 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
     let articlesToProcess: Article[];
     if (uniqueArticles.length === 0) {
       logger.info("All articles were duplicates; processing top articles anyway");
-      articlesToProcess = articles.slice(0, maxArticlesForAI);
+      articlesToProcess = selectSourceDiverseArticles(articles, maxArticlesForAI);
     } else {
-      articlesToProcess = uniqueArticles.slice(0, maxArticlesForAI);
+      articlesToProcess = selectSourceDiverseArticles(uniqueArticles, maxArticlesForAI);
     }
 
     logger.info(
@@ -245,11 +246,6 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
     const dropped = beforeFilter - digest.articles.length;
     if (dropped > 0) {
       logger.info(`Relevance filter: dropped ${dropped} low-relevance articles (< 4/10)`);
-    }
-
-    // ─── Alert System: send instant alerts after relevance filtering ──
-    if (supabase.isConfigured()) {
-      await sendHighImpactAlerts(digest.articles);
     }
 
     // ─── Step 2d: Embeddings (v8.0) ──────────────────────────────────────────
@@ -433,6 +429,8 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
     // ─── Step 3a.1: Cross-Source Grounding (v9.1) ────────────────────────────
     attachGroundingNotes(digest.articles, secExtracts, earningsAnalyses, stockPrices);
 
+    if (supabase.isConfigured()) await sendHighImpactAlerts(digest.articles);
+
     // ─── Step 3c: Build "What Changed" WoW summary ───────────────────────────
     const whatChanged = supabase.isConfigured()
       ? await buildWhatChanged()
@@ -441,6 +439,7 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
     // ─── Step 3: Format Digest ───────────────────
     logger.info("Step 3/4: Formatting digest for Telegram...");
     const formattedMessage = formatDigestTelegram(digest, {
+      editionDate: runDate,
       stockPrices,
       secExtracts: secExtracts.length > 0 ? secExtracts : undefined,
       earningsAnalyses: earningsAnalyses.length > 0 ? earningsAnalyses : undefined,
@@ -583,7 +582,7 @@ export async function sendHighImpactAlerts(articles: import("../processor/ai").P
   const highImpact = articles
     .map((article) => ({
       article,
-      impactScore: clampAlertScore(article.impactScore, ALERT_SCORE_MIN),
+      impactScore: clampAlertScore(article.effectiveScore ?? article.impactScore, ALERT_SCORE_MIN),
     }))
     .filter(({ impactScore }) => impactScore >= MIN_ALERT_SCORE);
   if (highImpact.length === 0) return;
@@ -594,9 +593,6 @@ export async function sendHighImpactAlerts(articles: import("../processor/ai").P
     logger.info(`Alert system: ${highImpact.length} high-impact articles found, but no users opted in`);
     return;
   }
-
-  const { default: TelegramBot } = await import("node-telegram-bot-api");
-  const bot = new TelegramBot(config.telegram.botToken, { polling: false });
 
   logger.info(`Alert system: ${highImpact.length} high-impact articles for ${optedIn.length} users`);
 
@@ -634,8 +630,11 @@ export async function sendHighImpactAlerts(articles: import("../processor/ai").P
         if (impactScore < minScore || !Number.isSafeInteger(user.chat_id)) continue;
         claimed = await supabase.claimHighImpactAlert(user.chat_id, contentHash);
         if (!claimed) continue;
-        await bot.sendMessage(user.chat_id, text, { parse_mode: "HTML", link_preview_options: { is_disabled: true } });
-        await supabase.logHighImpactAlert(user.chat_id, contentHash, "success");
+        const result = await sendDigestMessageToUser(user.chat_id, text);
+        const finalized = await supabase.logHighImpactAlert(user.chat_id, contentHash,
+          result.success ? "success" : result.ambiguous ? "ambiguous" : "failed", result.error);
+        if (!finalized) logger.error("Alert finalization failed; manual reconciliation required");
+        if (!result.success || !finalized) continue;
         const logTitle = typeof article.title === "string" ? article.title : "untitled";
         logger.info(`Alert sent for article "${logTitle.slice(0, 60)}..." to user ${user.chat_id}`);
       } catch (error) {
@@ -643,7 +642,7 @@ export async function sendHighImpactAlerts(articles: import("../processor/ai").P
           await supabase.logHighImpactAlert(
             user.chat_id,
             contentHash,
-            "failed",
+            "ambiguous",
             (error as Error).message.slice(0, 300)
           );
         }

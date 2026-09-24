@@ -109,7 +109,7 @@ const publicationSchema = z.object({
       source: z.string(), date: z.union([z.string(), z.date()]), contentSnippet: z.string() })) })),
   secExtracts: z.array(sec), earningsAnalyses: z.array(earnings),
   stockPrices: z.array(z.tuple([z.string(), z.object({ ticker: z.string(), price: number,
-    change: number, changePercent: number, previousClose: number })])),
+    change: number, changePercent: number, previousClose: number, observedAt: z.string().datetime().optional() })])),
   capabilities: z.object({ primaryAi: capability, fallbackAi: capability, embeddings: capability,
     earnings: capability, supabase: capability, slack: capability, email: capability }),
   whatChanged: z.string().optional(),

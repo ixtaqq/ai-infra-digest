@@ -51,6 +51,7 @@ import type { EarningsAnalysis } from "../processor/earnings";
 import type { DeepDiveResult } from "../processor/bear-cases";
 
 export interface FormatOptions {
+  editionDate?: string;
   stockPrices?: Map<string, StockPrice>;
   secExtracts?: SECFinancialExtract[];
   earningsAnalyses?: EarningsAnalysis[];
@@ -70,9 +71,9 @@ export function formatDigestTelegram(
 
   // ─── Header ───────────────────────────────────────
   lines.push("🚀 <b>AI Infra Morning Digest</b>");
-  lines.push(`<i>${formatDate()} • Full value chain coverage</i>`);
+  lines.push(`<i>${escapeHtml(options?.editionDate || formatDate())} • Full value chain coverage</i>`);
   if (options?.personalizationNote) {
-    lines.push(`<i>🎯 ${options.personalizationNote}</i>`);
+    lines.push(`<i>🎯 ${escapeHtml(options.personalizationNote)}</i>`);
   }
   if (options?.whatChanged) {
     lines.push("");
@@ -94,6 +95,7 @@ export function formatDigestTelegram(
         })
         .join(" • ")
     );
+    if (prices?.size) lines.push("<i>Saved price snapshots for this edition; not live quotes.</i>");
     lines.push("");
   }
 

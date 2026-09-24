@@ -1,4 +1,5 @@
 import { config } from "../config";
+import { createHash, randomUUID } from "node:crypto";
 import { logger } from "./logger";
 import type { PriceWatch } from "./price-watch";
 import type { RankingExplanation } from "./ranking";
@@ -84,6 +85,7 @@ export interface CapexData {
 }
 
 export interface UserPreferencesData {
+  watchlist_mode?: "prioritize" | "only";
   chat_id: number;
   username?: string;
   first_name?: string;
@@ -148,6 +150,8 @@ function getConfig() {
 }
 
 export type ProductEventName =
+  | "briefing_retrieved"
+  | "research_used"
   | "onboarding_started"
   | "onboarding_completed"
   | "delivery_resumed"
@@ -248,6 +252,16 @@ async function supabaseFetch(
 
 // ─── Public API ────────────────────────────────────────
 export const supabase = {
+  async requiredRpc<T = unknown>(name: string, body: Record<string, unknown>): Promise<T> {
+    const cfg = getConfig();
+    if (!cfg) throw new Error("Database configuration is required");
+    const response = await boundedFetch(`${cfg.url}/rest/v1/rpc/${name}`, {
+      method: "POST", headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) throw new Error(`Required database operation ${name}: HTTP ${response.status}`);
+    return await response.json() as T;
+  },
   isConfigured(): boolean {
     return !!getConfig();
   },
@@ -382,6 +396,12 @@ export const supabase = {
       "digest_publications",
       `publication_date=eq.${encodeURIComponent(publicationDate)}&limit=1&select=id,publication_date,schema_version,payload,article_ids,published_at`
     );
+    return rows[0] ?? null;
+  },
+
+  async getLatestDigestPublication(): Promise<DigestPublicationRow | null> {
+    const rows = await this.requiredRows<DigestPublicationRow>("digest_publications",
+      "order=publication_date.desc&limit=1&select=id,publication_date,schema_version,payload,article_ids,published_at");
     return rows[0] ?? null;
   },
 
@@ -683,19 +703,11 @@ export const supabase = {
     ) {
       return false;
     }
-    return supabaseFetch(
-      "POST",
-      "delivery_email_verifications",
-      {
-        chat_id: chatId,
-        email,
-        code_hash: codeHash,
-        expires_at: expiresAt,
-        attempts: 0,
-        updated_at: new Date().toISOString(),
-      },
-      "on_conflict=chat_id"
-    );
+    return claimRpc("request_delivery_email", {
+      p_chat_id: chatId, p_email: email, p_code_hash: codeHash,
+      p_destination_hash: createHash("sha256").update(email.toLowerCase()).digest("hex"),
+      p_expires_at: expiresAt,
+    }, ["request_delivery_email"], "requestDeliveryEmail", false);
   },
 
   async verifyDeliveryEmail(chatId: number, codeHash: string): Promise<boolean> {
@@ -804,7 +816,7 @@ export const supabase = {
   async logHighImpactAlert(
     chatId: number,
     contentHash: string,
-    status: "success" | "failed",
+    status: "success" | "failed" | "ambiguous",
     details?: string
   ): Promise<boolean> {
     if (!Number.isSafeInteger(chatId) || !/^[0-9a-f]{64}$/.test(contentHash)) return false;
@@ -896,20 +908,11 @@ export const supabase = {
 
   /** All active price watches, across every user — fetched once per generateDigest() run. */
   async getAllPriceWatches(): Promise<PriceWatch[]> {
-    const cfg = getConfig();
-    if (!cfg) return [];
-    try {
-      const response = await boundedFetch(`${cfg.url}/rest/v1/price_watches?select=*`, {
-        headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` },
-      });
-      if (!response.ok) {
-        logger.warn(`Supabase getAllPriceWatches: ${response.status}`);
-        return [];
-      }
-      return (await response.json()) as PriceWatch[];
-    } catch (error) {
-      logger.warn(`Supabase getAllPriceWatches: ${(error as Error).message}`);
-      return [];
+    const watches: PriceWatch[] = [];
+    for (let offset = 0; ; offset += 500) {
+      const page = await this.requiredRows<PriceWatch>("price_watches", `select=*&order=id.asc&limit=500&offset=${offset}`);
+      watches.push(...page);
+      if (page.length < 500) return watches;
     }
   },
 
@@ -924,7 +927,12 @@ export const supabase = {
     threshold: number;
     direction: "above" | "below";
   }): Promise<boolean> {
-    return supabaseFetch("POST", "price_watches", watch, "on_conflict=chat_id,ticker");
+    return supabaseFetch("POST", "price_watches", { ...watch, revision: randomUUID() }, "on_conflict=chat_id,ticker");
+  },
+
+  async completePriceWatch(id: number, revision: string): Promise<boolean> {
+    return supabaseFetch("DELETE", "price_watches", undefined,
+      `id=eq.${id}&revision=eq.${encodeURIComponent(revision)}`);
   },
 
   /** Clears a single user's watch on one ticker (the `/watch TICKER off` command). */

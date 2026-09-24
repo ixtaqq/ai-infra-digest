@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 const dashboard = readFileSync(
   resolve(process.cwd(), "website/dashboard/index.html"),
   "utf8"
-);
+) + readFileSync(resolve(process.cwd(), "website/dashboard/desk.js"), "utf8");
 
 describe("dashboard privacy boundary", () => {
   it("loads feedback aggregates without requesting or rendering legacy comments", () => {

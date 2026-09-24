@@ -108,7 +108,7 @@ describe("/coverage command", () => {
     expect(text).toContain("last 14 days");
   });
 
-  it("shows a not-configured message when Supabase is unavailable", async () => {
+  it("shows a reader-facing unavailable message when Supabase is unavailable", async () => {
     // Re-register with isConfigured() false for this one test.
     vi.doMock("./utils/supabase", () => ({ supabase: { isConfigured: () => false, queryRows: h.queryRowsMock } }));
     vi.resetModules();
@@ -117,7 +117,7 @@ describe("/coverage command", () => {
     register2();
     const result = await h.handlers.get("coverage")!(ctx("/coverage NVDA"));
     const text = typeof result === "string" ? result : result.text;
-    expect(text).toContain("not configured");
+    expect(text).toContain("temporarily unavailable");
   });
 });
 
@@ -273,7 +273,7 @@ describe("/watch command", () => {
     expect(h.upsertPriceWatchMock).toHaveBeenLastCalledWith({ chat_id: 1, ticker: "NVDA", threshold: 150, direction: "above" });
   });
 
-  it("shows a not-configured message when Supabase is unavailable", async () => {
+  it("shows a reader-facing unavailable message when Supabase is unavailable", async () => {
     vi.doMock("./utils/supabase", () => ({ supabase: { isConfigured: () => false } }));
     vi.resetModules();
     const { registerDigestCommands: register2 } = await import("./index");
@@ -281,6 +281,6 @@ describe("/watch command", () => {
     register2();
     const result = await h.handlers.get("watch")!(ctx("/watch NVDA 130"));
     const text = typeof result === "string" ? result : result.text;
-    expect(text).toContain("not configured");
+    expect(text).toContain("temporarily unavailable");
   });
 });

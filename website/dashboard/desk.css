@@ -100,3 +100,9 @@ td { font-size:12px; padding:16px 12px; }
   .kpi-change { line-height:1.6; }
   .loading>div:nth-child(2) { grid-template-columns:minmax(0,1fr)!important; }
 }
+
+.reader-link { display:block; padding:12px 24px; color:var(--gold); font-size:14px; position:relative; z-index:50; }
+button, input, select { min-height:44px; }
+:focus-visible { outline:3px solid var(--gold); outline-offset:3px; }
+.chart-fallback, .filter-pill, .chart-tabs button { font-size:13px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important; scroll-behavior:auto !important; } }

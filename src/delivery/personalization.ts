@@ -15,6 +15,7 @@ export function personalizeDigest(
 ): PersonalizationResult {
   const length = prefs.digest_length ?? "standard";
   const applied =
+    prefs.watchlist_mode === "only" ||
     (prefs.min_impact_score ?? 0) > 0 ||
     (prefs.categories_enabled?.length ?? 0) > 0 ||
     (prefs.watchlist?.length ?? 0) > 0 ||
@@ -32,14 +33,19 @@ export function personalizeDigest(
   }
 
   const watchlist = (prefs.watchlist ?? []).map((ticker) => ticker.toUpperCase());
-  let topStocks = digest.topStocks;
+  if (prefs.watchlist_mode === "only") {
+    articles = articles.filter(article => article.affectedStocks.some(ticker => watchlist.includes(ticker.toUpperCase())));
+  }
+  let topStocks = prefs.watchlist_mode === "only"
+    ? digest.topStocks.filter(stock => watchlist.includes(stock.ticker.toUpperCase()))
+    : digest.topStocks;
   if (watchlist.length > 0) {
     const isWatched = (tickers: string[]) =>
       tickers.some((ticker) => watchlist.includes(ticker.toUpperCase()));
     topStocks = [
       ...topStocks.filter((stock) => watchlist.includes(stock.ticker.toUpperCase())),
       ...topStocks.filter((stock) => !watchlist.includes(stock.ticker.toUpperCase())),
-    ].slice(0, 5);
+    ].filter(stock => prefs.watchlist_mode !== "only" || watchlist.includes(stock.ticker.toUpperCase())).slice(0, 5);
     articles = [
       ...articles.filter((article) => isWatched(article.affectedStocks)),
       ...articles.filter((article) => !isWatched(article.affectedStocks)),
@@ -56,7 +62,7 @@ export function personalizeDigest(
   for (const category of NEWS_CATEGORIES) categories[category as NewsCategory] = [];
   for (const article of articles) {
     const category = (article.category || NEWS_CATEGORIES[0]) as NewsCategory;
-    categories[category].push(article);
+    (categories[category] ??= []).push(article);
   }
 
   return {
@@ -72,7 +78,7 @@ function buildPersonalizationNote(prefs: UserPreferencesData): string {
   const watchlist = prefs.watchlist ?? [];
   const categories = prefs.categories_enabled ?? [];
   const minScore = prefs.min_impact_score ?? 0;
-  if (watchlist.length > 0) parts.push(`watchlist: ${watchlist.join(", ")}`);
+  if (watchlist.length > 0) parts.push(`${prefs.watchlist_mode === "only" ? "only" : "prioritize"} watchlist: ${watchlist.join(", ")}`);
   if (categories.length > 0) parts.push(`sectors: ${categories.join(", ")}`);
   if (minScore > 0) parts.push(`min score: ${minScore}/10`);
   if ((prefs.digest_length ?? "standard") !== "standard") {

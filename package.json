@@ -1,7 +1,7 @@
 {
   "name": "ai-infra-digest",
   "version": "1.0.1",
-  "description": "🚀 AI Infrastructure Daily Digest - Telegram bot delivering personalized AI infrastructure intelligence",
+  "description": "\ud83d\ude80 AI Infrastructure Daily Digest - Telegram bot delivering personalized AI infrastructure intelligence",
   "main": "dist/index.js",
   "scripts": {
     "postinstall": "node scripts/patch-node-telegram-bot-api.cjs",
@@ -22,11 +22,15 @@
     "test:unit": "vitest run --exclude '**/*.integration.test.ts'",
     "test:watch": "vitest",
     "verify:website": "node scripts/verify-website.mjs",
+    "verify:local-api": "node scripts/verify-local-api.mjs",
+    "verify:local-concurrency": "node scripts/verify-local-concurrency.mjs",
     "db:diff": "supabase db diff",
     "db:push": "supabase db push",
     "db:pull": "supabase db pull",
     "db:reset": "supabase db reset --local",
-    "db:status": "supabase migration list"
+    "db:status": "supabase migration list",
+    "operations": "tsx scripts/operations.ts",
+    "evaluate:benchmark": "tsx scripts/evaluate-benchmark.ts"
   },
   "keywords": [
     "ai",
@@ -39,7 +43,7 @@
   "dependencies": {
     "dotenv": "^16.4.5",
     "node-telegram-bot-api": "^1.1.1",
-    "nodemailer": "^9.0.1",
+    "nodemailer": "^9.1.1",
     "openai": "^4.73.0",
     "rss-parser": "^3.13.0",
     "zod": "^3.25.76"
@@ -51,6 +55,9 @@
     "supabase": "^2.107.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": "22.x"
   }
 }

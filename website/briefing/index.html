@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="script-src 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="The latest AI infrastructure briefing, with source evidence and company research.">
+  <title>The Briefing — Goldirham Stack</title>
+  <link rel="stylesheet" href="reader.css">
+  <script src="/dashboard/config.js" defer></script>
+  <script src="/dashboard/data.js" defer></script>
+  <script src="reader.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to briefing</a>
+  <header><a class="brand" href="/">GOLDIRHAM <span>STACK</span></a><nav aria-label="Main navigation"><a href="/briefing/" aria-current="page">Briefing</a><a href="/dashboard/">Research desk</a></nav></header>
+  <main id="main">
+    <section class="intro"><p class="eyebrow">AI INFRASTRUCTURE INTELLIGENCE</p><h1>The developments.<br>The evidence.</h1><p>Read the latest edition, follow the source, and examine the counterargument.</p></section>
+    <p id="status" role="status">Loading the latest briefing…</p><button id="retry" hidden>Try again</button>
+    <section id="edition" hidden aria-labelledby="edition-title"><div class="edition-head"><h2 id="edition-title">Latest edition</h2><time id="date"></time></div><p id="summary" class="summary"></p><p id="outlook"></p><div id="stories"></div></section>
+    <section id="company" aria-labelledby="company-title"><p class="eyebrow">FOLLOW THE EVIDENCE</p><h2 id="company-title">Company research</h2><form id="company-form"><label for="ticker">Company ticker</label><div class="input-row"><input id="ticker" name="ticker" placeholder="NVDA" maxlength="10" autocomplete="off"><button>Explore company</button></div></form><p id="company-status" role="status">Compare recent coverage, filing extracts, and dated thesis snapshots.</p><div id="evidence"></div></section>
+    <footer>Analysis is an interpretation of the linked sources. Prices and company evidence are dated snapshots; missing data is shown explicitly.</footer>
+  </main>
+</body>
+</html>

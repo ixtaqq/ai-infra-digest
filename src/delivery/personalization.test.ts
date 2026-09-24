@@ -37,6 +37,11 @@ function digestFixture(): DigestResult {
 }
 
 describe("personalizeDigest", () => {
+  it.each([{ watchlist: [] }, { watchlist: ["AMD"] }])("excludes unrelated articles and stocks in only mode", ({ watchlist }) => {
+    const result = personalizeDigest(digestFixture(), { chat_id: 1, watchlist_mode: "only", watchlist });
+    expect(result.digest.articles).toEqual([]);
+    expect(result.digest.topStocks).toEqual([]);
+  });
   it("returns the original digest when no preference changes output", () => {
     const digest = digestFixture();
     const result = personalizeDigest(digest, { chat_id: 1, digest_length: "standard" });

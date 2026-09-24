@@ -24,6 +24,11 @@ afterEach(() => {
 });
 
 describe("stocks TICKER_MAP", () => {
+  it.each([undefined, 0, -1, NaN, Infinity])("rejects invalid price %s", async price => {
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ chart: { result: [{ meta: { regularMarketPrice: price } }] } }) });
+    const { fetchStockPrices } = await import("./stocks");
+    expect((await fetchStockPrices(["NVDA"])).size).toBe(0);
+  });
   it("should contain all expected AI chip designer tickers", async () => {
     mockFetch.mockImplementation(async (input: string) => {
       const ticker = input.split("/chart/")[1].split("?")[0];
@@ -44,7 +49,7 @@ describe("stocks TICKER_MAP", () => {
     expect(result.size).toBe(0);
   });
 
-  it("should cap at 25 tickers max", async () => {
+  it("does not omit tickers beyond the first 25", async () => {
     const { fetchStockPrices } = await import("./stocks");
     mockFetch.mockImplementation(async (input: string) => {
       const ticker = input.split("/chart/")[1].split("?")[0];
@@ -55,7 +60,7 @@ describe("stocks TICKER_MAP", () => {
     const result = await fetchStockPrices(manyTickers);
 
     expect(result).toBeInstanceOf(Map);
-    expect(mockFetch).toHaveBeenCalledTimes(25);
+    expect(mockFetch).toHaveBeenCalledTimes(30);
   });
 
   it("fetches in fixed-size batches and isolates one ticker failure", async () => {

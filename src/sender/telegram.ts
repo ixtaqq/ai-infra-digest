@@ -1,5 +1,6 @@
+import { awaitUpdateWork, markUpdateIncomplete, trackUpdateWork } from "../utils/update-context";
 import { planMessageParts } from "./message-parts";
-import TelegramBot, { type Update, type Message, type InlineKeyboardButton } from "node-telegram-bot-api";
+import TelegramBot, { type Update, type Message, type InlineKeyboardButton, type CallbackQuery } from "node-telegram-bot-api";
 import { config, type TelegramMode } from "../config";
 import { logger } from "../utils/logger";
 import { emitCommandUsage } from "../utils/metrics";
@@ -79,8 +80,8 @@ function getBot(): TelegramBot {
  * Feed a raw Telegram update (a webhook POST body) to the bot's registered
  * command handlers. Call enableWebhookMode() + startInteractiveBot() first.
  */
-export function handleWebhookUpdate(update: Update): void {
-  getBot().processUpdate(update);
+export async function handleWebhookUpdate(update: Update): Promise<void> {
+  await awaitUpdateWork(() => getBot().processUpdate(update));
 }
 
 export interface SendResult {
@@ -138,6 +139,7 @@ function settingsHelpText(): string {
     `• <code>/settings min_score 5</code> — Minimum impact score (0–10)\n` +
     `• <code>/settings length standard</code> — brief, standard, or detailed\n` +
     `• <code>/settings categories Chips &amp; GPUs, Datacenters</code> — Filter categories\n` +
+    `• <code>/personalization only</code> — Only watched companies; use prioritize to rank them first\n` +
     `• <code>/settings categories all</code> — Enable all categories\n\n` +
     `Use <code>/settings</code> without arguments to view your current settings.`
   );
@@ -192,6 +194,7 @@ function formatSettings(prefs: NonNullable<Awaited<ReturnType<typeof supabase.ge
   return (
     `⚙️ <b>Your Settings</b>\n\n` +
     `• Watchlist: <code>${escapeHtml(watchlist)}</code>\n` +
+    `• Watchlist mode: ${escapeHtml(prefs.watchlist_mode || "prioritize")}\n` +
     `• Categories: ${escapeHtml(categories)}\n` +
     `• Min impact score: ${escapeHtml(String(prefs.min_impact_score ?? 0))}/10\n` +
     `• Preferred time: ${escapeHtml(prefs.preferred_time || "08:00")} ${escapeHtml(prefs.timezone || "Asia/Kuala_Lumpur")}\n` +
@@ -211,21 +214,27 @@ export function registerCommand(
 }
 
 /**
- * Record that a user invoked a bot command (v13). Fire-and-forget on both legs:
+ * Record that a user invoked a bot command (v13). Both metrics destinations are best-effort:
  * NDJSON metrics (local/ephemeral) + a durable Supabase row. Never throws — a
  * usage-logging failure must never affect the command the user actually ran.
  */
-function logCommandUse(command: string, chatId: number): void {
+async function logCommandUse(command: string, chatId: number): Promise<void> {
   try {
     emitCommandUsage(command, chatId);
   } catch {
     /* non-critical */
   }
-  import("../utils/supabase")
+  await import("../utils/supabase")
     .then(({ supabase }) => supabase.logCommandUsage(command, chatId))
     .catch(() => {
       /* non-critical — durable log is best-effort */
     });
+}
+
+export async function rejectNonPrivateMessage(client: TelegramBot, msg: Message): Promise<boolean> {
+  if (msg.chat.id > 0 && (!msg.chat.type || msg.chat.type === "private")) return false;
+  await client.sendMessage(msg.chat.id, "Open a private chat with this bot to read or manage your personal briefing.");
+  return true;
 }
 
 function initCommands() {
@@ -233,22 +242,34 @@ function initCommands() {
   commandHandlersRegistered = true;
 
   const pollingBot = getBot();
+  const onText = (pattern: RegExp, handler: (msg: Message, match: RegExpExecArray | null) => Promise<void>) => {
+    pollingBot.onText(pattern, (msg, match) => trackUpdateWork(Promise.resolve().then(() => handler(msg, match))));
+  };
+  const onMessage = (handler: (msg: Message) => Promise<void>) => {
+    pollingBot.on("message", msg => trackUpdateWork(Promise.resolve().then(() => handler(msg))));
+  };
+  const onCallback = (handler: (query: CallbackQuery) => Promise<void>) => {
+    pollingBot.on("callback_query", query => trackUpdateWork(Promise.resolve().then(() => handler(query))));
+  };
+
 
   // Handle /start — launches interactive onboarding flow
-  pollingBot.onText(/^\/start(@\w+)?$/, async (msg) => {
-    logCommandUse("start", msg.chat.id);
+  onText(/^\/start(@\w+)?$/, async (msg) => {
+    if (await rejectNonPrivateMessage(pollingBot, msg)) return;
+    await logCommandUse("start", msg.chat.id);
     await startOnboarding(pollingBot, msg);
   });
 
   // Handle /stop and /unsubscribe — explicit opt-out from scheduled delivery.
-  pollingBot.onText(/^\/(?:stop|unsubscribe)(@\w+)?$/, async (msg) => {
+  onText(/^\/(?:stop|unsubscribe)(@\w+)?$/, async (msg) => {
+    if (await rejectNonPrivateMessage(pollingBot, msg)) return;
     const chatId = msg.chat.id;
     const command = (msg.text || "/stop")
       .split(/\s+/)[0]
       .replace(/^\//, "")
       .replace(/@\w+$/, "")
       .toLowerCase();
-    logCommandUse(command, chatId);
+    await logCommandUse(command, chatId);
     cancelOnboarding(chatId);
 
     let deactivated = false;
@@ -271,9 +292,10 @@ function initCommands() {
   });
 
   // Handle /resume — reactivate only after a previously completed onboarding.
-  pollingBot.onText(/^\/resume(@\w+)?$/, async (msg) => {
+  onText(/^\/resume(@\w+)?$/, async (msg) => {
+    if (await rejectNonPrivateMessage(pollingBot, msg)) return;
     const chatId = msg.chat.id;
-    logCommandUse("resume", chatId);
+    await logCommandUse("resume", chatId);
     cancelOnboarding(chatId);
 
     let resumed = false;
@@ -302,7 +324,8 @@ function initCommands() {
   });
 
   // Handle /delete_my_data and /delete — remove private user data.
-  pollingBot.onText(/^\/(?:delete_my_data|delete)(@\w+)?(?:\s+([\s\S]*))?$/, async (msg, match) => {
+  onText(/^\/(?:delete_my_data|delete)(@\w+)?(?:\s+([\s\S]*))?$/, async (msg, match) => {
+    if (await rejectNonPrivateMessage(pollingBot, msg)) return;
     const chatId = msg.chat.id;
 
     // Do not record this command in command_usage: the usage row is private
@@ -334,31 +357,26 @@ function initCommands() {
     );
   });
 
-  // Route callback queries — onboarding steps first, then other handlers
-  pollingBot.on("callback_query", async (query) => {
-    const handled = await handleOnboardingCallback(pollingBot, query);
-    if (handled) return;
-    // other callback handlers can be added here
-  });
-
   // Route free-text messages during onboarding (watchlist input)
-  pollingBot.on("message", async (msg) => {
+  onMessage( async (msg) => {
+    if (msg.chat.id <= 0 || (msg.chat.type && msg.chat.type !== "private")) return;
     if (!msg.text || msg.text.startsWith("/")) return;
     await handleOnboardingText(pollingBot, msg);
   });
 
   // Handle /help
-  pollingBot.onText(/^\/help(@\w+)?$/, async (msg) => {
+  onText(/^\/help(@\w+)?$/, async (msg) => {
+    if (await rejectNonPrivateMessage(pollingBot, msg)) return;
     const chatId = msg.chat.id;
-    logCommandUse("help", chatId);
+    await logCommandUse("help", chatId);
     const text =
       `🤖 <b>AI Infra Digest — Help</b>\n\n` +
       `I analyze AI infrastructure news and deliver insights.\n\n` +
       `<b>Commands:</b>\n` +
       `• /start — Welcome & intro\n` +
-      `• /digest — Show recent stored articles (<code>/digest watchlist</code> or <code>/digest sector=Chips_&_GPUs</code> to filter)\n` +
+      `• /digest — Read the latest published briefing (<code>/digest watchlist</code> or <code>/digest sector=Chips_&_GPUs</code> to filter)\n` +
       `• /sources — Show all 68 tracked RSS feeds (<code>/sources quality</code> for trust scores)\n` +
-      `• /last — Show the most recent digest summary\n` +
+      `• /last — Read the latest published edition\n` +
       `• /trending — See what's trending in AI infra\n` +
       `• /trends <code>NVDA 30d</code> — Sparkline + WoW delta for a ticker or sector\n` +
       `• /sec <code>NVDA</code> — Latest SEC filing highlights for a ticker\n` +
@@ -389,13 +407,14 @@ function initCommands() {
 
   // Handle /digest — route to registered handler. Args pass through in msg.text
   // (the handler parses "watchlist" / "sector=X" itself); kept bespoke rather than
-  // using the generic dispatcher below only for the "Generating..." pre-message.
-  pollingBot.onText(/^\/digest(@\w+)?(\s+.*)?$/, async (msg) => {
+  // using the generic dispatcher below only for the loading pre-message.
+  onText(/^\/digest(@\w+)?(\s+.*)?$/, async (msg) => {
+    if (await rejectNonPrivateMessage(pollingBot, msg)) return;
     const chatId = msg.chat.id;
-    logCommandUse("digest", chatId);
+    await logCommandUse("digest", chatId);
     const handler = handlers.get("digest");
     if (handler) {
-      await pollingBot.sendMessage(chatId, "⏳ Generating your digest...");
+      await pollingBot.sendMessage(chatId, "⏳ Loading the published briefing...");
       try {
         const result = await handler({
           chatId,
@@ -404,15 +423,13 @@ function initCommands() {
           text: msg.text || "",
         });
         const reply = typeof result === "string" ? { text: result } : result;
-        await pollingBot.sendMessage(chatId, reply.text, {
-          parse_mode: (reply.parseMode || "HTML") as "HTML",
-          link_preview_options: { is_disabled: true },
-        });
+        const sent = await sendDigestMessageToUser(chatId, reply.text);
+        if (!sent.success) { markUpdateIncomplete(); logger.warn("Briefing response incomplete; not replaying automatically"); }
       } catch (error) {
         logger.warn(`Digest command failed for ${chatId}: ${(error as Error).message}`);
         await pollingBot.sendMessage(
           chatId,
-          "❌ The digest could not be generated right now. Please try again later.",
+          "❌ The briefing could not be loaded right now. Please try again later.",
           { parse_mode: "HTML" }
         );
       }
@@ -422,9 +439,10 @@ function initCommands() {
   });
 
   // Handle /feedback — route to registered handler with inline keyboard
-  pollingBot.onText(/^\/feedback(@\w+)?(\s+.*)?$/, async (msg, match) => {
+  onText(/^\/feedback(@\w+)?(\s+.*)?$/, async (msg, match) => {
+    if (await rejectNonPrivateMessage(pollingBot, msg)) return;
     const chatId = msg.chat.id;
-    logCommandUse("feedback", chatId);
+    await logCommandUse("feedback", chatId);
     const handler = handlers.get("feedback");
     if (handler) {
       try {
@@ -486,7 +504,12 @@ function initCommands() {
   });
 
   // Handle callback queries from inline keyboards
-  pollingBot.on("callback_query", async (query) => {
+  onCallback( async (query) => {
+    if (!query.message || query.message.chat.id <= 0 || (query.message.chat.type && query.message.chat.type !== "private")) {
+      await pollingBot.answerCallbackQuery(query.id, { text: "Open a private chat with the bot to manage your briefing." });
+      return;
+    }
+    if (await handleOnboardingCallback(pollingBot, query)) return;
     const chatId = query.message?.chat?.id;
     const data = query.data || "";
     if (!chatId) return;
@@ -551,9 +574,10 @@ function initCommands() {
   });
 
   // Handle /settings — bare command displays preferences; arguments update one field.
-  pollingBot.onText(/^\/settings(@\w+)?(?:\s+([\s\S]*))?$/, async (msg, match) => {
+  onText(/^\/settings(@\w+)?(?:\s+([\s\S]*))?$/, async (msg, match) => {
+    if (await rejectNonPrivateMessage(pollingBot, msg)) return;
     const chatId = msg.chat.id;
-    logCommandUse("settings", chatId);
+    await logCommandUse("settings", chatId);
     const args = match?.[2]?.trim() || "";
 
     if (args) {
@@ -619,9 +643,10 @@ function initCommands() {
   });
 
   // Handle /watchlist
-  pollingBot.onText(/^\/watchlist(@\w+)?\s*(.*)/, async (msg, match) => {
+  onText(/^\/watchlist(@\w+)?\s*(.*)/, async (msg, match) => {
+    if (await rejectNonPrivateMessage(pollingBot, msg)) return;
     const chatId = msg.chat.id;
-    logCommandUse("watchlist", chatId);
+    await logCommandUse("watchlist", chatId);
     const tickersStr = match?.[2]?.trim();
     if (!tickersStr) {
       await pollingBot.sendMessage(
@@ -677,10 +702,12 @@ function initCommands() {
     "feedback",
   ]);
 
-  pollingBot.onText(/^\/(\S+)([\s\S]*)$/, async (msg, match) => {
+  onText(/^\/(\S+)([\s\S]*)$/, async (msg, match) => {
     const chatId = msg.chat.id;
     const rawCmd = (match?.[1] || "").replace(/@\w+$/, "").toLowerCase();
     if (!rawCmd || BESPOKE_COMMANDS.has(rawCmd)) return;
+
+    if (await rejectNonPrivateMessage(pollingBot, msg)) return;
 
     // Longest-prefix match so multi-word registrations ("sources quality")
     // win over their one-word parent ("sources").
@@ -702,7 +729,7 @@ function initCommands() {
     }
 
     // Log the resolved key so "sources quality" is counted distinctly from "sources".
-    logCommandUse(key, chatId);
+    await logCommandUse(key, chatId);
 
     try {
       const result = await handlers.get(key)!({
@@ -712,10 +739,15 @@ function initCommands() {
         text: msg.text || "",
       });
       const reply = typeof result === "string" ? { text: result } : result;
-      await pollingBot.sendMessage(chatId, reply.text, {
-        parse_mode: (reply.parseMode || "HTML") as "HTML",
-        link_preview_options: { is_disabled: true },
-      });
+      if (!reply.parseMode || reply.parseMode === "HTML") {
+        const sent = await sendDigestMessageToUser(chatId, reply.text);
+        if (!sent.success) { markUpdateIncomplete(); logger.warn("Command response incomplete; not replaying automatically"); }
+        if (sent.success && typeof result !== "string" && ["coverage", "sec", "thesis", "trending", "trends"].includes(key)) {
+          await supabase.recordProductEvent("research_used", chatId, { command: key });
+        }
+      } else {
+        await pollingBot.sendMessage(chatId, reply.text, { parse_mode: reply.parseMode });
+      }
     } catch (error) {
       logger.warn(`Command ${key} failed for ${chatId}: ${(error as Error).message}`);
       await pollingBot.sendMessage(

@@ -34,6 +34,12 @@ jobs:
       - name: Build production entrypoints
         run: npm run build
 
+      - name: Build production container
+        run: docker build --tag goldirham-webhook:ci .
+
+      - name: Verify isolated webhook container
+        run: node scripts/verify-container.mjs goldirham-webhook:ci
+
       - name: Unit tests (no live credentials required)
         run: npm run test:unit
 
@@ -97,6 +103,14 @@ jobs:
 
       - name: Execute database authorization and delivery tests
         run: npx supabase test db --local
+
+      - name: Verify local HTTP API contracts
+        run: |
+          npm run build
+          npm run verify:local-api
+
+      - name: Verify concurrent delivery and inbox claims
+        run: npm run verify:local-concurrency
 
       - name: Lint local database schema
         run: npx supabase db lint --local --fail-on error

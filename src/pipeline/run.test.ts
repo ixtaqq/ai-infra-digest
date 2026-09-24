@@ -3,6 +3,7 @@ import type { GeneratedDigest } from "./types";
 
 const h = vi.hoisted(() => ({
   generateDigest: vi.fn(),
+  requiredRpc: vi.fn().mockResolvedValue(true),
   deliverDigest: vi.fn(),
   persistDigestMetrics: vi.fn(),
   createDigestPublication: vi.fn(),
@@ -14,7 +15,7 @@ const h = vi.hoisted(() => ({
 }));
 
 vi.mock("../config", () => ({
-  config: { telegram: { chatId: "1" } },
+  config: { telegram: { chatId: "1" }, app: { timezone: "UTC" } },
 }));
 vi.mock("./generate", () => ({ generateDigest: h.generateDigest }));
 vi.mock("../delivery/deliver", () => ({ deliverDigest: h.deliverDigest }));
@@ -22,6 +23,8 @@ vi.mock("./persist", () => ({ persistDigestMetrics: h.persistDigestMetrics }));
 vi.mock("../utils/supabase", () => ({
   supabase: {
     isConfigured: h.isConfigured,
+    requiredRpc: h.requiredRpc,
+    getAllPriceWatches: vi.fn().mockResolvedValue([]),
     createDigestPublication: h.createDigestPublication,
     getDigestPublication: h.getDigestPublication,
     claimUserDelivery: h.claimUserDelivery,
@@ -57,6 +60,7 @@ const generated = {
 } as unknown as GeneratedDigest;
 
 beforeEach(() => {
+  vi.setSystemTime(new Date("2026-08-19T12:00:00Z"));
   h.generateDigest.mockReset().mockResolvedValue(generated);
   h.deliverDigest.mockReset().mockImplementation(async (_edition, _chat, _prefs, _date, finalize) => {
     const result = { success: true };
@@ -84,6 +88,7 @@ beforeEach(() => {
     },
     article_ids: {},
   }));
+  h.getDigestPublication.mockResolvedValueOnce(null);
   h.isConfigured.mockReset().mockReturnValue(true);
   h.claimUserDelivery.mockReset().mockResolvedValue(true);
   h.logUserDelivery.mockReset().mockResolvedValue(true);
@@ -151,7 +156,7 @@ describe("editorial pipeline publication", () => {
   });
 
   it("delivers the stored canonical payload when a same-day rerun conflicts", async () => {
-    h.getDigestPublication.mockResolvedValueOnce({
+    h.getDigestPublication.mockReset().mockResolvedValue({
       id: 17,
       publication_date: "2026-08-19",
       payload: {
@@ -173,6 +178,8 @@ describe("editorial pipeline publication", () => {
 
     await expect(runPipeline()).resolves.toBe(true);
 
+    expect(h.generateDigest).not.toHaveBeenCalled();
+    expect(h.persistDigestMetrics).not.toHaveBeenCalled();
     expect(h.deliverDigest).toHaveBeenCalledWith(
       expect.objectContaining({
         publicationId: 17,

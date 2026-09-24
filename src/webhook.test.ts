@@ -35,7 +35,7 @@ describe("decideWebhook", () => {
   });
 
   it("accepts and parses a POST carrying the correct secret token", () => {
-    const update = { update_id: 1, message: { text: "/help" } };
+    const update = { update_id: 1, message: { message_id: 1, chat: { id: 1, type: "private" }, text: "/help" } };
     const d = decideWebhook({
       method: "POST", url: PATH, webhookPath: PATH,
       secret: "s3cret", secretHeader: "s3cret", rawBody: JSON.stringify(update),

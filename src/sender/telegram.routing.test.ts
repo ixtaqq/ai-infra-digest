@@ -377,3 +377,17 @@ describe("Telegram message splitting", () => {
     expect(chunks.every((chunk) => chunk.length <= 4)).toBe(true);
   });
 });
+
+
+describe("private chat boundary", () => {
+  it("rejects group settings before preferences or command logs are written", async () => {
+    for (const { regexp, cb } of h.onTextRegs) {
+      const text = "/settings time 09:00";
+      const match = regexp.exec(text);
+      if (match) await cb({ chat: { id: -1001, type: "supergroup" }, text, from: { id: 42 } }, match);
+    }
+    expect(h.upsertUserPreferences).not.toHaveBeenCalled();
+    expect(h.logCommandUsage).not.toHaveBeenCalled();
+    expect(h.sendMessage.mock.calls.some(call => String(call[1]).includes("private chat"))).toBe(true);
+  });
+});

@@ -41,6 +41,12 @@ async function main() {
     process.exit(1);
   }
 
+  const operational = await fetch(`${url}/rest/v1/rpc/cleanup_operational_data`, {
+    method: "POST", signal: AbortSignal.timeout(30_000),
+    headers: { apikey: key!, Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: "{}",
+  });
+  if (!operational.ok) throw new Error(`Operational retention failed: HTTP ${operational.status}`);
+
   const cutoff = new Date(Date.now() - 90 * 86400000).toISOString();
   const attempts = await fetch(`${url}/rest/v1/ai_attempts?started_at=lt.${encodeURIComponent(cutoff)}`, {
     method: "DELETE", signal: AbortSignal.timeout(30_000),
