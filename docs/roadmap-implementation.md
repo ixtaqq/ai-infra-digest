@@ -132,6 +132,26 @@ ERROR:  42703: column "editorial_date" does not exist
 
 Use the existing production projects; do not create a temporary Vercel project or reset database credentials to work around missing login. Continue with the release sequence above after access and backup prerequisites are satisfied.
 
+### Release branch and CI follow-up on 2026-09-24
+
+- The authorized implementation commit `27a9322` is published on `codex/roadmap-release` in draft [PR #8](https://github.com/ixtaqq/ai-infra-digest/pull/8). Production `main` remains unchanged.
+- Remote CI passed `lint-and-test` and `Supabase migration validation`, including the container, browser, HTTP and concurrent-claim checks. The CodeQL workflow completed, but its separate alert gate failed on modulo bias in the synthetic local test date generator.
+- `scripts/verify-local-concurrency.mjs` now uses `crypto.randomInt(36500)` for the date offset. The actual Node 22 concurrency script passed again after restarting the local Docker database. No production data was used.
+- GitHub CLI is now authenticated, and the existing Render dashboard is accessible. Vercel and Supabase CLI authentication and the production backup are still prerequisites.
+- Existing production workflow failures predate this branch. Both the daily pipeline and scheduled delivery failed with `ETELEGRAM: 401 Unauthorized`. The daily run also logged provider JSON-validation and rate-limit errors. Repair the bot token in GitHub Actions and Render before validating live delivery; do not enable a paid provider tier as a workaround without cost approval.
+
+The initial remote security gate reported:
+
+```text
+gh pr checks 8
+CodeQL  fail
+
+gh api repos/ixtaqq/ai-infra-digest/check-runs/107250546015/annotations
+scripts/verify-local-concurrency.mjs:17
+Creating biased random numbers from a cryptographically secure source
+Using modulo on a [cryptographically secure random number](1) produces biased results.
+```
+
 ## Resolved verification failures
 
 The first combined npm invocation used a Windows-incompatible command separator inside npm's command runner:

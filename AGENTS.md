@@ -42,11 +42,11 @@ Website preview locally: `.claude/launch.json` has a `website` config (`npx serv
 
 - **Local credentials**: this checkout has no `.env` as of 2026-09-23. Do not assume the historical local credentials are available. The website build needs `SUPABASE_URL` and `SUPABASE_ANON_KEY` or `SUPABASE_PUBLISHABLE_KEY`. Generated dashboard/config.js is untracked; never use a service-role key.
 - **GitHub repo**: `ixtaqq/ai-infra-digest`, all required Actions secrets configured (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `AI_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, plus `SLACK_WEBHOOK_URL`, `SMTP_USER`, `SMTP_PASS`, `DIGEST_EMAIL_TO`, `WEBHOOK_SECRET`, `WEBHOOK_URL`).
-- **Daily digest cron**: `daily-digest.yml` active, running successfully daily (8 AM MYT / midnight UTC).
+- **Daily digest cron**: `daily-digest.yml` is active (8 AM MYT / midnight UTC). The 2026-09-23 run published an edition but failed Telegram delivery with `ETELEGRAM: 401 Unauthorized`; token repair is a rollout prerequisite.
 - **Per-user scheduled delivery**: `scheduled-delivery.yml` active, runs every 10 min and fans out the current canonical editorial edition; each user's local date remains the idempotent delivery slot.
-- **gh CLI**: installed (via winget), but signed out during the 2026-09-23 rollout preflight. The connected GitHub app can access `ixtaqq/ai-infra-digest`; CLI authentication is separate.
+- **gh CLI**: authenticated as `ixtaqq` as of 2026-09-24; `repo` and `workflow` access were verified.
 - **Website**: deployed to Vercel at **https://goldirham-stack.vercel.app** — landing page + `/dashboard/` route both live. Deployed via `npx vercel deploy --prod` from `website/`, project linked with `vercel link --project goldirham-stack --scope aizattaqq-s-projects`. Prefer the CLI over the Vercel MCP tool for deploys — the MCP `deploy_to_vercel` tool requires inlining full file contents through the LLM context (expensive, error-prone for multi-file sites); the CLI reads straight from disk.
-- **Email delivery**: currently broken — `SMTP_PASS` in `.env`/GitHub secrets is not a valid Gmail App Password (535-5.7.8 auth error). Telegram delivery unaffected (Slack/email failures are non-fatal).
+- **Email delivery**: a historical run rejected `SMTP_PASS` with Gmail `535-5.7.8`. Current SMTP health is unverified; Slack/email failures remain non-fatal. Telegram independently failed authentication on 2026-09-23.
 - **Embeddings (Phase VIII)**: degraded — `OPENAI_EMBEDDING_API_KEY` was returning HTTP 401 on last run, falls back to Jaccard dedup automatically.
 - **Known broken RSS feed**: "The Register" — feed XML has a malformed attribute on their end, fails after 3 retries (non-fatal, other 67 feeds unaffected).
 

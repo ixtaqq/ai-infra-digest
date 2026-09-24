@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 
 const exec = promisify(execFile);
@@ -14,7 +14,7 @@ const chat = randomBytes(6).readUIntBE(0, 6);
 const hash = randomBytes(32).toString('hex');
 const owners = [randomUUID(), randomUUID()];
 const update = randomBytes(6).readUIntBE(0, 6);
-const date = new Date(Date.UTC(2100, 0, 1) + (chat % 36500) * 86400000).toISOString().slice(0, 10);
+const date = new Date(Date.UTC(2100, 0, 1) + randomInt(36500) * 86400000).toISOString().slice(0, 10);
 
 assert.equal(await sql("SELECT count(*) FROM public.telegram_inbox WHERE status IN ('pending','processing')"), '0', 'Use an idle local inbox for concurrency verification');
 assert.equal(await sql(`SELECT count(*) FROM public.user_preferences WHERE chat_id=${chat}`), '0');
