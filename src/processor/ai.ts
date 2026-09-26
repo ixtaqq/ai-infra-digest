@@ -113,13 +113,14 @@ export interface DigestResult {
  * - Fewer articles → smaller batches (cheaper)
  * - More articles → larger batches (more efficient)
  * Target: aim for ceil(articles / 4) batches, min 5, max 15 articles per batch.
+ * Groq's GPT-OSS output budget needs smaller batches for complete JSON responses.
  */
 function getBatchSize(articleCount: number): number {
   // Aim for roughly 4 batches for typical volumes
   const targetBatches = 4;
   const computed = Math.ceil(articleCount / targetBatches);
-  // Clamp between 5 and 15
-  return Math.max(5, Math.min(15, computed));
+  const maxBatchSize = config.ai.provider === "groq" ? 6 : 15;
+  return Math.max(5, Math.min(maxBatchSize, computed));
 }
 
 const CATEGORIES_LIST = NEWS_CATEGORIES.map((c, i) => `${i + 1}. ${c}`).join("\n");
@@ -451,6 +452,7 @@ async function callAIOnce(
   model: string,
   useJsonMode: boolean
 ): Promise<CallAIResult> {
+  const isGroqGptOss = config.ai.provider === "groq" && /^openai\/gpt-oss-(?:20b|120b)$/.test(model);
   const response = await client.chat.completions.create({
     model,
     messages: [
@@ -464,7 +466,8 @@ async function callAIOnce(
       { role: "user", content: prompt },
     ],
     temperature: 0.3,
-    max_tokens: 2048,
+    max_tokens: isGroqGptOss && model === config.ai.fastModel ? 3072 : 2048,
+    ...(isGroqGptOss ? { reasoning_effort: "low" as const } : {}),
     ...(useJsonMode ? { response_format: { type: "json_object" as const } } : {}),
   });
 

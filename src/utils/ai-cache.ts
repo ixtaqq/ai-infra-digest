@@ -1,5 +1,5 @@
 import { config } from "../config";
-import { AI_PROMPT_VERSION, AI_ANALYSIS_SCHEMA_VERSION } from "../processor/versions";
+import { AI_PROMPT_VERSION, AI_ANALYSIS_SCHEMA_VERSION, AI_PROCESSING_VERSION } from "../processor/versions";
 /**
  * File-based AI response cache.
  *
@@ -7,9 +7,8 @@ import { AI_PROMPT_VERSION, AI_ANALYSIS_SCHEMA_VERSION } from "../processor/vers
  * TTL: 23 hours — safe to re-use within the same calendar day but expires
  * before the next day's run so stale results never carry forward.
  *
- * Cache lives in `.ai-cache/` (gitignored). On a GitHub Actions runner the
- * directory is ephemeral anyway, so the cache only benefits local re-runs
- * (useful during development when the same feed snapshot is replayed).
+ * Cache lives in `.ai-cache/` (gitignored) and is restored between GitHub
+ * Actions runs. Processing-version changes invalidate older results.
  */
 
 import { createHash } from "crypto";
@@ -29,6 +28,7 @@ interface CacheEntry {
 function cacheKey(articleUrls: string[]): string {
   const sorted = JSON.stringify({
     inputs: [...articleUrls].sort(), prompt: AI_PROMPT_VERSION, schema: AI_ANALYSIS_SCHEMA_VERSION,
+    processing: AI_PROCESSING_VERSION,
     provider: config.ai.provider, endpoint: config.ai.baseUrl,
     model: config.ai.model, fastModel: config.ai.fastModel,
     fallback: config.ai.fallback ? {

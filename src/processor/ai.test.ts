@@ -186,6 +186,8 @@ describe("processArticles", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     configMock.config.ai.provider = "groq";
+    configMock.config.ai.model = "strong-model";
+    configMock.config.ai.fastModel = "fast-model";
     configMock.config.ai.fallback = undefined;
   });
   afterEach(() => vi.unstubAllGlobals());
@@ -493,6 +495,34 @@ describe("processArticles", () => {
 
     expect(maxActive).toBe(1);
     expect(fetchMock).toHaveBeenCalledTimes(5);
+  });
+
+  it("keeps Groq GPT-OSS classification batches small with enough output budget", async () => {
+    configMock.config.ai.fastModel = "openai/gpt-oss-20b";
+    const batchSizes: number[] = [];
+    const fetchMock = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      const request = JSON.parse(String(init?.body));
+      if (request.model === "strong-model") {
+        return chatCompletionResponse(JSON.stringify({ topStocks: [] }));
+      }
+      const prompt = request.messages[1].content as string;
+      const dataBlock = prompt.match(/ARTICLES_DATA:\n([\s\S]*?)\n\nRespond ONLY with JSON/);
+      batchSizes.push(JSON.parse(dataBlock![1]).length);
+      expect(request.reasoning_effort).toBe("low");
+      expect(request.max_tokens).toBe(3072);
+      return chatCompletionResponse(JSON.stringify({ articles: [{
+        articleIndex: 1, summary: "Analyzed", impact: "Neutral", impactScore: 5,
+        relevanceScore: 8, affectedStocks: [], reason: "Relevant", category: "Datacenters",
+      }] }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await processArticles(Array.from({ length: 35 }, (_, index) => makeArticle({
+      title: `Article ${index}`, url: `https://example.com/${index}`,
+    })));
+
+    expect(batchSizes).toEqual([6, 6, 6, 6, 6, 5]);
+    expect(fetchMock).toHaveBeenCalledTimes(7);
   });
 
   it("uses the configured fallback provider without retrying non-retryable primary errors", async () => {
