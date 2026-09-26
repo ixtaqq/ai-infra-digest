@@ -419,14 +419,29 @@ export interface CallAIResult {
 }
 
 /**
- * Exponential backoff with full jitter.
- * Waits in [0, baseDelay * 2^attempt) ms, then reports the sleep duration.
+ * Exponential backoff with full jitter, bounded below by a provider delay.
  */
-async function backoff(attempt: number, baseDelayMs = 2000): Promise<void> {
+async function backoff(attempt: number, minimumDelayMs = 0, baseDelayMs = 2000): Promise<void> {
   const maxDelay = baseDelayMs * Math.pow(2, attempt);
-  const waitMs = Math.random() * maxDelay;
+  const waitMs = Math.max(minimumDelayMs, Math.random() * maxDelay);
   logger.debug(`Backoff: waiting ${Math.round(waitMs)}ms after attempt ${attempt}`);
   await sleep(waitMs);
+}
+
+function rateLimitDelayMs(error: Error): number {
+  const headers = "headers" in error ? error.headers : undefined;
+  const retryAfter = headers && typeof headers === "object" && "get" in headers &&
+    typeof headers.get === "function"
+    ? headers.get("retry-after")
+    : headers && typeof headers === "object" && "retry-after" in headers
+      ? headers["retry-after"]
+      : null;
+  const seconds = typeof retryAfter === "string" ? Number(retryAfter) : NaN;
+  const messageSeconds = error.message.match(/Please try again in (\d+(?:\.\d+)?)s/i);
+  const delaySeconds = Number.isFinite(seconds) && seconds >= 0
+    ? seconds
+    : messageSeconds ? Number(messageSeconds[1]) : 0;
+  return Math.ceil(delaySeconds * 1000) + 250;
 }
 
 // ─── Call AI with Retry ──────────────────────────────
@@ -476,7 +491,7 @@ async function callAIOnce(
  */
 async function callAI(client: OpenAI, prompt: string, model?: string): Promise<CallAIResult> {
   const activeModel = model || config.ai.model;
-  const useJsonMode = config.ai.provider !== "custom";
+  let useJsonMode = config.ai.provider !== "custom";
   let lastError: Error | null = null;
   const maxRetries = 3;
 
@@ -488,13 +503,24 @@ async function callAI(client: OpenAI, prompt: string, model?: string): Promise<C
       const status = "status" in lastError && typeof lastError.status === "number"
         ? lastError.status
         : undefined;
+      if (config.ai.provider === "groq" && status === 400 && useJsonMode &&
+          /Failed to (?:generate|validate) JSON/i.test(lastError.message)) {
+        useJsonMode = false;
+        logger.warn("Groq JSON mode rejected the response; retrying with prompt-guided JSON");
+        continue;
+      }
       if (status !== undefined && !isRetryableStatus(status)) {
         logger.warn(`AI call failed with non-retryable HTTP ${status}: ${lastError.message}`);
         break;
       }
       if (attempt < maxRetries) {
+        const providerDelay = status === 429 ? rateLimitDelayMs(lastError) : 0;
+        if (providerDelay > 120_000) {
+          logger.warn("AI provider retry delay exceeds two minutes; stopping this call");
+          break;
+        }
         logger.warn(`AI call attempt ${attempt + 1}/${maxRetries + 1} failed: ${lastError.message}. Retrying...`);
-        await backoff(attempt);
+        await backoff(attempt, providerDelay);
       }
     }
   }
@@ -584,10 +610,9 @@ export async function processArticles(
   const totalBatches = batches.length;
   logger.info(`Split into ${totalBatches} batches`);
 
-  // Process batches with limited concurrency. Batches are independent, so
-  // running them in parallel cuts wall-clock time roughly in half — but keep
-  // concurrency at 2 (not all 4) to stay under Groq free-tier rate limits.
-  const BATCH_CONCURRENCY = 2;
+  // Groq's token limit is shared across the organization. Serial batches let
+  // each 429 delay finish before the next batch starts.
+  const BATCH_CONCURRENCY = config.ai.provider === "groq" ? 1 : 2;
   const batchResults: (BatchResult | null)[] = new Array(batches.length).fill(null);
   let nextBatch = 0;
 

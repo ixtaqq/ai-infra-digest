@@ -27,6 +27,7 @@ vi.mock("../utils/helpers", () => ({ sleep: vi.fn(() => Promise.resolve()) }));
 
 import { normalizeArticles, processArticles, reconcileArticleAnalyses } from "./ai";
 import type { Article } from "../collector/rss";
+import { sleep } from "../utils/helpers";
 
 function makeArticle(overrides: Partial<Article> = {}): Article {
   return {
@@ -406,6 +407,91 @@ describe("processArticles", () => {
       "Source article 18",
     ]);
     expect(result.usage).toEqual({ totalTokens: 47, promptTokens: 28, completionTokens: 19 });
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+  });
+
+  it("waits for Groq's retry-after before retrying a rate-limited batch", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(
+        JSON.stringify({ error: { message: "Rate limit reached. Please try again in 13.275s" } }),
+        { status: 429, headers: { "retry-after": "14", "content-type": "application/json" } }
+      ))
+      .mockResolvedValueOnce(chatCompletionResponse(JSON.stringify({ articles: [{
+        articleIndex: 1, summary: "Recovered", impact: "Neutral", impactScore: 5,
+        relevanceScore: 8, affectedStocks: [], reason: "Rate limit cleared", category: "Datacenters",
+      }] })))
+      .mockResolvedValueOnce(chatCompletionResponse(JSON.stringify({ topStocks: [] })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await processArticles([makeArticle()]);
+
+    expect(result.articles).toHaveLength(1);
+    expect(vi.mocked(sleep).mock.calls[0][0]).toBeGreaterThanOrEqual(14_000);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("uses Groq's stated delay when retry-after is missing", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(
+        JSON.stringify({ error: { message: "Please try again in 13.275s" } }),
+        { status: 429, headers: { "content-type": "application/json" } }
+      ))
+      .mockResolvedValueOnce(chatCompletionResponse(JSON.stringify({ articles: [{
+        articleIndex: 1, summary: "Recovered", impact: "Neutral", impactScore: 5,
+        relevanceScore: 8, affectedStocks: [], reason: "Rate limit cleared", category: "Datacenters",
+      }] })))
+      .mockResolvedValueOnce(chatCompletionResponse(JSON.stringify({ topStocks: [] })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await processArticles([makeArticle()]);
+
+    expect(vi.mocked(sleep).mock.calls[0][0]).toBeGreaterThanOrEqual(13_525);
+  });
+
+  it("retries a Groq JSON-generation 400 without JSON mode", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(
+        JSON.stringify({ error: { message: "Failed to generate JSON. Please adjust your prompt." } }),
+        { status: 400, headers: { "content-type": "application/json" } }
+      ))
+      .mockResolvedValueOnce(chatCompletionResponse(JSON.stringify({ articles: [{
+        articleIndex: 1, summary: "Recovered", impact: "Neutral", impactScore: 5,
+        relevanceScore: 8, affectedStocks: [], reason: "Valid analysis", category: "Datacenters",
+      }] })))
+      .mockResolvedValueOnce(chatCompletionResponse(JSON.stringify({ topStocks: [] })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await processArticles([makeArticle()]);
+
+    expect(result.articles).toHaveLength(1);
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1].body)).response_format).toEqual({ type: "json_object" });
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1].body)).response_format).toBeUndefined();
+  });
+
+  it("does not overlap Groq classification batches", async () => {
+    let active = 0;
+    let maxActive = 0;
+    const fetchMock = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await Promise.resolve();
+      active--;
+      const request = JSON.parse(String(init?.body));
+      if (request.model === "strong-model") {
+        return chatCompletionResponse(JSON.stringify({ topStocks: [] }));
+      }
+      return chatCompletionResponse(JSON.stringify({ articles: [{
+        articleIndex: 1, summary: "Analyzed", impact: "Neutral", impactScore: 5,
+        relevanceScore: 8, affectedStocks: [], reason: "Relevant", category: "Datacenters",
+      }] }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await processArticles(Array.from({ length: 21 }, (_, index) => makeArticle({
+      title: `Article ${index}`, url: `https://example.com/${index}`,
+    })));
+
+    expect(maxActive).toBe(1);
     expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
