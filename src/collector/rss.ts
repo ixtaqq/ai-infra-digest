@@ -92,7 +92,6 @@ async function conditionalFetch(
 
   try {
     const response = await fetch(url, { headers, signal: controller.signal });
-    clearTimeout(timer);
 
     const etag = response.headers.get("ETag") || undefined;
     const lastModified = response.headers.get("Last-Modified") || undefined;
@@ -103,14 +102,13 @@ async function conditionalFetch(
     }
 
     if (!response.ok) {
-      return { body: null, status: response.status, etag, lastModified };
+      throw new Error(`HTTP ${response.status}`);
     }
 
     const body = await response.text();
     return { body, status: response.status, etag, lastModified };
-  } catch (error) {
+  } finally {
     clearTimeout(timer);
-    throw error;
   }
 }
 
@@ -324,19 +322,9 @@ export async function fetchFeedWithStatus(
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const httpResult = await conditionalFetch(feed.url);
-      if (httpResult.status === 304) {
-        logger.info(`Cached content unchanged for ${feed.name} (304)`);
-        return {
-          name: feed.name,
-          url: feed.url,
-          status: "success",
-          articlesFetched: 0,
-          articles: [],
-          response_time_ms: Date.now() - startTime,
-        };
-      }
-
-      const result = await parserFor(feed.url).parseString(httpResult.body || "");
+      const result = httpResult.status === 304
+        ? { items: [] }
+        : await parserFor(feed.url).parseString(httpResult.body || "");
       const articles: Article[] = [];
 
       for (const item of result.items) {
@@ -368,7 +356,9 @@ export async function fetchFeedWithStatus(
     cache.set(feed.url, entry);
     writeFeedCache(cache);
 
-    logger.info(`Fetched ${articles.length} articles from ${feed.name} (${Date.now() - startTime}ms)`);
+    logger.info(httpResult.status === 304
+      ? `Cached content unchanged for ${feed.name} (304)`
+      : `Fetched ${articles.length} articles from ${feed.name} (${Date.now() - startTime}ms)`);
     return {
       name: feed.name,
       url: feed.url,

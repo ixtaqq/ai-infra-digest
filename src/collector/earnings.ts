@@ -115,6 +115,7 @@ export async function fetchTranscript(
       await rateLimitRoic();
 
       const response = await fetch(url, {
+        signal: AbortSignal.timeout(15_000),
         headers: {
           "Accept": "application/json",
           "User-Agent": "AI-Infra-Digest/3.1 (earnings transcript analysis; contact: ai-infra@example.com)",

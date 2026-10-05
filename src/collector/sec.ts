@@ -119,6 +119,7 @@ const USER_AGENT = "AI-Infra-Digest/2.0 (SEC filing analysis; contact: ai-infra@
  */
 async function secFetch<T>(url: string): Promise<T> {
   const response = await fetch(url, {
+    signal: AbortSignal.timeout(15_000),
     headers: {
       "User-Agent": USER_AGENT,
       "Accept": "application/json",
@@ -293,6 +294,7 @@ export async function fetchCompanyFilings(company: CompanyEntry): Promise<SECFil
  */
 async function downloadFilingText(url: string): Promise<string> {
   const response = await fetch(url, {
+    signal: AbortSignal.timeout(15_000),
     headers: {
       "User-Agent": USER_AGENT,
       "Accept": "text/html,text/plain,application/xml,*/*",

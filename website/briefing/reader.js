@@ -6,7 +6,7 @@ const textNode = (tag, text, className) => {
   if (className) node.className = className;
   return node;
 };
-const readerQuery = (table, opts) => {
+const readerQuery = async (table, opts) => {
   if (!readerConfig.url || !readerConfig.key) throw new Error('The briefing is temporarily unavailable. Please try again later.');
   return GoldirhamData.query(readerConfig.url, readerConfig.key, table, opts);
 };
@@ -45,9 +45,9 @@ async function loadEdition() {
 }
 let companyRevision = 0;
 async function loadCompany(ticker) {
+  const revision = ++companyRevision;
   ticker = ticker.trim().toUpperCase();
   if (!/^[A-Z]{1,6}([.-][A-Z]{1,2})?$/.test(ticker)) { element('company-status').textContent = 'Enter a valid company ticker, such as NVDA.'; return; }
-  const revision = ++companyRevision;
   element('ticker').value = ticker; element('company-status').textContent = `Loading ${ticker} evidence…`; element('evidence').replaceChildren();
   const url = new URL(location.href); url.searchParams.set('ticker', ticker); history.replaceState(null, '', url);
   const since = new Date(Date.now() - 90 * 86400000).toISOString();
