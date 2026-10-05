@@ -30,7 +30,9 @@
     "db:reset": "supabase db reset --local",
     "db:status": "supabase migration list",
     "operations": "tsx scripts/operations.ts",
-    "evaluate:benchmark": "tsx scripts/evaluate-benchmark.ts"
+    "evaluate:benchmark": "tsx scripts/evaluate-benchmark.ts",
+    "prepare:benchmark": "tsx scripts/prepare-benchmark.ts",
+    "review:benchmark": "tsx scripts/review-benchmark.ts"
   },
   "keywords": [
     "ai",
