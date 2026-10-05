@@ -9,13 +9,16 @@ const h = vi.hoisted(() => ({
   deliverDigest: vi.fn(),
   persistDigestMetrics: vi.fn(),
   setTelegramMode: vi.fn(),
+  claimUserDelivery: vi.fn(),
+  logUserDelivery: vi.fn(),
+  config: { app: { timezone: "UTC" }, telegram: { chatId: "" } },
 }));
 
 vi.mock("./utils/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock("./utils/metrics", () => ({ flushMetrics: vi.fn() }));
-vi.mock("./config", () => ({ config: { app: { timezone: "UTC" } } }));
+vi.mock("./config", () => ({ config: h.config }));
 vi.mock("./utils/supabase", () => ({
   supabase: {
     isConfigured: () => true,
@@ -23,6 +26,8 @@ vi.mock("./utils/supabase", () => ({
     wasUserDeliveredToday: h.wasUserDeliveredToday,
     getDigestPublication: h.getDigestPublication,
     getAllPriceWatches: h.getAllPriceWatches,
+    claimUserDelivery: h.claimUserDelivery,
+    logUserDelivery: h.logUserDelivery,
   },
 }));
 vi.mock("./delivery/deliver", () => ({ deliverDigest: h.deliverDigest }));
@@ -77,6 +82,9 @@ beforeEach(() => {
   h.deliverDigest.mockReset().mockResolvedValue({ success: true });
   h.persistDigestMetrics.mockReset();
   h.setTelegramMode.mockReset();
+  h.config.telegram.chatId = "";
+  h.claimUserDelivery.mockReset().mockResolvedValue(true);
+  h.logUserDelivery.mockReset().mockResolvedValue(true);
 });
 
 afterEach(() => {
@@ -84,6 +92,53 @@ afterEach(() => {
 });
 
 describe("scheduled publication delivery", () => {
+  it("holds the default channel until 08:00, then delivers with its durable claim", async () => {
+    h.config.telegram.chatId = "-100";
+    h.getAllActiveUsers.mockResolvedValue([]);
+    vi.setSystemTime(new Date("2026-08-19T07:59:00Z"));
+    await schedulerMain();
+    expect(h.deliverDigest).not.toHaveBeenCalled();
+
+    vi.setSystemTime(new Date("2026-08-19T08:00:00Z"));
+    await schedulerMain();
+    expect(h.claimUserDelivery).toHaveBeenCalledWith(-100, "2026-08-19");
+    expect(h.deliverDigest).toHaveBeenCalledWith(
+      expect.objectContaining({ publicationId: 17 }), undefined, undefined, undefined, expect.any(Function)
+    );
+  });
+
+  it("does not replay an uncertain default-channel claim", async () => {
+    h.config.telegram.chatId = "-100";
+    h.getAllActiveUsers.mockResolvedValue([]);
+    h.claimUserDelivery.mockResolvedValue(false);
+    await expect(schedulerMain()).rejects.toThrow("1 failed");
+    expect(h.deliverDigest).not.toHaveBeenCalled();
+  });
+
+  it("catches up when publication appears, then skips a successful slot", async () => {
+    h.getDigestPublication.mockResolvedValueOnce(null);
+    await expect(schedulerMain()).rejects.toThrow("1 failed");
+    expect(h.deliverDigest).not.toHaveBeenCalled();
+    await schedulerMain();
+    expect(h.deliverDigest).toHaveBeenCalledTimes(1);
+    h.wasUserDeliveredToday.mockResolvedValue(true);
+    await schedulerMain();
+    expect(h.deliverDigest).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not send twice when the default chat is also a due subscriber", async () => {
+    h.config.telegram.chatId = "101";
+    await schedulerMain();
+    expect(h.deliverDigest).toHaveBeenCalledTimes(1);
+    expect(h.claimUserDelivery).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects malformed default-chat configuration instead of silently omitting it", async () => {
+    h.config.telegram.chatId = "not-a-chat-id";
+    await expect(schedulerMain()).rejects.toThrow("Invalid default delivery chat");
+    expect(h.deliverDigest).not.toHaveBeenCalled();
+  });
+
   it("loads canonical content and never invokes generation or persistence", async () => {
     await schedulerMain();
 

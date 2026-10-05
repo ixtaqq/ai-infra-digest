@@ -175,10 +175,8 @@ export function loadConfig(options: ConfigScope | ConfigLoadOptions = {}): Confi
     scope,
     telegram: {
       botToken: requireEnv("TELEGRAM_BOT_TOKEN"),
-      // A scheduler fans out to user chat IDs from Supabase and has no default
-      // chat. Webhook mode likewise only replies to the incoming chat. Keep an
-      // empty value in the public shape so existing consumers remain typed as
-      // strings while scoped validation still fails fast for daily runs.
+      // Scheduled delivery can include the default channel, but still works
+      // with user subscriptions alone. Webhooks only reply to the incoming chat.
       chatId: scope === "scheduler" || scope === "webhook"
         ? optionalEnv("TELEGRAM_CHAT_ID")
         : requireEnv("TELEGRAM_CHAT_ID"),

@@ -3,7 +3,11 @@ name: Scheduled Delivery (Per-User)
 on:
   schedule:
     # Every 10 minutes — delivers users whose preferred local time is due
-    - cron: "*/10 * * * *"
+    - cron: "7-57/10 * * * *"
+  workflow_run:
+    workflows: [Daily AI Infrastructure Digest]
+    types: [completed]
+    branches: [main]
   workflow_dispatch: # Allow manual trigger for testing
 
 permissions:
@@ -15,6 +19,10 @@ concurrency:
 
 jobs:
   deliver-digests:
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -38,10 +46,13 @@ jobs:
       - name: Run scheduled delivery
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          DIGEST_EMAIL_TO: ${{ secrets.DIGEST_EMAIL_TO }}
           TZ: Asia/Kuala_Lumpur
         run: node dist/scheduler.js
 

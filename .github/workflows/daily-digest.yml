@@ -2,8 +2,9 @@ name: Daily AI Infrastructure Digest
 
 on:
   schedule:
-    # 8:00 AM Malaysia Time (UTC+8) = 00:00 UTC
-    - cron: "0 0 * * *"
+    # Publish at 06:17 MYT (22:17 UTC), ahead of the 08:00 delivery target.
+    # Avoid the top of the hour; Actions schedules are still best effort.
+    - cron: "17 22 * * *"
   workflow_dispatch: # Allow manual trigger for testing
 
 concurrency:
@@ -45,7 +46,7 @@ jobs:
       - name: Build TypeScript
         run: npm run build
 
-      - name: Generate and send AI Infrastructure Digest
+      - name: Generate and publish AI Infrastructure Digest
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -73,7 +74,7 @@ jobs:
           TZ: Asia/Kuala_Lumpur
         # `npm ci` above already ran the postinstall script (package.json), which
         # patches node-telegram-bot-api's "exports" field — no separate step needed.
-        run: node dist/index.js
+        run: node dist/index.js --publish-only
 
       - name: Notify Slack on failure
         if: failure()

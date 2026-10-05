@@ -17,6 +17,7 @@ import { logger } from "./utils/logger";
 import { config } from "./config";
 import { supabase } from "./utils/supabase";
 import { deliverDigest } from "./delivery/deliver";
+import { deliverDefaultPublication } from "./delivery/default";
 import { sendValidationFollowUp } from "./sender/telegram";
 import * as telegram from "./sender/telegram";
 import { todayInTimezone } from "./utils/helpers";
@@ -95,7 +96,14 @@ export async function schedulerMain(): Promise<void> {
 
   // Get all active users
   const users = await supabase.getAllActiveUsers();
-  if (users.length === 0) {
+  const defaultChat = Number(config.telegram?.chatId);
+  if (config.telegram?.chatId?.trim() && (!Number.isSafeInteger(defaultChat) || defaultChat === 0)) {
+    throw new Error("Invalid default delivery chat");
+  }
+  const defaultDue = Number.isSafeInteger(defaultChat) && defaultChat !== 0
+    && isDeliveryDue("08:00", config.app.timezone, now);
+  const defaultPending = defaultDue && !await supabase.wasUserDeliveredToday(defaultChat, editorialDate);
+  if (users.length === 0 && !defaultPending) {
     logger.info("No active users found — nothing to deliver");
     return;
   }
@@ -107,7 +115,7 @@ export async function schedulerMain(): Promise<void> {
   // later cron ticks on the same local date.
   const dueUsers = users.filter((u) => isDeliveryDue(u.preferred_time, u.timezone, now));
 
-  if (dueUsers.length === 0) {
+  if (dueUsers.length === 0 && !defaultPending) {
     logger.info(`No users are due for delivery right now`);
     return;
   }
@@ -136,12 +144,14 @@ export async function schedulerMain(): Promise<void> {
     (entry): entry is { user: (typeof users)[number]; deliveryDate: string } => entry !== null
   );
 
-  if (pendingUsers.length === 0) {
+  if (pendingUsers.length === 0 && !defaultPending) {
     logger.info("All due users already received their local-date digest — nothing to do");
     return;
   }
 
-  logger.info(`Delivering canonical publication to ${pendingUsers.length} user(s)`);
+  const pendingCount = pendingUsers.filter(({ user, deliveryDate }) =>
+    !defaultPending || user.chat_id !== defaultChat || deliveryDate !== editorialDate).length + Number(defaultPending);
+  logger.info(`Delivering canonical publication to ${pendingCount} target(s)`);
 
   // Watches are intentionally refreshed at delivery time. They are user state,
   // unlike the immutable editorial content stored in digest_publications.
@@ -156,7 +166,10 @@ export async function schedulerMain(): Promise<void> {
 
     const row = await supabase.getDigestPublication(editorialDate);
     if (!row) {
-      logger.warn(`No canonical publication is ready for editorial date ${editorialDate}`);
+      logger.warn(`No canonical publication is ready for editorial date ${editorialDate}`, {
+        event: "publication_wait", checked_at: now.toISOString(), editorial_date: editorialDate,
+        pending_deliveries: pendingCount,
+      });
       publication = null;
       return null;
     }
@@ -194,7 +207,25 @@ export async function schedulerMain(): Promise<void> {
   }[] = [];
 
   await getPublication();
+  if (defaultPending) {
+    try {
+      const current = await getPublication();
+      if (!current) failCount++;
+      else {
+        const { result, delivered } = await deliverDefaultPublication(current.generated);
+        if (result.success) {
+          successCount++;
+          if (delivered) successfulDeliveries.push({ chatId: defaultChat, ...current });
+        } else failCount++;
+      }
+    } catch (error) {
+      failCount++;
+      logger.error(`Default delivery failed: ${(error as Error).message}`);
+    }
+  }
   await mapConcurrent(pendingUsers, 3, async ({ user, deliveryDate }) => {
+    // The default channel and a private subscription can share one local-date slot.
+    if (defaultPending && user.chat_id === defaultChat && deliveryDate === editorialDate) return;
     try {
       const currentPublication = await getPublication();
       if (!currentPublication) {
@@ -243,7 +274,7 @@ export async function schedulerMain(): Promise<void> {
   logger.info(
     `✅ Scheduled delivery complete in ${elapsed}s — ` +
       `${successCount} delivered, ${failCount} failed ` +
-      `(${pendingUsers.length} users, ${publication === undefined ? 0 : 1} publication lookup(s), 0 generations)`
+      `(${pendingCount} targets, ${publication === undefined ? 0 : 1} publication lookup(s), 0 generations)`
   );
   if (failCount > 0) {
     throw new Error(`Scheduled delivery incomplete: ${successCount} delivered, ${failCount} failed`);

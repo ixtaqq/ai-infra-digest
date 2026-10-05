@@ -7,14 +7,18 @@ const repoRoot = resolve(__dirname, "..");
 const workflowPath = resolve(repoRoot, ".github", "workflows", "scheduled-delivery.yml");
 
 describe("scheduled-delivery workflow/runtime parity", () => {
-  it("runs the compiled scheduler without AI/default-chat credentials or polling", () => {
+  it("runs the compiled scheduler without AI credentials or polling; default-chat credentials remain optional", () => {
     const workflow = readFileSync(workflowPath, "utf8");
 
     expect(workflow).toContain("run: node dist/scheduler.js");
     expect(workflow).toMatch(/TELEGRAM_BOT_TOKEN:\s*\$\{\{ secrets\.TELEGRAM_BOT_TOKEN \}\}/);
     expect(workflow).toMatch(/SUPABASE_URL:\s*\$\{\{ secrets\.SUPABASE_URL \}\}/);
     expect(workflow).not.toMatch(/^\s+AI_API_KEY:/m);
-    expect(workflow).not.toMatch(/^\s+TELEGRAM_CHAT_ID:/m);
+    expect(workflow).toMatch(/TELEGRAM_CHAT_ID:\s*\$\{\{ secrets\.TELEGRAM_CHAT_ID \}\}/);
+    expect(workflow).toContain("workflows: [Daily AI Infrastructure Digest]");
+    expect(workflow).toContain("branches: [main]");
+    expect(workflow).toContain("github.event.workflow_run.conclusion == 'success'");
+    expect(workflow).toContain("github.event.workflow_run.head_repository.full_name == github.repository");
 
     const env: NodeJS.ProcessEnv = {
       ...process.env,

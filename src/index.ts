@@ -19,7 +19,9 @@ async function main() {
     startInteractiveBot({ mode: "polling" });
   }
 
-  const success = await runPipeline();
+  const success = process.argv.includes("--publish-only")
+    ? await runPipeline(undefined, { publishOnly: true })
+    : await runPipeline();
 
   // Exit cleanly so the polling loop doesn't keep the process alive in CI
   if (success) {
