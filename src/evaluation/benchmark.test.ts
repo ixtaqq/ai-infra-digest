@@ -4,6 +4,7 @@ import { benchmarkSchema, compareBenchmark } from "./benchmark";
 const cases = Array.from({ length: 50 }, (_, index) => ({
   id: String(index), sourceUrl: "https://example.com/fixture", sourceText: "Synthetic source text for a unit test, not reviewed editorial evidence.",
   reviewedBy: "Unit test fixture", reviewedAt: "2026-01-01T00:00:00Z", relevant: true, tickers: ["NVDA"], impact: 7, supportedClaims: ["Fixture claim"],
+  reviewKind: "human" as const,
 }));
 
 it("rejects short or duplicated reference sets", () => {

@@ -134,6 +134,24 @@ async function verify() {
     }
     await waitUntilReady();
 
+    const queryOrdering = await evaluate(`(async () => {
+      const originalFetch = window.fetch;
+      const orders = [];
+      window.fetch = async url => {
+        orders.push(new URL(url).searchParams.get('order'));
+        return new Response('[]', { status: 200 });
+      };
+      try {
+        for (const opts of [{ order: 'date', ascending: true }, { order: 'date', ascending: false }, { order: 'date' }, { order: 'date.asc,id.asc' }]) {
+          await GoldirhamData.query('https://fixture.invalid', 'fixture-public', 'stock_prices', opts);
+        }
+      } finally { window.fetch = originalFetch; }
+      return orders;
+    })()`);
+    if (JSON.stringify(queryOrdering) !== '["date.asc","date.desc","date.desc","date.asc,id.asc"]') {
+      throw new Error('Query ordering regression: ' + JSON.stringify(queryOrdering));
+    }
+
     const pagination = await evaluate(`(async () => {
       const fixtures = Array.from({ length: 45 }, (_, i) => ({ id: i + 1,
         title: 'Fixture article ' + (i + 1), url: 'https://example.com/' + i,
@@ -201,6 +219,10 @@ async function verify() {
     await call("Page.navigate", { url: new URL('/briefing/', targetUrl).href });
     await waitUntilReady();
     const reader = await evaluate(`(async () => {
+      Object.assign(readerConfig, { url: '', key: '' });
+      let missingConfigHandled = true;
+      try { await loadCompany('NVDA'); } catch { missingConfigHandled = false; }
+      missingConfigHandled = missingConfigHandled && document.getElementById('evidence').textContent.includes('could not load');
       Object.assign(readerConfig, { url: 'https://fixture.invalid', key: 'fixture-public' });
       const original = GoldirhamData.query;
       GoldirhamData.query = async (_url, _key, table) => {
@@ -219,7 +241,16 @@ async function verify() {
         unsafeLinks: document.querySelectorAll('a[href^="javascript:"], #stories img').length,
         companyCoverage: document.getElementById('evidence').textContent.includes('Company coverage'),
         partialState: document.getElementById('evidence').textContent.includes('could not load'),
+        missingConfigHandled,
       };
+      let releaseEvidence;
+      const delayedEvidence = new Promise(resolve => { releaseEvidence = resolve; });
+      GoldirhamData.query = () => delayedEvidence;
+      const olderCompany = loadCompany('AMD');
+      await loadCompany('invalid?');
+      releaseEvidence([]); await olderCompany;
+      result.invalidSearchWon = document.getElementById('company-status').textContent.includes('valid company ticker')
+        && document.getElementById('evidence').childElementCount === 0;
       GoldirhamData.query = async () => { throw new Error('Fixture offline'); };
       await loadEdition(); result.retryVisible = !document.getElementById('retry').hidden;
       GoldirhamData.query = original;
@@ -232,7 +263,7 @@ async function verify() {
 
   if (
     browserErrors.length > 0 ||
-    readerResults.some(result => result.overflow || !result.editionVisible || !result.staleLabel || !result.literalTitle || result.unsafeLinks || !result.companyCoverage || !result.partialState || !result.retryVisible) ||
+    readerResults.some(result => result.overflow || !result.editionVisible || !result.staleLabel || !result.literalTitle || result.unsafeLinks || !result.companyCoverage || !result.partialState || !result.missingConfigHandled || !result.invalidSearchWon || !result.retryVisible) ||
     results.some((result) =>
       result.overflow ||
       !result.headingWithinViewport ||

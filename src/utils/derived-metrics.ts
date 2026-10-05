@@ -112,6 +112,7 @@ export async function writeDerivedMetrics(
       `${url}/rest/v1/daily_derived_metrics?on_conflict=date,entity_type,entity`,
       {
         method: "POST",
+        signal: AbortSignal.timeout(15_000),
         headers: {
           "apikey": key,
           "Authorization": `Bearer ${key}`,
@@ -154,6 +155,7 @@ export async function queryDerivedMetrics(
       `?entity_type=eq.${entityType}&entity=eq.${encodeURIComponent(entity)}` +
       `&date=gte.${sinceStr}&order=date.asc&limit=${days}`,
       {
+        signal: AbortSignal.timeout(15_000),
         headers: {
           "apikey": key,
           "Authorization": `Bearer ${key}`,
@@ -184,6 +186,7 @@ export async function queryRecentDerivedMetrics(): Promise<DerivedMetricsRow[]> 
     const res = await fetch(
       `${url}/rest/v1/daily_derived_metrics?date=gte.${sinceStr}&order=date.asc&limit=1000`,
       {
+        signal: AbortSignal.timeout(15_000),
         headers: {
           "apikey": key,
           "Authorization": `Bearer ${key}`,

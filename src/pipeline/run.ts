@@ -2,6 +2,7 @@ import { config } from "../config";
 import { randomUUID } from "node:crypto";
 import { todayInTimezone } from "../utils/helpers";
 import { deliverDigest } from "../delivery/deliver";
+import { deliverDefaultPublication } from "../delivery/default";
 import { sendValidationFollowUp } from "../sender/telegram";
 import { logger } from "../utils/logger";
 import { supabase } from "../utils/supabase";
@@ -13,25 +14,23 @@ import {
   serializeDigestPublication,
 } from "./publication";
 
-export async function runPipeline(targetChatId?: number): Promise<boolean> {
+export async function runPipeline(targetChatId?: number, options: { publishOnly?: boolean } = {}): Promise<boolean> {
   return withAIAccounting(async () => {
+    if (options.publishOnly && !supabase.isConfigured()) throw new Error("Publication-only generation requires Supabase");
     if (!supabase.isConfigured()) return runEditorialPipeline(targetChatId);
     const date = todayInTimezone(config.app.timezone);
     const existing = await supabase.getDigestPublication(date);
     if (existing) {
       const edition = deserializeDigestPublication(existing.payload, await supabase.getAllPriceWatches(), Date.now(), existing.id);
+      if (options.publishOnly) return true;
       if (targetChatId) return (await deliverDigest(edition, targetChatId)).success;
-      const chat = Number(config.telegram.chatId);
-      if (!Number.isSafeInteger(chat) || chat === 0) throw new Error("Invalid default delivery chat");
-      if (!await supabase.claimUserDelivery(chat, date)) return supabase.wasUserDeliveredToday(chat, date);
-      return (await deliverDigest(edition, undefined, undefined, undefined, result =>
-        supabase.logUserDelivery(chat, date, result.success ? "success" : result.ambiguous ? "ambiguous" : "failed", result.error, existing.id))).success;
+      return (await deliverDefaultPublication(edition)).result.success;
     }
     const owner = randomUUID();
     const claimed = await supabase.requiredRpc<boolean>("claim_editorial_run", { p_date: date, p_owner: owner });
     if (!claimed) throw new Error("Editorial generation is already claimed; investigate an abandoned claim before retrying");
     try {
-      return await runEditorialPipeline(targetChatId);
+      return await runEditorialPipeline(targetChatId, options.publishOnly);
     } finally {
       const published = await supabase.getDigestPublication(date);
       await supabase.requiredRpc("finish_editorial_run", { p_date: date, p_owner: owner, p_status: published ? "published" : "failed" });
@@ -39,7 +38,7 @@ export async function runPipeline(targetChatId?: number): Promise<boolean> {
   });
 }
 
-async function runEditorialPipeline(targetChatId?: number): Promise<boolean> {
+async function runEditorialPipeline(targetChatId?: number, publishOnly = false): Promise<boolean> {
   const generated = await generateDigest();
   if (!generated) return false;
 
@@ -106,6 +105,15 @@ async function runEditorialPipeline(targetChatId?: number): Promise<boolean> {
       }
     }
 
+    if (publishOnly) {
+      logger.info("Canonical publication ready; delivery remains scheduled", {
+        editorial_date: generated.runDate,
+        publication_id: deliveryEdition.publicationId,
+        ready_at: new Date().toISOString(),
+      });
+      return complete(true);
+    }
+
     let delivered = false;
     let sendResult: Awaited<ReturnType<typeof deliverDigest>> = { success: true };
     const defaultChatId = Number(config.telegram.chatId);
@@ -117,21 +125,9 @@ async function runEditorialPipeline(targetChatId?: number): Promise<boolean> {
       defaultChatId !== 0;
 
     if (shouldClaimDefault) {
-      const claimed = await supabase.claimUserDelivery(defaultChatId, generated.runDate);
-      if (claimed) {
-        sendResult = await deliverDigest(deliveryEdition, undefined, undefined, undefined, (result) =>
-          supabase.logUserDelivery(defaultChatId, generated.runDate,
-            result.success ? "success" : result.ambiguous ? "ambiguous" : "failed",
-            result.error, deliveryEdition.publicationId));
-        delivered = true;
-      } else {
-        sendResult = await supabase.wasUserDeliveredToday(defaultChatId, generated.runDate)
-          ? { success: true }
-          : { success: false, ambiguous: true, error: "Default delivery claim requires reconciliation" };
-        logger.info(
-          `Default chat already owns delivery for ${generated.runDate} — duplicate send skipped`
-        );
-      }
+      const delivery = await deliverDefaultPublication(deliveryEdition);
+      sendResult = delivery.result;
+      delivered = delivery.delivered;
     } else {
       sendResult = await deliverDigest(deliveryEdition, targetChatId);
       delivered = true;

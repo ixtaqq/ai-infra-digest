@@ -13,6 +13,7 @@ import {
   handleOnboardingText,
 } from "../onboarding";
 import { escapeHtml } from "../utils/escape";
+import { normalizeTickerSymbols } from "../utils/tickers";
 
 export type { TelegramMode } from "../config";
 
@@ -656,10 +657,17 @@ function initCommands() {
       );
       return;
     }
-    const tickers = tickersStr
+    const values = tickersStr
       .toUpperCase()
-      .split(/[,; ]+/)
+      .split(/[,;\s]+/)
       .filter(Boolean);
+    const tickers = normalizeTickerSymbols(values);
+    if (!tickers.length || values.some(value => !tickers.includes(value))) {
+      await pollingBot.sendMessage(chatId,
+        "Enter valid ticker symbols, such as <code>NVDA, AMD, BRK.B</code>.",
+        { parse_mode: "HTML" });
+      return;
+    }
     const { supabase } = await import("../utils/supabase");
     const ok = await supabase.upsertUserPreferences({
       chat_id: chatId,
@@ -668,13 +676,13 @@ function initCommands() {
     if (ok) {
       await pollingBot.sendMessage(
         chatId,
-        `✅ Watchlist updated: <code>${tickers.join(", ")}</code>\n\nI'll highlight these tickers in your daily digest.`,
+        `✅ Watchlist updated: <code>${escapeHtml(tickers.join(", "))}</code>\n\nI'll highlight these tickers in your daily digest.`,
         { parse_mode: "HTML" }
       );
     } else {
       await pollingBot.sendMessage(
         chatId,
-        "⚠️ Couldn't save watchlist (Supabase not configured). Your preferences will be used for this session only.",
+        "⚠️ Couldn't save your watchlist. Please try again later.",
         { parse_mode: "HTML" }
       );
     }
@@ -865,6 +873,7 @@ async function handleArticleValidation(
     `${url}/rest/v1/article_validations?on_conflict=article_id,chat_id`,
     {
       method: "POST",
+      signal: AbortSignal.timeout(15_000),
       headers,
       body: JSON.stringify({ article_id: articleId, chat_id: chatId, rating }),
     }
@@ -883,13 +892,14 @@ async function handleArticleValidation(
     try {
       const getRes = await fetch(
         `${url}/rest/v1/articles?id=eq.${articleId}&select=${col}`,
-        { headers: { "apikey": key, "Authorization": `Bearer ${key}` } }
+        { headers: { "apikey": key, "Authorization": `Bearer ${key}` }, signal: AbortSignal.timeout(15_000) }
       );
       if (getRes.ok) {
         const rows = (await getRes.json()) as Record<string, number>[];
         const current = rows[0]?.[col] ?? 0;
         await fetch(`${url}/rest/v1/articles?id=eq.${articleId}`, {
           method: "PATCH",
+          signal: AbortSignal.timeout(15_000),
           headers: { "apikey": key, "Authorization": `Bearer ${key}`, "Content-Type": "application/json", "Prefer": "return=minimal" },
           body: JSON.stringify({ [col]: current + 1 }),
         });

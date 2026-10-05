@@ -344,6 +344,26 @@ describe("editable settings", () => {
   });
 });
 
+describe("watchlist input", () => {
+  it("normalizes and deduplicates supported ticker symbols", async () => {
+    await simulate("/watchlist nvda,amd;NVDA brk.b");
+    expect(h.upsertUserPreferences).toHaveBeenCalledWith({ chat_id: 42, watchlist: ["NVDA", "AMD", "BRK.B"] });
+  });
+
+  it.each(["<b>NVDA</b>", "NVDA & AMD", ";;;"])("rejects %s without changing preferences", async (value) => {
+    await simulate(`/watchlist ${value}`);
+    expect(h.upsertUserPreferences).not.toHaveBeenCalled();
+    expect(String(h.sendMessage.mock.calls.at(-1)?.[1])).toContain("valid ticker");
+  });
+
+  it("does not claim to save session preferences when persistence fails", async () => {
+    h.upsertUserPreferences.mockResolvedValueOnce(false);
+    await simulate("/watchlist NVDA");
+    expect(String(h.sendMessage.mock.calls.at(-1)?.[1])).toContain("Please try again");
+    expect(String(h.sendMessage.mock.calls.at(-1)?.[1])).not.toContain("this session");
+  });
+});
+
 describe("private-data deletion", () => {
   it.each(["/delete_my_data", "/delete"])("handles %s", async (command) => {
     await simulate(command);

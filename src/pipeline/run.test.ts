@@ -96,6 +96,28 @@ beforeEach(() => {
 });
 
 describe("editorial pipeline publication", () => {
+  it("publishes ahead of delivery without claiming or sending the digest", async () => {
+    await expect(runPipeline(undefined, { publishOnly: true })).resolves.toBe(true);
+    expect(h.createDigestPublication).toHaveBeenCalledTimes(1);
+    expect(h.claimUserDelivery).not.toHaveBeenCalled();
+    expect(h.deliverDigest).not.toHaveBeenCalled();
+  });
+
+  it("reuses an existing edition without generation or delivery in publication-only mode", async () => {
+    await h.getDigestPublication();
+    await expect(runPipeline(undefined, { publishOnly: true })).resolves.toBe(true);
+    expect(h.generateDigest).not.toHaveBeenCalled();
+    expect(h.claimUserDelivery).not.toHaveBeenCalled();
+    expect(h.deliverDigest).not.toHaveBeenCalled();
+  });
+
+  it("requires durable storage before starting publication-only generation", async () => {
+    h.isConfigured.mockReturnValue(false);
+    await expect(runPipeline(undefined, { publishOnly: true })).rejects.toThrow("requires Supabase");
+    expect(h.generateDigest).not.toHaveBeenCalled();
+    expect(h.deliverDigest).not.toHaveBeenCalled();
+  });
+
   it("persists and publishes before delivery", async () => {
     await expect(runPipeline()).resolves.toBe(true);
 

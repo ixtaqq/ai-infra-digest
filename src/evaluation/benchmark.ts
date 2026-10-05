@@ -1,11 +1,23 @@
 import { z } from "zod";
+import { createHash } from "node:crypto";
+
+export const sourceTextHash = (text: string): string => createHash("sha256").update(text).digest("hex");
 
 export const benchmarkCase = z.object({
   id: z.string().min(1), sourceUrl: z.string().url(), sourceText: z.string().min(40),
   reviewedBy: z.string().min(1), reviewedAt: z.string().datetime(),
+  reviewKind: z.literal("human"),
   relevant: z.boolean(), tickers: z.array(z.string()), impact: z.number().min(1).max(10),
   supportedClaims: z.array(z.string().min(1)),
 });
+
+export const predictionSchema = z.array(z.object({
+  id: z.string().min(1), sourceTextSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  relevant: z.boolean(), tickers: z.array(z.string()), impact: z.number().min(1).max(10),
+  unsupportedClaims: z.number().int().nonnegative(),
+  claimsReviewedBy: z.string().min(1), claimsReviewedAt: z.string().datetime(),
+  reviewKind: z.literal("human"),
+}));
 export const benchmarkSchema = z.array(benchmarkCase).min(50).superRefine((rows, ctx) => {
   if (new Set(rows.map(row => row.id)).size !== rows.length) ctx.addIssue({ code: "custom", message: "Benchmark IDs must be unique" });
 });

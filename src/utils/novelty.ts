@@ -16,7 +16,7 @@ export async function flagRehashes(articles: ProcessedArticle[]): Promise<void> 
 
   const resp = await fetch(
     `${url}/rest/v1/articles?select=title&created_at=gte.${cutoff}&limit=500`,
-    { headers: { apikey: key, Authorization: `Bearer ${key}` } }
+    { headers: { apikey: key, Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(15_000) }
   );
   if (!resp.ok) return;
 

@@ -30,7 +30,9 @@
     "db:reset": "supabase db reset --local",
     "db:status": "supabase migration list",
     "operations": "tsx scripts/operations.ts",
-    "evaluate:benchmark": "tsx scripts/evaluate-benchmark.ts"
+    "evaluate:benchmark": "tsx scripts/evaluate-benchmark.ts",
+    "prepare:benchmark": "tsx scripts/prepare-benchmark.ts",
+    "review:benchmark": "tsx scripts/review-benchmark.ts"
   },
   "keywords": [
     "ai",
@@ -43,7 +45,7 @@
   "dependencies": {
     "dotenv": "^16.4.5",
     "node-telegram-bot-api": "^1.1.1",
-    "nodemailer": "^9.1.1",
+    "nodemailer": "10.0.15",
     "openai": "^4.73.0",
     "rss-parser": "^3.13.0",
     "zod": "^3.25.76"

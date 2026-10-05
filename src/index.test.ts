@@ -21,6 +21,19 @@ describe("index shutdown", () => {
     vi.clearAllMocks();
   });
 
+  it("routes the production publication flag without requesting delivery", async () => {
+    const argv = process.argv;
+    const exit = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    process.argv = [...argv, "--publish-only"];
+    try {
+      await main();
+      expect(h.runPipeline).toHaveBeenCalledWith(undefined, { publishOnly: true });
+    } finally {
+      process.argv = argv;
+      exit.mockRestore();
+    }
+  });
+
   it.each([
     [true, 0],
     [false, 1],

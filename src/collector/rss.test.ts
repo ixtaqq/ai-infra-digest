@@ -1,15 +1,19 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
+import * as fs from "fs";
 
 vi.mock("fs", () => ({
   existsSync: vi.fn(() => false),
   mkdirSync: vi.fn(),
   readFileSync: vi.fn(),
   writeFileSync: vi.fn(),
+  renameSync: vi.fn(),
 }));
 
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
+  vi.clearAllMocks();
 });
 
 describe("matchesKeywords", () => {
@@ -81,6 +85,53 @@ describe("matchesKeywords", () => {
 });
 
 describe("fetchFeedWithStatus", () => {
+  it("aborts stalled response bodies and exhausts the bounded retries", async () => {
+    const { fetchFeedWithStatus } = await import("./rss");
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    let aborted = 0;
+    vi.stubGlobal("fetch", vi.fn(async (_url, options: RequestInit) => ({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      text: () => new Promise<string>((_resolve, reject) => {
+        options.signal!.addEventListener("abort", () => {
+          aborted++;
+          reject(new Error("Feed body timed out"));
+        }, { once: true });
+      }),
+    })));
+
+    const pending = fetchFeedWithStatus({ name: "Stalled", url: "https://example.com/stalled" }, 5);
+    await vi.advanceTimersByTimeAsync(45_010);
+    expect(aborted).toBe(3);
+    await expect(pending).resolves.toMatchObject({ status: "failed", error: "Feed body timed out" });
+  });
+
+  it("preserves the HTTP failure status in feed diagnostics", async () => {
+    const { fetchFeedWithStatus } = await import("./rss");
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 503 })));
+
+    await expect(fetchFeedWithStatus({ name: "Unavailable", url: "https://example.com/unavailable" }, 5))
+      .resolves.toMatchObject({ status: "failed", error: "HTTP 503" });
+  });
+
+  it("resets cached failure history when an unchanged feed recovers", async () => {
+    const feed = { name: "Recovered", url: "https://example.com/recovered" };
+    vi.spyOn(fs, "existsSync").mockReturnValue(true);
+    vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify({
+      [feed.url]: { etag: "old", lastModified: "yesterday", consecutiveFailures: 2 },
+    }));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 304, headers: { ETag: "new" } })));
+    const { fetchFeedWithStatus } = await import("./rss");
+
+    await expect(fetchFeedWithStatus(feed, 5)).resolves.toMatchObject({ status: "success", articlesFetched: 0 });
+    expect(fs.writeFileSync).toHaveBeenCalled();
+    const contents = vi.mocked(fs.writeFileSync).mock.calls.at(-1)![1];
+    expect(JSON.parse(String(contents))[feed.url]).toEqual({ etag: "new", lastModified: "yesterday", consecutiveFailures: 0 });
+  });
+
   it("parses the successful response body without fetching the feed a second time", async () => {
     const rss = `<?xml version="1.0"?>
       <rss version="2.0"><channel><title>Example</title>

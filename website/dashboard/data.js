@@ -2,7 +2,7 @@ window.GoldirhamData = {
   async query(baseUrl, key, table, opts = {}) {
     const url = new URL(`${baseUrl}/rest/v1/${table}`);
     url.searchParams.set('select', opts.select || '*');
-    if (opts.order) url.searchParams.set('order', opts.order.includes('.') || opts.order.includes(',') ? opts.order : `${opts.order}.${opts.ascending === false ? 'asc' : 'desc'}`);
+    if (opts.order) url.searchParams.set('order', opts.order.includes('.') || opts.order.includes(',') ? opts.order : `${opts.order}.${opts.ascending === true ? 'asc' : 'desc'}`);
     if (opts.limit) url.searchParams.set('limit', opts.limit);
     if (opts.offset != null) url.searchParams.set('offset', Math.max(0, Number(opts.offset) || 0));
     if (opts.or) url.searchParams.set('or', opts.or);
