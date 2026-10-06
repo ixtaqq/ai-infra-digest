@@ -66,3 +66,8 @@ Website preview locally: `.claude/launch.json` has a `website` config (`npx serv
 - Canonical SQL lives in `supabase/migrations/`; historical schema snapshots are reference material.
 - Dashboard scripts live in `website/dashboard/desk.js`, `data.js`, and `motion.js`; avoid inline event handlers. The reader is `website/briefing/`.
 - Do not seed invented provider prices or pretend synthetic examples constitute a human-reviewed editorial benchmark.
+
+## Shared agent workflow
+
+Read `E:\workspace\agent-homebase\PROJECT-WORKFLOW.md` for the shared workflow.
+Use the globally available skills that match the task and the project checks above.
