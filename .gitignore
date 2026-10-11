@@ -31,3 +31,6 @@ logs/
 
 # Supabase local dev
 supabase/.temp/
+
+# HyperFrames video projects (captures, snapshots, renders)
+videos/
