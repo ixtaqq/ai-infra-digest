@@ -13,11 +13,27 @@ function formatDate(): string {
   return `${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
 }
 
-function impactEmoji(score: number): string {
-  if (score >= 8) return "🔥";
-  if (score >= 6) return "📈";
-  if (score >= 4) return "📊";
-  return "📌";
+function impactBadge(impact: string): string {
+  switch (impact) {
+    case "Bullish": return "🟢 Bullish";
+    case "Bearish": return "🔴 Bearish";
+    default: return "⚪ Neutral";
+  }
+}
+
+const DIVIDER = "━".repeat(16);
+
+function sectionHeader(title: string): string[] {
+  return [DIVIDER, `<b>${title}</b>`, ""];
+}
+
+function formatMillions(value: number): string {
+  return value >= 1000 ? `$${(value / 1000).toFixed(1)}B` : `$${value.toFixed(0)}M`;
+}
+
+function formatPct(value: number, digits = 1): string {
+  const arrow = value >= 0 ? "▲" : "▼";
+  return `${arrow} ${value >= 0 ? "+" : ""}${value.toFixed(digits)}%`;
 }
 
 function sentimentEmoji(sentiment: string): string {
@@ -71,31 +87,33 @@ export function formatDigestTelegram(
 
   // ─── Header ───────────────────────────────────────
   lines.push("🚀 <b>AI Infra Morning Digest</b>");
-  lines.push(`<i>${escapeHtml(options?.editionDate || formatDate())} • Full value chain coverage</i>`);
+  lines.push(`<i>${escapeHtml(options?.editionDate || formatDate())}</i>`);
   if (options?.personalizationNote) {
     lines.push(`<i>🎯 ${escapeHtml(options.personalizationNote)}</i>`);
   }
-  if (options?.whatChanged) {
-    lines.push("");
-    lines.push(options.whatChanged);
-  }
   lines.push("");
 
-  // ─── Top Stocks with Prices (compact) ─────────────
+  // ─── TL;DR ────────────────────────────────────────
+  if (digest.summary) {
+    lines.push("⚡ <b>TL;DR</b>");
+    lines.push(escapeHtml(digest.summary));
+    lines.push("");
+  }
+
+  // ─── Top Stocks with Prices (one per line) ────────
   if (digest.topStocks.length > 0) {
-    lines.push("<b>📊 TOP MOVERS</b>");
-    const topStocks = digest.topStocks.slice(0, 10);
-    lines.push(
-      topStocks
-        .map((stock) => {
-          const price = prices?.get(stock.ticker);
-          const emoji = sentimentEmoji(stock.sentiment);
-          const priceStr = price ? ` ${formatStockPrice(price)}` : "";
-          return `${emoji} <b>${stock.ticker}</b>${priceStr}`;
-        })
-        .join(" • ")
-    );
-    if (prices?.size) lines.push("<i>Saved price snapshots for this edition; not live quotes.</i>");
+    lines.push("📊 <b>Top movers</b>");
+    for (const stock of digest.topStocks.slice(0, 10)) {
+      const price = prices?.get(stock.ticker);
+      const priceStr = price ? `  ${formatStockPrice(price)}` : "";
+      lines.push(`${sentimentEmoji(stock.sentiment)} <b>${escapeHtml(stock.ticker)}</b>${priceStr}`);
+    }
+    if (prices?.size) lines.push("<i>Saved price snapshots, not live quotes.</i>");
+    lines.push("");
+  }
+
+  if (options?.whatChanged) {
+    lines.push(options.whatChanged);
     lines.push("");
   }
 
@@ -113,11 +131,31 @@ export function formatDigestTelegram(
     "M&A and Partnerships",
   ];
 
-  lines.push("<b>📰 NEWS BY SECTOR</b>");
-  lines.push("");
-
   let articleCount = 0;
   const MAX_ARTICLES = 15;
+
+  const pushArticle = (article: DigestResult["articles"][number]) => {
+    articleCount++;
+    const secBadge = article.isSECFiling ? " 🏛️" : "";
+    const title = `<b>${escapeHtml(article.title)}</b>`;
+    lines.push(
+      `${articleCount}. ${article.url ? `<a href="${escapeHtml(article.url)}">${title}</a>` : title}${secBadge}`
+    );
+    const meta = [impactBadge(article.impact), `${article.impactScore}/10`];
+    const tickers = article.affectedStocks.slice(0, 3).map(escapeHtml).join(", ");
+    if (tickers) meta.push(tickers);
+    lines.push(meta.join(" · "));
+    if (article.summary) lines.push(escapeHtml(article.summary));
+    if (digestLength === "detailed" && article.reason) {
+      lines.push(`💡 <i>${escapeHtml(article.reason)}</i>`);
+    }
+    if (digestLength === "detailed" && article.rankingExplanation) {
+      lines.push(`📐 <i>${escapeHtml(formatRankingSummary(article.rankingExplanation))}</i>`);
+    }
+    if (article.bearCase) lines.push(`⚠️ <i>${escapeHtml(article.bearCase)}</i>`);
+    if (article.groundingNote) lines.push(article.groundingNote);
+    lines.push("");
+  };
 
   for (const cat of categoryOrder) {
     const catArticles = digest.categories[cat as NewsCategory];
@@ -125,123 +163,61 @@ export function formatDigestTelegram(
     if (articleCount >= MAX_ARTICLES) break;
 
     const emoji = CATEGORY_EMOJIS[cat] || "📌";
-    lines.push(`${emoji} <b>${escapeHtml(cat)}</b>`);
+    lines.push(...sectionHeader(`${emoji} ${escapeHtml(cat)}`));
 
     const remaining = MAX_ARTICLES - articleCount;
-    const articlesToShow = catArticles.slice(0, Math.min(remaining, 3));
-
-    articlesToShow.forEach((article) => {
-      articleCount++;
-      const impactIcon = impactEmoji(article.impactScore);
-      const secBadge = article.isSECFiling ? ' \uD83C\uDFDB️' : '';
-      lines.push(
-        `  ${impactIcon} ${escapeHtml(article.title)}${secBadge}`
-      );
-      lines.push(
-        `   <i>${article.impact}</i> (${article.impactScore}/10) ` +
-        `| Stocks: ${article.affectedStocks.slice(0, 3).join(", ") || "N/A"}`
-      );
-      if (article.summary) {
-        lines.push(`   ${escapeHtml(article.summary)}`);
-      }
-      if (digestLength === "detailed" && article.reason) {
-        lines.push(`   💡 <i>${escapeHtml(article.reason)}</i>`);
-      }
-      if (digestLength === "detailed" && article.rankingExplanation) {
-        lines.push(`   📐 <i>${escapeHtml(formatRankingSummary(article.rankingExplanation))}</i>`);
-      }
-      if (article.url) {
-        lines.push(`   <a href="${article.url}">Read</a>`);
-      }
-      if (article.bearCase) {
-        lines.push(`   ⚠️ <i>${escapeHtml(article.bearCase)}</i>`);
-      }
-      if (article.groundingNote) {
-        lines.push(`   ${article.groundingNote}`);
-      }
-    });
-
-    lines.push("");
+    catArticles.slice(0, Math.min(remaining, 3)).forEach(pushArticle);
   }
 
   if (articleCount === 0 && digest.articles.length > 0) {
     // Fallback: show articles without categories
-    lines.push("<b>📰 TOP NEWS</b>");
-    digest.articles.slice(0, 8).forEach((article, i) => {
-      const emoji = impactEmoji(article.impactScore);
-      lines.push(`${i + 1}. ${emoji} <b>${escapeHtml(article.title)}</b>`);
-      lines.push(`   <i>${article.impact}</i> (${article.impactScore}/10)`);
-      if (article.summary) lines.push(`   ${escapeHtml(article.summary)}`);
-      if (digestLength === "detailed" && article.reason) {
-        lines.push(`   💡 <i>${escapeHtml(article.reason)}</i>`);
-      }
-      if (digestLength === "detailed" && article.rankingExplanation) {
-        lines.push(`   📐 <i>${escapeHtml(formatRankingSummary(article.rankingExplanation))}</i>`);
-      }
-      if (article.url) lines.push(`   <a href="${article.url}">Read</a>`);
-      lines.push("");
-    });
+    lines.push(...sectionHeader("📰 TOP NEWS"));
+    digest.articles.slice(0, 8).forEach(pushArticle);
   }
 
   // ─── Market Outlook ─────────────────────────────
-  lines.push("<b>🎯 MARKET OUTLOOK</b>");
-  lines.push("");
+  lines.push(...sectionHeader("🎯 MARKET OUTLOOK"));
   lines.push(escapeHtml(digest.marketOutlook));
   lines.push("");
-
-  // ─── Summary ─────────────────────────────────────
-  if (digest.summary) {
-    lines.push("<b>📝 SUMMARY</b>");
-    lines.push("");
-    lines.push(escapeHtml(digest.summary));
-    lines.push("");
-  }
 
   // ─── 🎙️ Earnings Watch ────────────────────────────
   const earnings = options?.earningsAnalyses;
   if (earnings && earnings.length > 0) {
-    lines.push("🎙️ <b>EARNINGS WATCH</b>");
-    lines.push("");
+    lines.push(...sectionHeader("🎙️ EARNINGS WATCH"));
     for (const analysis of earnings.slice(0, 3)) {
       const toneEmoji = analysis.tone.overall === "bullish" ? "🟢" :
         analysis.tone.overall === "cautious" ? "🟡" :
         analysis.tone.overall === "bearish" ? "🔴" : "⚪";
-      lines.push(`  ${toneEmoji} <b>${escapeHtml(analysis.companyName)} (${analysis.ticker})</b> — Q${analysis.quarter} ${analysis.year}`);
+      lines.push(`<b>${escapeHtml(analysis.companyName)} (${escapeHtml(analysis.ticker)})</b> · Q${analysis.quarter} ${analysis.year}`);
 
       const dataParts: string[] = [];
-      if (analysis.metrics.revenueGuidance !== null) dataParts.push(`🎯 Rev Guide: $${analysis.metrics.revenueGuidance.toFixed(0)}M`);
-      if (analysis.metrics.capexGuidance !== null) dataParts.push(`💰 Capex Guide: $${analysis.metrics.capexGuidance.toFixed(0)}M`);
-      if (analysis.metrics.aiRevenueMentioned !== null) dataParts.push(`🤖 AI Rev: $${analysis.metrics.aiRevenueMentioned.toFixed(0)}M`);
-      if (analysis.metrics.capexSpend !== null) dataParts.push(`📊 Capex: $${analysis.metrics.capexSpend.toFixed(0)}M`);
-
-      if (dataParts.length > 0) {
-        lines.push(`    ${dataParts.join(" · ")}`);
-      }
+      if (analysis.metrics.revenueGuidance !== null) dataParts.push(`Rev guide ${formatMillions(analysis.metrics.revenueGuidance)}`);
+      if (analysis.metrics.capexGuidance !== null) dataParts.push(`Capex guide ${formatMillions(analysis.metrics.capexGuidance)}`);
+      if (analysis.metrics.aiRevenueMentioned !== null) dataParts.push(`AI rev ${formatMillions(analysis.metrics.aiRevenueMentioned)}`);
+      if (analysis.metrics.capexSpend !== null) dataParts.push(`Capex ${formatMillions(analysis.metrics.capexSpend)}`);
+      if (dataParts.length > 0) lines.push(dataParts.join(" · "));
 
       // Show guidance delta
       if (analysis.delta) {
         const deltaParts: string[] = [];
         if (analysis.delta.revenueGuidanceChangePct !== null) {
-          const arrow = analysis.delta.revenueGuidanceChangePct >= 0 ? "▲" : "▼";
-          deltaParts.push(`Rev ${arrow} ${analysis.delta.revenueGuidanceChangePct >= 0 ? "+" : ""}${analysis.delta.revenueGuidanceChangePct.toFixed(1)}%`);
+          deltaParts.push(`Rev ${formatPct(analysis.delta.revenueGuidanceChangePct)}`);
         }
         if (analysis.delta.capexGuidanceChangePct !== null) {
-          const arrow = analysis.delta.capexGuidanceChangePct >= 0 ? "▲" : "▼";
-          deltaParts.push(`Capex ${arrow} ${analysis.delta.capexGuidanceChangePct >= 0 ? "+" : ""}${analysis.delta.capexGuidanceChangePct.toFixed(1)}%`);
+          deltaParts.push(`Capex ${formatPct(analysis.delta.capexGuidanceChangePct)}`);
         }
         if (deltaParts.length > 0) {
           const dirEmoji = analysis.delta.toneDirection === "improving" ? "📈" :
             analysis.delta.toneDirection === "worsening" ? "📉" : "➡️";
-          lines.push(`    ${dirEmoji} <b>Delta:</b> ${deltaParts.join(" · ")}`);
+          lines.push(`${dirEmoji} Guidance vs last Q: ${deltaParts.join(" · ")}`);
         }
       }
 
-      // Tone
-      lines.push(`    ${toneEmoji} <b>Tone:</b> ${analysis.tone.overall.charAt(0).toUpperCase() + analysis.tone.overall.slice(1)} (${analysis.tone.confidence}/10)`);
+      const tone = analysis.tone.overall.charAt(0).toUpperCase() + analysis.tone.overall.slice(1);
+      lines.push(`${toneEmoji} Tone: ${tone} (${analysis.tone.confidence}/10)`);
       if (analysis.tone.keyPhrase) {
-        lines.push(`    <i>"${escapeHtml(analysis.tone.keyPhrase.slice(0, 120))}"</i>`);
+        lines.push(`<i>"${escapeHtml(analysis.tone.keyPhrase.slice(0, 120))}"</i>`);
       }
-
       lines.push("");
     }
   }
@@ -249,24 +225,22 @@ export function formatDigestTelegram(
   // ─── SEC Filing Highlights (top 1-2 most impactful) ─
   const secExtracts = options?.secExtracts;
   if (secExtracts && secExtracts.length > 0 && secExtracts[0].impactScore >= 7) {
-    lines.push("📜 <b>SEC HIGHLIGHTS</b>");
-    lines.push("");
-    const topSec = secExtracts.slice(0, 2);
-    for (const extract of topSec) {
-      lines.push(`  <b>${escapeHtml(extract.companyName)} (${extract.ticker})</b> — ${extract.formType}`);
+    lines.push(...sectionHeader("📜 SEC HIGHLIGHTS"));
+    for (const extract of secExtracts.slice(0, 2)) {
+      lines.push(`<b>${escapeHtml(extract.companyName)} (${escapeHtml(extract.ticker)})</b> · ${escapeHtml(extract.formType)}`);
       const data: string[] = [];
-      if (extract.capex !== null) data.push(`💰 Capex: $${extract.capex.toFixed(0)}M`);
-      if (extract.capexGuidance !== null) data.push(`📊 Capex Guide: $${extract.capexGuidance.toFixed(0)}M`);
+      if (extract.capex !== null) data.push(`Capex ${formatMillions(extract.capex)}`);
+      if (extract.capexGuidance !== null) data.push(`Capex guide ${formatMillions(extract.capexGuidance)}`);
       if (extract.aiRevenue !== null) {
         const g = extract.aiRevenueGrowthPct !== null ? ` (${extract.aiRevenueGrowthPct >= 0 ? "+" : ""}${extract.aiRevenueGrowthPct.toFixed(0)}%)` : "";
-        data.push(`🤖 AI Rev: $${extract.aiRevenue.toFixed(0)}M${g}`);
+        data.push(`AI rev ${formatMillions(extract.aiRevenue)}${g}`);
       }
-      if (extract.grossMargin !== null) data.push(`📈 GM: ${extract.grossMargin.toFixed(1)}%`);
-      if (extract.operatingMargin !== null) data.push(`📉 OM: ${extract.operatingMargin.toFixed(1)}%`);
-      if (extract.revenueGuidance !== null) data.push(`🎯 Rev Guide: $${extract.revenueGuidance.toFixed(0)}M`);
-      if (data.length > 0) lines.push(`    ${data.join(" · ")}`);
-      if (extract.keyTakeaways.length > 0) {
-        lines.push(`    <i>${escapeHtml(extract.keyTakeaways.slice(0, 2).join(" · "))}</i>`);
+      if (extract.grossMargin !== null) data.push(`GM ${extract.grossMargin.toFixed(1)}%`);
+      if (extract.operatingMargin !== null) data.push(`OM ${extract.operatingMargin.toFixed(1)}%`);
+      if (extract.revenueGuidance !== null) data.push(`Rev guide ${formatMillions(extract.revenueGuidance)}`);
+      if (data.length > 0) lines.push(data.join(" · "));
+      for (const takeaway of extract.keyTakeaways.slice(0, 2)) {
+        lines.push(`• <i>${escapeHtml(takeaway)}</i>`);
       }
       lines.push("");
     }
@@ -275,36 +249,19 @@ export function formatDigestTelegram(
   // ─── Daily Deep-Dive (v9.2) ────────────────────────
   const deepDive = options?.deepDive;
   if (deepDive) {
-    lines.push("🔬 <b>DAILY DEEP-DIVE</b>");
-    lines.push("");
+    lines.push(...sectionHeader("🔬 DAILY DEEP-DIVE"));
     lines.push(`<b>${escapeHtml(deepDive.title)}</b>`);
-    lines.push("");
-    lines.push(`🟢 <i>${escapeHtml(deepDive.bullCase)}</i>`);
-    lines.push(`🔴 <i>${escapeHtml(deepDive.bearCase)}</i>`);
+    lines.push(`🟢 <b>Bull:</b> ${escapeHtml(deepDive.bullCase)}`);
+    lines.push(`🔴 <b>Bear:</b> ${escapeHtml(deepDive.bearCase)}`);
     if (deepDive.contextNote) {
       lines.push(`📊 <i>${escapeHtml(deepDive.contextNote)}</i>`);
     }
     lines.push("");
   }
 
-  // ─── Value Chain Coverage Indicator ───────────────
-  const activeCategories = Object.keys(digest.categories).filter(
-    (c) => digest.categories[c as NewsCategory]?.length > 0
-  );
-  if (activeCategories.length > 0) {
-    lines.push("<b>🔬 VALUE CHAIN COVERAGE</b>");
-    lines.push(
-      activeCategories
-        .map((c) => `${CATEGORY_EMOJIS[c] || "📌"} ${c}`)
-        .join(" • ")
-    );
-    lines.push("");
-  }
-
   // ─── Footer ──────────────────────────────────────
-  lines.push("━".repeat(30));
-  lines.push("<i>🤖 Powered by AI | Generated daily at 8 AM MYT</i>");
-  lines.push("<i>📬 Not financial advice — DYOR</i>");
+  lines.push(DIVIDER);
+  lines.push("<i>🤖 AI-generated daily at 8 AM MYT · Not financial advice — DYOR</i>");
 
   return lines.join("\n");
 }
