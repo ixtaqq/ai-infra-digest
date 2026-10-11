@@ -184,46 +184,38 @@ describe("formatDigestTelegram", () => {
     expect(result).toContain("1.6");
   });
 
-  it("should include value chain coverage when categories have articles", async () => {
+  it("leads with the TL;DR and renders numbered, linked stories with escaped URLs", async () => {
     const { formatDigestTelegram } = await import("./telegram");
+    const { planMessageParts } = await import("../sender/message-parts");
+    const article: ProcessedArticle = {
+      title: "Test Article",
+      url: "https://example.com/a?x=1&y=2",
+      source: "Test",
+      summary: "Article summary.",
+      impact: "Neutral",
+      impactScore: 5,
+      affectedStocks: ["NVDA", "AMD"],
+      reason: "Test",
+      category: "Chips & GPUs",
+    };
     const cat = emptyCategories();
-    cat["Chips & GPUs"] = [
-      {
-        title: "Test Article",
-        url: "https://example.com",
-        source: "Test",
-        summary: "Test",
-        impact: "Neutral" as const,
-        impactScore: 5,
-        affectedStocks: [],
-        reason: "Test",
-        category: "Chips & GPUs" as const,
-      },
-    ];
+    cat["Chips & GPUs"] = [article];
 
     const result = formatDigestTelegram({
-      articles: [
-        {
-          title: "Test Article",
-          url: "https://example.com",
-          source: "Test",
-          summary: "Test",
-          impact: "Neutral" as const,
-          impactScore: 5,
-          affectedStocks: [],
-          reason: "Test",
-          category: "Chips & GPUs" as const,
-        },
-      ],
+      articles: [article],
       topStocks: [],
-      marketOutlook: "Test.",
-      summary: "Test.",
+      marketOutlook: "Outlook text.",
+      summary: "Summary text.",
       categories: cat,
       usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 },
       batchesRun: 0,
     });
-    expect(result).toContain("VALUE CHAIN");
-    expect(result).toContain("Chips");
+    expect(result.indexOf("Summary text.")).toBeLessThan(result.indexOf("Test Article"));
+    expect(result.indexOf("Test Article")).toBeLessThan(result.indexOf("Outlook text."));
+    expect(result).toContain('1. <a href="https://example.com/a?x=1&amp;y=2"><b>Test Article</b></a>');
+    expect(result).toContain("⚪ Neutral · 5/10 · NVDA, AMD");
+    expect(result).not.toContain("VALUE CHAIN");
+    expect(() => planMessageParts(result)).not.toThrow();
   });
 
   it("should not include categories section when no articles exist", async () => {
