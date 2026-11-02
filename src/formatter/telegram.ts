@@ -223,8 +223,8 @@ export function formatDigestTelegram(
   }
 
   // ─── SEC Filing Highlights (top 1-2 most impactful) ─
-  const secExtracts = options?.secExtracts;
-  if (secExtracts && secExtracts.length > 0 && secExtracts[0].impactScore >= 7) {
+  const secExtracts = [...(options?.secExtracts ?? [])].sort((a, b) => b.impactScore - a.impactScore);
+  if (secExtracts.length > 0 && secExtracts[0].impactScore >= 7) {
     lines.push(...sectionHeader("📜 SEC HIGHLIGHTS"));
     for (const extract of secExtracts.slice(0, 2)) {
       lines.push(`<b>${escapeHtml(extract.companyName)} (${escapeHtml(extract.ticker)})</b> · ${escapeHtml(extract.formType)}`);

@@ -9,6 +9,10 @@ const h = vi.hoisted(() => ({
   embedSeeds: vi.fn(),
   generateBearCases: vi.fn(),
   collectSECFilings: vi.fn(),
+  getTopFilings: vi.fn(),
+  analyzeSECFilings: vi.fn(),
+  loadProcessedSecAccessions: vi.fn(),
+  persistSecReviews: vi.fn(),
   collectEarningsTranscripts: vi.fn(),
   fetchStockPrices: vi.fn(),
   formatDigestTelegram: vi.fn(),
@@ -67,9 +71,13 @@ vi.mock("../processor/ai", () => ({
 }));
 vi.mock("../collector/sec", () => ({
   collectSECFilings: h.collectSECFilings,
-  getTopFilings: vi.fn(() => []),
+  getTopFilings: h.getTopFilings,
 }));
-vi.mock("../processor/sec", () => ({ analyzeSECFilings: vi.fn() }));
+vi.mock("../processor/sec", () => ({ analyzeSECFilings: h.analyzeSECFilings }));
+vi.mock("./persist", () => ({
+  loadProcessedSecAccessions: h.loadProcessedSecAccessions,
+  persistSecReviews: h.persistSecReviews,
+}));
 vi.mock("../collector/earnings", () => ({ collectEarningsTranscripts: h.collectEarningsTranscripts }));
 vi.mock("../processor/earnings", () => ({ analyzeEarningsTranscripts: vi.fn() }));
 vi.mock("../processor/embeddings", () => ({ generateEmbeddings: h.generateEmbeddings }));
@@ -174,6 +182,9 @@ beforeEach(() => {
   h.embedSeeds.mockResolvedValue([]);
   h.generateBearCases.mockResolvedValue({ bearCases: new Map() });
   h.collectSECFilings.mockResolvedValue({ newFilings: [] });
+  h.getTopFilings.mockReturnValue([]);
+  h.loadProcessedSecAccessions.mockResolvedValue(new Set());
+  h.persistSecReviews.mockResolvedValue(undefined);
   h.collectEarningsTranscripts.mockResolvedValue({ transcripts: [] });
   h.fetchStockPrices.mockResolvedValue(new Map());
   h.formatDigestTelegram.mockReturnValue("DIGEST");
@@ -255,6 +266,21 @@ describe("generateDigest pipeline safety", () => {
     const generated = await generateDigest();
 
     expect(Object.values(generated!.digest.categories).flat()[0].bearCase).toBe("Bear case");
+  });
+
+  it("skips processed SEC filings and records the ones Pass 1 rejected", async () => {
+    const processed = new Set(["done-1"]);
+    const filing = { accessionNumber: "new-1", ticker: "NVDA" };
+    const notFlagged = [{ filing, reason: "cover page only" }];
+    h.loadProcessedSecAccessions.mockResolvedValue(processed);
+    h.collectSECFilings.mockResolvedValue({ newFilings: [filing] });
+    h.getTopFilings.mockReturnValue([filing]);
+    h.analyzeSECFilings.mockResolvedValue({ extracts: [], notFlagged });
+
+    const generated = await generateDigest();
+
+    expect(h.collectSECFilings).toHaveBeenCalledWith(processed);
+    expect(h.persistSecReviews).toHaveBeenCalledWith(generated?.runDate, notFlagged);
   });
 
   it("keeps the lexical corroboration map when no embedding vectors are available", async () => {
