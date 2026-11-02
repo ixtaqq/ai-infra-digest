@@ -17,7 +17,7 @@ Last reviewed on 2026-11-02. The package version is `1.1.0`.
 | Daily publishing | Running. 64 editions published. |
 | Telegram bot | Deployed as a webhook service on Render. |
 | Website | Deployed on Vercel. |
-| Workflow timing | GitHub started the digest cron 1.8 to 3.7 hours late, and ran the 10-minute delivery cron about every 4.4 hours (median gap, 2026-10-18 to 2026-11-02). A pg_cron dispatcher is installed to fix this. It needs a valid GitHub token in Vault before it can start workflows. |
+| Workflow timing | GitHub started the digest cron 1.8 to 3.7 hours late, and ran the 10-minute delivery cron about every 4.4 hours (median gap, 2026-10-18 to 2026-11-02). pg_cron now dispatches both workflows on schedule, and GitHub's own crons stay as a backstop. Delivery dispatch started working on 2026-11-02 at 14:50 UTC. The first digest dispatch is due at 22:17 UTC. |
 | Stock quotes | Fix merged on 2026-11-02, not yet seen in a production run. The 1,307 rows stored before the fix all show 0% change. |
 | SEC extracts | Fix merged on 2026-11-02, not yet seen in a production run. None of the 64 published editions contains an extract. |
 | Email copies | Health unverified. A past run failed Gmail authentication with `535-5.7.8`. Email and Slack failures do not stop delivery. |
