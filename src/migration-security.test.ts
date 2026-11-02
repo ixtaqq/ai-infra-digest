@@ -82,3 +82,21 @@ describe("private feedback migration security contract", () => {
     expect(feedbackMigration).toMatch(/DELETE FROM public\.digest_feedback_daily[\s\S]*INTERVAL '180 days'/);
   });
 });
+
+describe("SEC filing review migration", () => {
+  const secMigration = readFileSync(
+    resolve(process.cwd(), "supabase/migrations/20261102130000_sec_foreign_filers_and_reviews.sql"),
+    "utf8"
+  );
+
+  it("widens the form check for the forms the collector tracks", () => {
+    expect(secMigration).toMatch(/DROP CONSTRAINT sec_filings_form_type_check/);
+    expect(secMigration).toMatch(/'6-K', '6-K\/A'/);
+  });
+
+  it("keeps the review ledger private to the service role", () => {
+    expect(secMigration).toMatch(/ALTER TABLE public\.sec_filing_reviews ENABLE ROW LEVEL SECURITY/);
+    expect(secMigration).toMatch(/REVOKE ALL ON TABLE public\.sec_filing_reviews FROM anon, authenticated/);
+    expect(secMigration).toMatch(/GRANT SELECT, INSERT, UPDATE ON TABLE public\.sec_filing_reviews TO service_role/);
+  });
+});

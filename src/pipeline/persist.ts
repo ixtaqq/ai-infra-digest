@@ -1,11 +1,13 @@
 import { summarizeAIAttempts } from "../utils/ai-accounting";
 import { config } from "../config";
+import { INTERESTING_FORM_TYPES } from "../collector/sec";
 import { NEWS_CATEGORIES } from "../processor/ai";
 import {
   AI_ANALYSIS_SCHEMA_VERSION,
   AI_PROMPT_VERSION,
 } from "../processor/versions";
 import type { DigestResult } from "../processor/ai";
+import type { SECAnalysisResult } from "../processor/sec";
 import {
   assessSignalQuality,
   evaluateSignalQuality,
@@ -17,8 +19,6 @@ import { logger } from "../utils/logger";
 import { supabase } from "../utils/supabase";
 import type { GeneratedDigest } from "./types";
 import type { TrendingItem } from "./trending";
-
-const SEC_FORM_TYPES = new Set(["8-K", "10-K", "10-Q", "10-K/A", "10-Q/A", "8-K/A"]);
 
 interface SecFilingRow {
   date: string;
@@ -77,7 +77,7 @@ function normalizeSecExtract(runDate: string, extract: GeneratedDigest["secExtra
     !ticker ||
     !companyName ||
     !formType ||
-    !SEC_FORM_TYPES.has(formType) ||
+    !INTERESTING_FORM_TYPES.has(formType) ||
     !filingDate ||
     !accessionNumber
   ) {
@@ -154,6 +154,58 @@ export async function persistSecFilings(
     logger.info(`Supabase: stored ${rows.length} SEC filing extracts`);
   } catch (error) {
     logger.warn(`Supabase sec_filings upsert: ${(error as Error).message}`);
+  }
+}
+
+/**
+ * Accessions that need no further analysis: extracted by an earlier run, or
+ * rejected by Pass 1. Same-day extracts stay eligible so a retried run can
+ * still put them in the edition it publishes.
+ */
+export async function loadProcessedSecAccessions(runDate: string): Promise<Set<string>> {
+  const [extracted, rejected] = await Promise.all([
+    supabase.queryRows<{ accession_number: string }>(
+      "sec_filings",
+      `select=accession_number&accession_number=not.is.null&date=lt.${runDate}&order=filing_date.desc`
+    ),
+    supabase.queryRows<{ accession_number: string }>("sec_filing_reviews", "select=accession_number&order=filing_date.desc"),
+  ]);
+  return new Set([...extracted, ...rejected].map((row) => row.accession_number));
+}
+
+export async function persistSecReviews(
+  runDate: string,
+  notFlagged: SECAnalysisResult["notFlagged"]
+): Promise<void> {
+  const url = config.app.supabaseUrl;
+  const key = config.app.supabaseServiceKey;
+  if (!supabase.isConfigured() || notFlagged.length === 0 || !url || !key) return;
+
+  try {
+    const response = await fetch(
+      `${url}/rest/v1/sec_filing_reviews?on_conflict=ticker,accession_number`,
+      {
+        method: "POST",
+        signal: AbortSignal.timeout(15_000),
+        headers: {
+          "Content-Type": "application/json",
+          apikey: key,
+          Authorization: `Bearer ${key}`,
+          Prefer: "return=minimal,resolution=merge-duplicates",
+        },
+        body: JSON.stringify(notFlagged.map(({ filing, reason }) => ({
+          ticker: filing.ticker,
+          accession_number: filing.accessionNumber,
+          form_type: filing.formType,
+          filing_date: filing.filingDate,
+          reason,
+          reviewed_on: runDate,
+        }))),
+      }
+    );
+    if (!response.ok) logger.warn(`Supabase sec_filing_reviews upsert: ${response.status}`);
+  } catch (error) {
+    logger.warn(`Supabase sec_filing_reviews upsert: ${(error as Error).message}`);
   }
 }
 
