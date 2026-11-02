@@ -1,822 +1,399 @@
-## Roadmap implementation
+# Goldirham Stack
 
-Version 1.1.0 includes published-briefing retrieval, conservative alert/watch delivery, a durable webhook inbox, generation claims, optional budget reservations, and a reader page at `/briefing/`. See the [release notes](docs/releases/v1.1.0.md) and [production rollout record](docs/roadmap-implementation.md). New database migrations must accompany the matching server and website code.
+A daily briefing on AI infrastructure, delivered through Telegram at each reader's chosen time. The pipeline reads 68 RSS feeds, watches SEC filings from 35 companies, analyzes the results with AI, and publishes one edition per day. It covers power generation, cooling, networking, chips, and AI models.
 
-Use Node 22 (`.nvmrc`). `/digest` and `/last` read the latest edition without spending on AI. `/personalization prioritize|only` controls watchlist behavior. `/watch` checks fresh quotes at daily delivery; it is not a real-time market monitor.
+- **Website:** [goldirham-stack.vercel.app](https://goldirham-stack.vercel.app)
+- **Reader:** [/briefing/](https://goldirham-stack.vercel.app/briefing/)
+- **Dashboard:** [/dashboard/](https://goldirham-stack.vercel.app/dashboard/)
 
-# 🏆 Goldirham Stack
+Goldirham Stack is an informational tool, not financial advice. Do your own research before you make an investment decision.
 
-**Daily intelligence for the AI infrastructure age.** A pipeline that collects 68 RSS feeds, analyzes news with AI, extracts SEC filings from 35 companies, and delivers a personalized morning digest via Telegram at each user's preferred time.
+## Current status
 
-Covers the **full AI infrastructure value chain**: power generation → cooling → networking → chips → AI models.
+Last reviewed on 2026-11-02. The package version is `1.1.0`.
 
----
+| Area | Status |
+|---|---|
+| Daily publishing | Running. 64 editions published. |
+| Telegram bot | Deployed as a webhook service on Render. |
+| Website | Deployed on Vercel. |
+| Workflow timing | GitHub started the digest cron 1.8 to 3.7 hours late, and ran the 10-minute delivery cron about every 4.4 hours (median gap, 2026-10-18 to 2026-11-02). A pg_cron dispatcher is installed to fix this. It needs a valid GitHub token in Vault before it can start workflows. |
+| Stock quotes | Fix merged on 2026-11-02, not yet seen in a production run. The 1,307 rows stored before the fix all show 0% change. |
+| SEC extracts | Fix merged on 2026-11-02, not yet seen in a production run. None of the 64 published editions contains an extract. |
+| Email copies | Health unverified. A past run failed Gmail authentication with `535-5.7.8`. Email and Slack failures do not stop delivery. |
+| RSS | 65 of 68 feeds succeeded in the latest recorded check. AI News, VentureBeat AI, and Yahoo Finance failed. |
+| SEC coverage | 35 companies are tracked. ANSS no longer appears in EDGAR's ticker list. |
 
-## Release status
+These optional stages are off in production because their keys are not configured. A missing key affects only its own stage.
 
-The checked-in package version is **`1.1.0`** (`package.json`). The phase and `vN` labels below are implementation milestones, not package-version claims. The scheduled GitHub Actions jobs execute the current `main` branch; optional stages still depend on the credentials configured for each deployment.
+| Stage | Enable with | Behavior without a working key |
+|---|---|---|
+| Embeddings | `OPENAI_EMBEDDING_API_KEY`, or `OPENAI_API_KEY` locally | Deduplication uses URL and Jaccard matching. The semantic relevance gate is skipped. |
+| Earnings transcripts | `ROIC_AI_API_KEY` | Earnings collection and analysis are skipped. |
+| AI provider fallback | `AI_FALLBACK_API_KEY`, plus optional `AI_FALLBACK_*` settings | The primary provider runs alone. |
 
-The September 2026 reader and reliability release is deployed. See [what shipped and what still needs live verification](docs/releases/v1.1.0.md). The earlier [stabilization record](docs/stabilization.md) documents its own historical local verification state.
+## How it works
 
-### Deployment-dependent capabilities
+The pipeline generates one immutable edition per day, then personalizes that edition for each reader. Delivery never calls an AI model and receives no AI credentials.
 
-These capabilities are implemented in the repository but are opt-in at runtime. Missing or unusable optional credentials affect only the relevant stage.
+```mermaid
+flowchart TD
+    A[RSS feeds and SEC EDGAR] --> B[Collect and deduplicate]
+    B --> C[Classify, score, and filter with the fast model]
+    C --> D[Synthesize and extract filings with the strong model]
+    D --> E[Add stock prices, bear cases, and trend metrics]
+    E --> F[Publish one edition to Supabase]
+    F --> G[Personalize for each reader]
+    G --> H[Telegram]
+    H --> I[Optional Slack and email copies]
+    F --> J[Website reader and dashboard]
+```
 
-| Capability | Enable with | Behavior without a working key | Last verified production configuration |
-|---|---|---|---|
-| **Embeddings** | `OPENAI_EMBEDDING_API_KEY` (or local `OPENAI_API_KEY`) | Uses URL/Jaccard fallbacks; vector enrichment and semantic relevance filtering are skipped or degraded | **Disabled** — no `OPENAI_EMBEDDING_API_KEY` secret is configured |
-| **Earnings transcripts** | `ROIC_AI_API_KEY` | Earnings collection and analysis are skipped | **Disabled** — no `ROIC_AI_API_KEY` secret is configured |
-| **AI provider fallback** | `AI_FALLBACK_API_KEY` plus optional `AI_FALLBACK_*` settings | The primary provider is used on its own | **Disabled** — no `AI_FALLBACK_API_KEY` secret is configured |
-
-The production status above is a historical configuration snapshot, not reverified during local stabilization; local `.env` values can enable these stages independently. Never copy real credentials into `.env.example`, documentation, or `supabase/config.toml`.
-
----
+`daily-digest.yml` runs the generation stage at 06:17 MYT (22:17 UTC). `scheduled-delivery.yml` checks every 10 minutes for readers whose preferred time has passed and who have no successful delivery for their local date. A late run still delivers, because the check uses the date and not a narrow time window.
 
 ## Features
 
-### 📡 News Pipeline
-- **68 RSS feeds** across 2 tiers (company news + industry analysis)
-- **Smart deduplication** — URL matching + **Jaccard similarity** (catches near-identical headlines); upgraded to **cosine similarity on embeddings** (0.85 threshold) when the optional embedding capability is enabled and healthy
-- **10-sector classification**: Chips & GPUs, Cloud & Hyperscalers, Datacenters, Networking, Semiconductor Manufacturing, Power & Utilities, Cooling Infrastructure, AI Models & Labs, M&A, Earnings
-- **Two-layer relevance filtering** — AI scores each article's relevance (1–10, < 4 dropped); followed by an optional **semantic relevance gate** (cosine similarity vs 20 canonical AI-infra seed sentences, threshold 0.55) when embeddings are enabled and healthy
-- **Conditional GET caching** — ETag/Last-Modified headers per feed, 304 for unchanged content
-- **Consecutive failure tracking** — feeds failing 2+ runs in a row are automatically skipped
-- **RSS retry with exponential backoff** — up to 2 retries with full-jitter backoff
-- **🏛️ SEC Alert Badge** — articles detected as SEC filings get a 🏛️ badge in the digest and `is_sec_filing` flag in Supabase
+### News pipeline
 
-### 🤖 AI Processing
-- **Multi-provider**: Groq (default), OpenAI, OpenRouter, or custom endpoints
-- **Two-tier model routing** — fast model (openai/gpt-oss-20b) for classification; strong model (openai/gpt-oss-120b) for synthesis
-- **Dynamic batch sizing** — 5–15 articles/batch, targeting ~4 batches
-- **Batch processing** with exponential backoff (full-jitter, up to 3 attempts)
-- **Anchored impact rubric** — 1–10 scale with tier anchors: 1–3 routine, 4–6 notable, 7–8 significant surprise, 9–10 market-moving; scores ≥ 8 require a justification sentence
-- **Synthesis pass** — market outlook, top stocks, daily summary
-- **Token tracking** — `prompt_tokens`, `completion_tokens`, `total_tokens` per run, both model names stored in Supabase
-- **AI response caching** — SHA-256 hash of source content and prompt/schema/provider/model identities as cache key; 23-hour TTL prevents redundant AI spend on same article set during dev re-runs
-- **Cross-source grounding (v9.1)** — each article is annotated with a one-line note linking it to same-run SEC filings, earnings guidance, or stock moves for matching tickers; zero extra DB calls
-- **Daily Deep-Dive (v9.2)** — the highest-scoring article gets a full bull/bear/context thesis (🟢/🔴/📊) appended to the bear-case AI pass; one prompt extension, no extra AI round-trip
-- **Prompt-injection guardrails (v10.2)** — untrusted RSS content is passed to the AI as fenced, escaped JSON (not interpolated prose), with an explicit system instruction to treat article fields as data only, never as instructions — this reduces prompt-injection exposure but does not guarantee immunity
-- **Zod-validated AI responses (v10.2)** — every AI JSON response (classification, synthesis, SEC extraction, bear cases, thesis, earnings) is parsed through a zod schema that coerces type-confused fields (e.g. a numeric field returned as a string) instead of letting them crash downstream `.toFixed()` calls or silently corrupt state
+- Reads 68 RSS feeds in 2 tiers: 50 company and financial feeds, and 18 industry feeds.
+- Uses conditional GET with ETag and Last-Modified headers, so unchanged feeds return 304.
+- Retries failed feeds up to 2 times with full-jitter backoff. It skips a feed after 2 or more consecutive failed runs, and flags a feed as likely dead after 3.
+- Matches ticker keywords as case-sensitive whole words, and accepts only http and https links.
+- Deduplicates by URL and Jaccard title similarity. With embeddings enabled, it also uses cosine similarity at a 0.85 threshold.
+- Sorts articles into 10 sectors: Chips & GPUs, Cloud & Hyperscalers, Datacenters, Networking, Semiconductor Manufacturing, Power & Utilities, Cooling Infrastructure, AI Models & Labs, M&A, and Earnings.
+- Drops articles with an AI relevance score below 4 out of 10. With embeddings enabled, it also compares each article with 20 AI infrastructure seed sentences at a 0.55 threshold.
+- Marks SEC-related articles with a badge in the digest and `is_sec_filing` in Supabase.
 
-### 🏛️ SEC Filing Intelligence
-- **EDGAR watcher** — monitors 8-K, 10-K, 10-Q filings for 35 tracked companies
-- **Three-pass extraction**:
-  - **Pass 0 — Keyword pre-filter** (free): scans for capex, AI revenue, margin, guidance keywords
-  - **Pass 1 — Fast model flagging** (~$0.0005/filing): contextual relevance check
-  - **Pass 2 — Strong model extraction** (~$0.01/filing): precise number extraction on flagged filings only
-- **Extracted metrics**: Capex, Capex Guidance, AI/Data Center Revenue, Gross/Operating Margins, Inventory, Revenue/EPS Guidance
-- **Impact scoring** — 1–10 rating with rationale and key takeaways
-- **`/sec NVDA`** — query latest filing highlights for any tracked ticker
-- **SEC Highlights section** in daily digest — top 1–2 impactful filings with key numbers
+### AI processing
 
-### 🎙️ Earnings Transcript Mining
-- **Roic.ai API** — earnings call transcripts for 15 AI infra companies (NVDA, AMD, AVGO, MSFT, AMZN, etc.)
-- **Two-pass AI analysis**:
-  - **Pass 1 — Topic segmentation** (fast model): capex, AI revenue, supply chain, macro, guidance segments
-  - **Pass 2 — Financial extraction** (strong model): revenue/EPS/capex guidance, AI revenue, management tone
-- **Guidance delta** — QoQ comparison vs. stored data from Supabase with % change arrows
-- **Management tone analysis** — bullish/cautious/neutral/bearish, confidence score (1–10), key phrase, risks
-- **🎙️ Earnings Watch section** in digest — guidance changes, delta arrows, tone indicators
-- **Deployment-dependent** — skips when `ROIC_AI_API_KEY` is not set; this stage is currently disabled in scheduled production
+- Works with Groq (the default), OpenAI, OpenRouter, or a custom endpoint.
+- Routes classification to a fast model (`openai/gpt-oss-20b`) and synthesis to a strong model (`openai/gpt-oss-120b`).
+- Sizes batches at 5 to 15 articles, aiming for about 4 batches, and retries up to 3 times with full-jitter backoff.
+- Scores impact from 1 to 10: 1 to 3 is routine, 4 to 6 is notable, 7 to 8 is a significant surprise, and 9 to 10 is market-moving. A score of 8 or more requires a written justification.
+- Writes a skeptical bear case for high-impact articles, and a bull, bear, and context deep-dive for the highest-scoring article.
+- Links articles to same-run SEC filings, earnings guidance, and stock moves for matching tickers.
+- Caches AI responses for 23 hours, keyed on a SHA-256 hash of the source content and the prompt, schema, provider, and model.
+- Parses every AI JSON response through a zod schema, which coerces type-confused fields such as a number returned as a string.
+- Records prompt, completion, and total tokens per run, along with both model names.
 
-### 💰 Stock Prices
-- **Yahoo Finance** integration — daily price snapshots for 30+ tickers
-- Fetched automatically for every stock mentioned in the AI analysis
-- Stored in `stock_prices` table for dashboard history charts
+RSS content reaches the model as fenced, escaped JSON, with a system instruction to treat article fields as data. This reduces prompt-injection exposure but does not guarantee immunity.
 
-### 📬 Multi-Channel Delivery
+### Ranking
 
-Telegram is the claimed primary delivery. Optional Slack and verified-email copies send only after Telegram succeeds; copy failures are non-fatal and cannot cause a duplicate Telegram retry.
+Each article's effective score combines its impact and relevance with source credibility, reader votes, sector trust, corroboration from other sources, and penalties for repeats and press-wire copy. Press-wire articles are capped at 6. Articles that repeat coverage from the past 48 hours get a 0.6 multiplier. Each article stores a versioned explanation of its score, and detailed digests show the useful reasons.
 
-| Channel | Config | Notes |
-|---------|--------|-------|
-| **Telegram** | `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` | Always on; primary channel |
-| **Slack** | `SLACK_WEBHOOK_URL` | Incoming webhook; HTML→mrkdwn conversion; chunked at 2 900 chars |
-| **Gmail** | `SMTP_USER` + `SMTP_PASS` + `DIGEST_EMAIL_TO` | nodemailer SMTP via `smtp.gmail.com:587`; App Password required |
+### SEC filings
 
-> **Gmail setup gotcha:** `SMTP_PASS` must be a **[Google App Password](https://myaccount.google.com/apppasswords)** (16 chars, no spaces) — **not your normal account password**, which Gmail's SMTP will reject with `535-5.7.8 Username and Password not accepted`. App Passwords require 2-Step Verification to be enabled on the account first. This is the most common first-run email failure.
+The EDGAR watcher tracks 8-K, 6-K, 10-K, 10-Q, and their amendments for 35 companies. Foreign filers such as TSM, ASML, and ARM report on Form 6-K. Extraction has three passes:
 
-Test Gmail credentials locally without a full pipeline run:
-```bash
-npx tsx scripts/test-email.ts   # reads SMTP_* from .env; verifies auth + sends a test mail
-```
+1. A free keyword filter looks for capex, AI revenue, margin, and guidance terms.
+2. The fast model flags relevant filings, at about $0.0005 per filing. Earnings releases with enough dollar figures skip this pass.
+3. The strong model extracts numbers from flagged filings, at about $0.01 per filing.
 
-### 📱 Interactive Telegram Bot
+Extracts cover capex, capex guidance, AI and data center revenue, gross and operating margins, inventory, and revenue and EPS guidance. Each gets a 1 to 10 impact score with a rationale. Filings the flagging pass rejects are recorded in `sec_filing_reviews`, so they are not analyzed again on every run.
 
-> **Note:** `npm run dev` starts a short-lived polling listener while one digest runs. The scheduled GitHub Actions jobs do not run an always-on command listener. For 24/7 command response, deploy the non-polling webhook server in `src/webhook.ts` (see `WEBHOOK_SETUP.md`) to Render/Railway/Fly.io.
+### Earnings transcripts
+
+This optional stage reads transcripts for 15 companies from Roic.ai. The fast model segments each call by topic, and the strong model extracts guidance, AI revenue, and management tone. The digest shows quarter-over-quarter guidance changes from data stored in Supabase.
+
+### Delivery
+
+Telegram is the primary channel. Optional Slack and verified email copies send only after Telegram succeeds. A failed copy is non-fatal and cannot cause a duplicate Telegram retry.
+
+Each reader's copy is filtered by stored preferences:
+
+- `min_impact_score` drops articles below the reader's threshold.
+- `categories_enabled` keeps only the selected sectors.
+- `watchlist` and `watchlist_mode` rank watched tickers first, or show only those tickers.
+- `digest_length` is `brief`, `standard` (the default), or `detailed`.
+
+The `claim_user_delivery` RPC claims each delivery atomically before sending. Confirmed failures can retry. Pending and ambiguous sends are never replayed automatically and require manual reconciliation with evidence, because replaying one could send a duplicate.
+
+After delivery, a follow-up message offers thumbs-up and thumbs-down buttons on the top 3 articles. Votes feed the trust multipliers used in ranking.
+
+### Website
+
+The landing page, reader, and dashboard are static HTML and vanilla JavaScript with no build framework. The dashboard reads Supabase with the public anon key under row-level security. It has 8 Chart.js charts, a stock ticker strip, sector and impact filters, indexed full-text search, expandable article rows with ranking reasons, a filings table, and thesis snapshots. It refreshes every 5 minutes while the page is visible.
+
+### Quality alerts
+
+`src/pipeline/quality.ts` checks each edition against a table of rules. Issues go to Slack and `digest_runs.degraded_stages`, and they never block publication.
+
+| Rule | Fires when |
+|---|---|
+| `prices_flat` | Every stock quote shows 0% change. |
+| `thin_edition` | An edition has fewer than 10 articles. |
+| `sec_no_extracts` | The last 14 editions contain no SEC extract. |
+| `deliveries_held` | Delivery slots stay held past a 30-minute grace period. |
+| `delivery_late` | The latest delivery was more than 30 minutes late. |
+
+The pipeline also alerts when more than 20% of feeds fail, and it runs optional stages through `tryStage`, so one failing stage does not stop the run. High-impact alerts for scores of 8 or more go to readers who opt in, and a claim prevents repeats across reruns. AI budgets are advisory by default and use provider-reported costs. Unknown prices produce a warning, not a zero-dollar estimate.
+
+## Bot commands
+
+`npm run dev` runs a short-lived polling listener. For commands to work around the clock, deploy `src/webhook.ts`. Personal commands work only in private chats.
 
 | Command | Description |
-|---------|-------------|
-| `/start` | 4-step onboarding: delivery time → watchlist → impact filter → digest length |
-| `/help` | Show all available commands |
-| `/digest` | Currently shows operator guidance; a stored-edition preview remains planned |
-| `/digest watchlist` | Filter stored articles by your saved watchlist tickers |
-| `/digest sector=Chips_&_GPUs` | Filter stored articles by sector |
-| `/sources` | List all 68 tracked RSS feeds with health status |
-| `/sources quality` | Show source trust scores ranked by approval rate (vote-learned multipliers) |
-| `/last` | Show the most recent digest summary from Supabase |
-| `/trending` | See what's trending in AI infra (last 7 days, snapshot) |
-| `/trends NVDA 30d` | Sparkline + WoW delta for any ticker (default: NVDA, 30 days) |
-| `/trends sector Datacenters 30d` | Sparkline + WoW delta for a sector |
-| `/sec NVDA` | Latest SEC filing highlights for a ticker |
-| `/coverage NVDA 14` | Recent per-article coverage history for a ticker (default: 14 days) |
-| `/thesis NVDA` | Bull/bear thesis for a ticker — last 6 weekly snapshots with confidence deltas (no arg: top 5 by confidence) |
-| `/feedback 5` | Rate today's digest (1–5) with optional comment |
-| `/delivery` | Configure opt-in personalized email or Slack copies |
-| `/delivery email you@example.com` | Send a 6-digit ownership-verification code before enabling email copies |
-| `/delivery email verify 123456` | Verify the pending address and enable personalized email copies |
-| `/delivery slack WEBHOOK_URL` | Send the same personalized digest to a private Slack Incoming Webhook |
-| `/settings` | View or edit your user preferences |
-| `/settings time 08:00` | Set preferred delivery time; also supports `timezone`, `min_score`, `length`, and `categories` |
-| `/stop` | Stop scheduled delivery; `/unsubscribe` is an alias |
-| `/resume` | Resume delivery with saved preferences after completed onboarding |
-| `/delete_my_data` | Delete private user rows and disable delivery; `/delete` is an alias |
-| `/watchlist NVDA,AMD,AVGO` | Set your ticker watchlist |
-| `/alert on` | Enable high-impact alerts (score 8+) during the daily editorial run |
-| `/alert off` | Disable alerts |
-| `/alert threshold 9` | Set minimum impact score for alerts |
-| `/watch NVDA 130` | One-shot price watch — notified once when NVDA crosses $130, then it clears |
-| `/watch NVDA off` | Clear a price watch |
-| `/watch list` | Show your active price watches |
+|---|---|
+| `/start` | Run onboarding: delivery time, watchlist, impact filter, and digest length. |
+| `/help` | List the commands. |
+| `/digest`, `/last` | Read the latest published edition. These commands spend nothing on AI. |
+| `/digest watchlist` | Read the latest edition filtered to your watchlist. |
+| `/digest sector=Chips_&_GPUs` | Read the latest edition filtered to one sector. |
+| `/sources` | Show feed health. |
+| `/sources quality` | Rank sources by vote-learned trust. |
+| `/trending` | Show what is trending over the last 7 days. |
+| `/trends NVDA 30d` | Show a sparkline and week-over-week change for a ticker. Defaults to NVDA and 30 days. |
+| `/trends sector Datacenters 30d` | Show the same for a sector. |
+| `/sec NVDA` | Show the latest filing highlights for a ticker. |
+| `/coverage NVDA 14` | Show recent article coverage for a ticker. Defaults to 14 days. |
+| `/thesis NVDA` | Show the last 6 weekly bull and bear snapshots. With no ticker, shows the top 5 by confidence. |
+| `/feedback 5` | Rate today's digest from 1 to 5, with an optional comment. |
+| `/watchlist NVDA,AMD,AVGO` | Set your watchlist. |
+| `/personalization prioritize` | Rank watched tickers first. Use `only` to show nothing else. |
+| `/settings` | View your preferences. |
+| `/settings time 08:00` | Set your delivery time. Also accepts `timezone`, `min_score`, `length`, and `categories`. |
+| `/delivery` | Configure email or Slack copies. |
+| `/delivery email you@example.com` | Send a 6-digit code to verify ownership of an address. |
+| `/delivery email verify 123456` | Verify the address and enable email copies. |
+| `/delivery slack WEBHOOK_URL` | Send copies to a private Slack Incoming Webhook. |
+| `/alert on`, `/alert off` | Turn high-impact alerts on or off. |
+| `/alert threshold 9` | Set the minimum score for alerts. |
+| `/watch NVDA 130` | Get one notification when NVDA crosses $130. Fresh quotes are checked at daily delivery, so this is not a real-time monitor. |
+| `/watch NVDA off`, `/watch list` | Clear a watch, or list your watches. |
+| `/stop`, `/unsubscribe` | Stop scheduled delivery. |
+| `/resume` | Resume delivery after completed onboarding. |
+| `/delete_my_data`, `/delete` | Delete your private data and disable delivery. |
 
-### ⏰ Scheduled Delivery (Per-User, Fan-Out)
-- **Publish once, deliver to all** — the daily editorial workflow performs RSS + AI once and stores an immutable canonical publication; the delivery cron only loads and personalizes that edition (no AI keys or redundant AI cost)
-- **Real personalization at delivery** — each user's copy is filtered from the shared bundle using their stored preferences:
-  - `min_impact_score` — drops articles below their threshold
-  - `categories_enabled` — keeps only their selected sectors
-  - `watchlist` — floats watchlist-ticker articles and stocks to the top; adds a `🎯 Filtered for you` note in the header
-  - `digest_length` — `brief` trims summaries to one line; `standard` (default) sends full bullets; `detailed` includes analyst rationale
-- **Custom delivery times** — each user sets `preferred_time` via `/start` onboarding or `/settings`
-- **Optional delivery copies** — `/delivery` adds email or Slack copies using the same filters and digest length; Telegram stays primary so retry/idempotency behavior remains deterministic
-- **Timezone-aware** — delivery triggers at the user's local time; the run date itself is computed in the configured timezone (not UTC), so digests, delta comparisons, and delivery logs never drift a day off during part of the day
-- **Idempotent and retryable** — delivery is claimed atomically per `(chat_id, run_date)` through the `claim_user_delivery` RPC immediately before sending; confirmed failures can retry; pending and ambiguous outcomes require manual reconciliation and are never reclaimed by age
-- **GitHub Actions cron** — runs every 10 minutes, checks all active users, and delivers anyone whose preferred local time has passed without a successful delivery for that date
-- **Advisory budgets** — checks use provider-reported costs from the private attempt ledger. Unknown prices or unavailable accounting produce a warning, not a zero-dollar estimate. These settings are not strict spending caps; see the stabilization notes.
+## Quick start
 
-### 🌐 Production Webhook Bot
-- **`src/webhook.ts`** — zero-dependency Node `http` server; registers all command handlers in non-polling mode
-- **`enableWebhookMode()`** — switches bot from polling to `processUpdate` before startup
-- **Secret token validation** — rejects requests without matching `X-Telegram-Bot-Api-Secret-Token` header; `WEBHOOK_SECRET` is required unconditionally to start the server (not just once `WEBHOOK_URL` is set) — an unauthenticated listener is never safe, regardless of whether the webhook has been registered with Telegram yet
-- **Auto-registers webhook** on startup when `WEBHOOK_URL` is set
-- **`Dockerfile`** — reproducible Node 22 build, runs `dist/webhook.js` as the unprivileged `node` user, exposes port 3000
-- Deploy to Render/Railway/Fly.io — see **`WEBHOOK_SETUP.md`**
-
-### 📊 Dashboard
-- **Graphite + copper terminal design** — `#0a0b0e` dark background, `#cb8a4c` copper accent, Space Grotesk display font, JetBrains Mono for data
-- **Public read-only access** — Vercel generates an untracked `dashboard/config.js` from `SUPABASE_URL` plus `SUPABASE_ANON_KEY`/`SUPABASE_PUBLISHABLE_KEY`; RLS keeps writes and private tables out of the browser. The settings panel remains available for local or alternate Supabase projects.
-- **Fixed rail navigation** — Overview, Pipeline, Stocks, SEC Filings, Articles sections; collapses to horizontal on mobile
-- **Market pulse ribbon** — live stock ticker strip populated from Supabase
-- **KPI cards** — articles processed, stocks tracked, sectors active, feed health
-- **6 interactive Chart.js charts**: sector trends, stock prices, capex/AI spending, digest performance, token usage, feed health
-- **Article filtering** — sector pills, impact filter, indexed Postgres full-text search (title, summary, source, category)
-- **Expandable article rows** — click any row to inline-expand: full summary, analyst reason, and source link; chevron rotates on open
-- **Pagination** — "Load More" fetches additional 20 articles via offset pagination
-- **SEC filings table** — capex, AI revenue, margins, guidance, impact scores
-- **Auto-refresh** every 60 seconds
-- Reads directly from Supabase REST API
-
-### 📊 Intelligence Layer (v5)
-- **`daily_derived_metrics` table** — polymorphic time-series store: `entity_type IN ('ticker', 'sector')`, one row per entity per day
-- Written automatically at the end of every pipeline run via `writeDerivedMetrics()`
-- **"What Changed" header** — `buildWhatChanged()` queries the last 8 days, computes WoW mention deltas, surfaces top movers (≥20% change) in the digest header as a Market Pulse block
-- **`/trends NVDA 30d`** — Unicode sparkline (▁▂▄▆█) of daily mention counts + WoW delta + current price; works for any ticker or sector
-- **Backfill script** — `scripts/backfill-derived-metrics.ts` seeds historical data from existing `sector_activity` + `stock_mentions` rows; idempotent (safe to re-run); `--days=90` for full history
-- **Idempotent upsert** — `UNIQUE(date, entity_type, entity)` + `resolution=merge-duplicates`; re-running the pipeline on the same day is always safe
-
-### 👍 Article Validation (v6)
-- **Inline 👍/👎 buttons** — after every digest delivery, a compact "Quick Validation" follow-up message lists the top 3 highest-impact articles with per-article thumbs buttons
-- **`article_validations` table** — one row per user per article (`UNIQUE(article_id, chat_id)`); double-vote silently ignored with "Already rated!" toast
-- **Aggregate counters** — `thumbs_up` / `thumbs_down` columns on `articles` table updated atomically after each new vote
-- **`insertArticles()` returns IDs** — Supabase `return=representation` gives `{id, url}[]` back; IDs flow through `persistDigestMetrics()` → `sendValidationFollowUp()` without changing the fan-out architecture
-- **Fan-out safe** — validation follow-up uses the article identity map stored with the canonical publication; never triggers a second persistence pass or blocks digest delivery
-
-### 🗄️ Database (Supabase)
-- **26 tables**: the prior 24 editorial, market, delivery, and product tables plus private `digest_feedback` submissions and the sanitized `digest_feedback_daily` aggregate
-- Managed with **Supabase CLI** — migrations in `supabase/migrations/`
-- `digest_runs` tracks both models (`ai_model` + `ai_fast_model`)
-- `articles` has `is_sec_filing` boolean, `thumbs_up` / `thumbs_down` aggregate validation counters, `bear_case TEXT` (skeptical counter-argument for high-impact articles), an optional `embedding vector(1536)` from OpenAI `text-embedding-3-small`, and `corroboration_count` / `grounding_text` / `effective_score` (v14 — persists ranking/grounding data that used to be computed in-memory each run and discarded afterward)
-- `user_preferences` has `digest_length` column (`brief` | `standard` | `detailed`)
-- `daily_derived_metrics` has `entity_type`, `entity`, mention counts, sentiment, impact scores, price data
-- `article_validations` — per-user vote log; `UNIQUE(article_id, chat_id)` prevents double-voting
-- `ticker_theses` — latest-only bull/bear snapshot per ticker (`UNIQUE(ticker)`); `ticker_thesis_history` — every weekly snapshot kept (`UNIQUE(ticker, week_of)`), powers the `/thesis TICKER` timeline and dashboard history card
-- `price_watches` — one-shot price thresholds (`UNIQUE(chat_id, ticker)` upserts on re-set); service-role-only RLS, no public read (per-user private data, unlike the public-read thesis tables)
-- `command_usage` — append-only bot-command invocation log (v13); service-role-only RLS, answers "does this feature actually get used?" with data instead of guesses
-- RLS enabled on all tables; writes scoped `TO service_role` (migration `20260629000000`), public dashboard reads limited to non-private analytics tables, and `user_preferences` remains service-role-only
-- **Performance indexes** — 16+ indexes including GIN full-text search, partial indexes for SEC filings and active users, time-series indexes on `daily_derived_metrics`, article validation lookup
-- **Automated retention** — `cleanup_old_data()` prunes articles (90d), pipeline health (30d), AI usage (90d), delivery and alert logs (90d), private product events (180d), and capex tracking (365d). Triggered weekly by `.github/workflows/data-retention.yml` — no manual `pg_cron` setup required.
-
-The 180-day private retention window also covers private digest feedback submissions
-and their daily aggregate rows.
-
-### 📈 Structured Logging & Metrics
-- **Per-day NDJSON logs** — `logs/YYYY-MM-DD.ndjson`, written to disk and streamed to stdout
-- **Event types**: `feed_fetch`, `ai_batch`, `stock_fetch`, `digest_delivery`, `error`
-- **Daily summary** — `summarizeRun()` aggregates all events for a date
-- **Supabase persistence** — key metrics upserted to `daily_metrics` at pipeline end
-
-### 🔔 Error Handling & Alerts
-- **Source health alerts** — if >20% of RSS feeds fail, admin gets a Telegram alert listing failing feeds
-- **Dead feed detection** — feeds failing 3+ consecutive runs are flagged as likely dead/URL-changed (distinct from a transient blip) in logs and error events
-- **High-impact alert system** — articles scoring 8+/10 trigger idempotent alerts during the daily editorial run for opted-in users; a service-role claim prevents repeats across overlapping or rerun pipelines
-- **Budget checks** — advisory daily/rolling checks over known provider-reported costs; unknown pricing remains explicit.
-- **AI provider failover** — optional `AI_FALLBACK_*` secondary provider tried once if the primary exhausts all retries, so one provider outage doesn't abort the whole digest; disabled in current scheduled production until its key is configured
-- **`withRetry<T>()`** — exponential backoff + full-jitter for AI calls (including embeddings and bear-case generation); non-retryable errors (401) bypass retry
-- **`tryStage<T>()`** — never-throws wrapper for optional stages (SEC, earnings, stocks); one stage failing never crashes the pipeline
-- **Structured error events** — AI 429, Yahoo Finance failures, Supabase errors all emit `ErrorEvent` with recovery suggestions
-
-### 🧪 Testing & CI
-- **Offline Vitest regression tests** in the CI gate (`npm run test:unit`):
-  - Deduplication + cosine similarity: 9 unit tests (`cosineSimilarity` — identical, orthogonal, mismatched length, zero vectors; `deduplicateArticles` — 5 cases, now async)
-  - Keyword matching: 13 unit tests
-  - Stock price fetching: 3 unit tests
-  - Telegram formatter: 7 unit tests
-  - Webhook router: 7 unit tests
-  - Fan-out regression: 1 test — proves `collectArticles` called once for N deliveries
-  - Source credibility: 6 unit tests (`getSourceCredibility`, `isPRWireSource`)
-  - Novelty detection: 4 unit tests (`flagRehashes` — fetch success, empty, non-ok, network error)
-  - Cross-source grounding: 4 unit tests (`attachGroundingNotes` — SEC/earnings/stock matching)
-  - Semantic relevance: 4 unit tests (`passesSemanticGate`, `embedSeeds` — success, HTTP error)
-  - Scheduler: 5 unit tests (`isDeliveryDue` and `getDeliveryDate` — on-time, delayed-cron, pre-window, midnight, and local-date cases)
-  - **AI batch processing** (`processor/ai.test.ts`): 8 tests — `normalizeArticles` zod coercion/defaults, `processArticles` success/retry/all-fail/malformed-synthesis paths (mocked chat completions)
-  - **SEC extraction** (`processor/sec.test.ts`): 6 tests — including the exact numeric-string-in-a-financial-field case that used to crash `.toFixed()`
-  - **Earnings analysis** (`processor/earnings.test.ts`): 5 tests — numeric coercion, guidance delta computation, graceful degradation on unparseable output
-  - **Earnings collection** (`collector/earnings.test.ts`): 9 tests — including a regression guard for the 429 retry-cap fix (no more unbounded recursion)
-  - **SEC EDGAR collection** (`collector/sec.test.ts`): 10 tests — filing age/form-type filtering, `getTopFilings` scoring
-  - **Thesis snapshots** (`processor/thesis.test.ts`): 14 tests — response parsing/validation, end-to-end generation, history-insert independent-failure behavior, `collectRecentCoverage()` batched-query grouping/capping (v14), and an end-to-end assertion that real headline text reaches the AI prompt
-  - **Embeddings** (`processor/embeddings.test.ts`): 4 tests — batch mapping, 429 circuit breaker, non-429 continue-to-next-batch
-  - **Price watch** (`utils/price-watch.test.ts`): 6 tests — direction inference (above/below/tie-break), trigger boundary conditions
-  - **Command handlers** (`index.commands.test.ts`): 22 tests — `/coverage`, `/thesis`, `/watch`, and private delivery-destination behavior
-  - **Digest fan-out + price watch delivery** (`index.faninout.test.ts`): 13 tests — generate-once/deliver-many regression, personalized channel copies, delivery claim/retry state, triggered/untriggered watches, combined notifications, and ticker-cap ordering
-  - **Command routing seam** (`sender/telegram.routing.test.ts`): 42 tests — drives the *real* `initCommands()` against a fake bot and asserts every `registerCommand()`-registered name is actually dispatchable through an `onText` route, plus settings validation, private-data deletion, longest-prefix matching, `@botname` stripping, and command-usage logging
-  - **Supabase deletion boundary** (`utils/supabase.test.ts`): 3 tests — private-table allowlist, partial failure reporting, and unsafe chat-ID rejection
-  - **Command usage metrics** (`utils/metrics.test.ts`): 2 tests (v13) — `emitCommandUsage()` NDJSON event shape, multi-word command keys preserved verbatim
-  - Supabase boundary tests: 28 mocked REST-response tests — no live credentials
-  - Telegram boundary tests: 9 mocked Bot API tests — no live credentials
-  - Stocks boundary tests: 8 mocked Yahoo Finance tests — no live credentials
-- **`npm run test:unit`** is the passing offline gate. **`npm test`** also includes the three integration-labelled mocked suites; see [roadmap implementation and verification](docs/roadmap-implementation.md) for the latest full-suite evidence.
-- **CI workflow** — `.github/workflows/ci.yml` runs lint, both the unit and full test suites, responsive website verification, dependency audit, and blocking Semgrep on every push/PR to main; it also validates Supabase migrations locally with Docker. All current workflows declare explicit `permissions: contents: read` and run on Node 22.
-- **CodeQL** (v13) — `.github/workflows/codeql.yml` runs static security analysis (`javascript-typescript`, `security-extended` query pack) on every push/PR plus a weekly full scan; `github/codeql-action` steps SHA-pinned like every other action in this repo
-- **TypeScript strict mode** — entire project compiles cleanly with zero errors (`tsc --noEmit`)
-- **Full audit** — see [`AUDIT.md`](AUDIT.md) for the complete findings report (30 items across security/bugs/performance/architecture/tests/deps) and remediation checklist
-
----
-
-## Architecture
-
-```
-RSS Feeds (68 sources, conditional GET + ETag cache)
-      │
-      ▼
-Step 1: News Collector (rss-parser + keyword filter + retry backoff)
-      │
-      ├── Step 1b: SEC EDGAR Watcher (35 companies, 8-K/10-K/10-Q)
-      │
-      ▼
-Step 1c: Dedup (URL match + Jaccard; optional cosine similarity when embeddings are available)
-      │
-      ▼
-Step 2: AI Processor (two-tier routing)
-      ├── Cache check: SHA-256(article URLs) → .ai-cache/ (23h TTL)
-      ├── Classification: Fast Model (openai/gpt-oss-20b)
-      ├── Synthesis: Strong Model (openai/gpt-oss-120b)
-      └── SEC Two-Pass: keyword filter → fast flag → strong extract
-      │
-      ▼
-Step 2a0: Relevance Filter — drop articles with AI relevanceScore < 4
-      │
-      ▼
-Step 2d: Optional embeddings (v8.0) — text-embedding-3-small via OpenAI; rebuild corroboration map with cosine (v8.1)
-         Seed embeddings cached to .cache/seed-embeddings.json (keyed by content hash)
-      │
-      ▼
-Step 2e: Optional Semantic Relevance Gate (v8.2) — cosine vs 20 seed sentences, threshold 0.55
-         Runs before bear cases to avoid wasted LLM spend on off-topic articles
-      │
-      ▼
-Step 2a: Article Enrichment (🏛️ SEC badge, bear cases)
-      │
-      ▼
-Step 2a1: Novelty Check — flag rehashes (48h Jaccard, 0.6× multiplier)
-      │
-      ▼
-Step 2b: Optional Earnings Transcript Mining (Roic.ai + two-pass AI)
-      │
-      ▼
-Step 2c: Yahoo Finance (stock prices for mentioned tickers)
-      │
-      ▼
-Step 3b: writeDerivedMetrics() — upsert sector + ticker rows to daily_derived_metrics
-      │
-      ▼
-Step 3c: buildWhatChanged() — query last 8 days, compute WoW movers (≥20%)
-      │
-      ▼
-Step 3: generateDigest() → GeneratedDigest bundle (format once, includes whatChanged)
-      │
-      ▼
-Step 4: persistDigestMetrics() — writes editorial data to Supabase ONCE
-      ├── digest_runs, articles (returns {id,url}[]), sector_activity, stock_prices, daily_metrics
-      └── Records prompt/schema versions and signal-quality metrics
-      │
-      ▼
-Step 5: Publish immutable digest_publications row
-      ├── One edition per publication_date
-      └── Stores the serialized bundle + article identity map
-      │
-      ▼
-Step 6: Fan-out delivery loop (scheduler reads publications; never generates)
-      ├── For each user: applyUserFilter(bundle, userPrefs) → re-format → send
-      │     applies: min_impact_score, categories_enabled, watchlist boost, digest_length trim
-      │     whatChanged Market Pulse block injected in header when ≥7 days history available
-      └── Default chat: send shared pre-formatted message (zero overhead)
-      │
-      ▼
-Step 7: sendValidationFollowUp() — per user, using the publication article map
-      ├── Top-3 articles by impact score → 👍/👎 inline keyboard
-      └── va_* callback handler records vote → article_validations + thumbs counter
-```
-
----
-
-## Quick Start
-
-### Prerequisites
-
-- **Node.js 22**
-- **Telegram Bot Token** — [@BotFather](https://t.me/BotFather)
-- **AI API Key** — [Groq](https://console.groq.com) (free) / [OpenAI](https://platform.openai.com) / [OpenRouter](https://openrouter.ai)
-- **Supabase account** — [supabase.com](https://supabase.com)
-
-### Setup
+You need Node.js 22 (see `.nvmrc`), a Telegram bot token from [@BotFather](https://t.me/BotFather), an AI key from [Groq](https://console.groq.com), [OpenAI](https://platform.openai.com), or [OpenRouter](https://openrouter.ai), and a [Supabase](https://supabase.com) project.
 
 ```bash
 npm install
 cp .env.example .env
-# Edit .env with your API keys
 ```
 
-### Environment Variables
+Fill in `.env`. Keep real values out of `.env.example`, because git tracks it and the repository is public.
 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `TELEGRAM_BOT_TOKEN` | ✅ | — | Bot token from @BotFather |
-| `TELEGRAM_CHAT_ID` | ✅ | — | Your Telegram chat/user ID |
-| `AI_API_KEY` | ✅ | — | API key for your AI provider |
-| `AI_PROVIDER` | ❌ | `groq` | `groq`, `openai`, `openrouter`, `custom` |
-| `AI_MODEL` | ❌ | `openai/gpt-oss-120b` | Strong model for synthesis & SEC extraction |
-| `AI_FAST_MODEL` | ❌ | `openai/gpt-oss-20b` | Fast model for classification & SEC flagging |
-| `AI_FALLBACK_PROVIDER` | ❌ | — | Secondary provider tried only if the primary fails after all retries (`openai`, `groq`, `openrouter`, `custom`) |
-| `AI_FALLBACK_API_KEY` | ❌ | — | API key for the fallback provider — set this to enable failover |
-| `AI_FALLBACK_MODEL` | ❌ | `gpt-4o-mini` | Strong model on the fallback provider |
-| `AI_FALLBACK_FAST_MODEL` | ❌ | `gpt-4o-mini` | Fast model on the fallback provider |
-| `SUPABASE_URL` | ❌ | — | Supabase project URL |
-| `SUPABASE_SERVICE_KEY` | ❌ | — | Supabase service role key |
-| `OPENAI_EMBEDDING_API_KEY` | ❌ | — | Optional OpenAI key for `text-embedding-3-small` vectors; can share `OPENAI_API_KEY` if using OpenAI provider. Without a working key, deduplication uses URL/Jaccard fallbacks and the semantic gate is skipped; persistent HTTP 429 also degrades to those fallbacks for that run |
-| `ROIC_AI_API_KEY` | ❌ | — | Optional Roic.ai API key for earnings transcripts; without it, the earnings stage is skipped |
-| `WEBHOOK_URL` | ❌ | — | Public URL for webhook bot auto-registration |
-| `WEBHOOK_SECRET` | ❌* | — | Secret token for webhook request validation. *Required to start `src/webhook.ts` at all (not just when `WEBHOOK_URL` is set) — not needed for `npm run dev`/`npm run scheduler` |
-| `PORT` | ❌ | `3000` | Webhook server port |
-| `SLACK_WEBHOOK_URL` | ❌ | — | Slack Incoming Webhook URL for digest delivery |
-| `SMTP_USER` | ❌ | — | Gmail address that *owns* the App Password (e.g. `sender@gmail.com`) |
-| `SMTP_PASS` | ❌ | — | 16-char Gmail App Password (no spaces; 2FA required on the account) |
-| `DIGEST_EMAIL_TO` | ❌ | — | Recipient email address for digest delivery |
-| `AI_BUDGET_DAILY_USD` | ❌ | `0.50` | Daily AI spend cap; Telegram alert when breached |
-| `AI_BUDGET_MONTHLY_USD` | ❌ | `5.00` | Advisory 30-day threshold for known AI spend |
-| `MAX_ARTICLES_FOR_AI` | ❌ | `35` | Maximum deduplicated articles sent to the AI per run (clamped to 1–100) |
-
-### Get Your Telegram Chat ID
-
-1. Message your bot on Telegram
-2. Run: `curl https://api.telegram.org/bot<TOKEN>/getUpdates`
-3. Find `chat.id` and add it to `.env`
-
-### Run Locally
+To find your Telegram chat ID, message your bot, run this command, and copy `chat.id` into `.env`:
 
 ```bash
-npm run dev          # Run pipeline once (polling mode, then exit)
-npm run scheduler    # Run per-user delivery check
-npm run webhook      # Start always-on webhook server (tsx, local dev)
-npm run preflight    # Validate local configuration without network calls
-npm run preflight:network # Read-only authentication checks; sends nothing
-npm run test:unit    # Run unit tests (offline, no credentials needed)
-npm run verify:website # Check dashboard and briefing behavior at 320/768/1024/1440px in headless Edge/Chrome
-npm test             # Run the full suite, including mocked integration-labelled tests
-
-# Backfill historical derived metrics (run once after first pipeline runs)
-npx tsx scripts/backfill-derived-metrics.ts --days=5    # test with 5 days first
-npx tsx scripts/backfill-derived-metrics.ts --days=90   # full 90-day history
+curl https://api.telegram.org/bot<TOKEN>/getUpdates
 ```
 
----
-
-## Database (Supabase CLI)
-
-Migrations live in `supabase/migrations/` and are managed with the Supabase CLI.
-
-### First-time setup
+These commands run the project locally. `npm run dev` has real side effects: it sends a Telegram message, spends AI credits, and writes to Supabase.
 
 ```bash
-npx supabase login
-npx supabase link --project-ref <your-ref>   # ref from your Supabase dashboard URL
+npm run dev                 # Run the pipeline once
+npm run scheduler           # Run one delivery check
+npm run webhook             # Start the webhook server
+npm run preflight           # Validate configuration without network calls
+npm run preflight:network   # Run read-only authentication checks; sends nothing
 ```
 
-### Apply migrations
+## Configuration
+
+`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, and `AI_API_KEY` are required. Everything else is optional, and `.env.example` shows the format.
+
+| Variable | Default | Description |
+|---|---|---|
+| `TELEGRAM_BOT_TOKEN` | | Bot token from @BotFather. |
+| `TELEGRAM_CHAT_ID` | | Default chat or user ID. |
+| `AI_API_KEY` | | Key for the AI provider. |
+| `AI_PROVIDER` | `groq` | `groq`, `openai`, `openrouter`, or `custom`. |
+| `AI_BASE_URL` | | Endpoint for the `custom` provider. |
+| `AI_MODEL` | `openai/gpt-oss-120b` | Strong model for synthesis and SEC extraction. |
+| `AI_FAST_MODEL` | `openai/gpt-oss-20b` | Fast model for classification and SEC flagging. |
+| `AI_FALLBACK_PROVIDER` | | Provider tried once if the primary fails after all retries. |
+| `AI_FALLBACK_API_KEY` | | Enables failover. |
+| `AI_FALLBACK_BASE_URL` | | Endpoint for a custom fallback provider. |
+| `AI_FALLBACK_MODEL` | `gpt-4o-mini` | Strong model on the fallback provider. |
+| `AI_FALLBACK_FAST_MODEL` | `gpt-4o-mini` | Fast model on the fallback provider. |
+| `MAX_ARTICLES_FOR_AI` | `35` | Maximum deduplicated articles per run, clamped to 1 to 100. |
+| `AI_BUDGET_DAILY_USD` | `0.50` | Daily threshold for known AI spend. |
+| `AI_BUDGET_MONTHLY_USD` | `5.00` | 30-day threshold for known AI spend. |
+| `AI_BUDGET_MODE` | `advisory` | `advisory` or `enforced`. `enforced` requires reviewed `ai_model_prices` rows. |
+| `SUPABASE_URL` | | Supabase project URL. |
+| `SUPABASE_SERVICE_KEY` | | Service role key. Never ship it to a browser. |
+| `OPENAI_EMBEDDING_API_KEY` | | Key for `text-embedding-3-small`. Persistent HTTP 429 responses fall back to URL and Jaccard matching for that run. |
+| `ROIC_AI_API_KEY` | | Key for earnings transcripts. |
+| `WEBHOOK_URL` | | Public URL. The server registers it with Telegram on startup. |
+| `WEBHOOK_SECRET` | | Required to start `src/webhook.ts` at all. Not needed for `npm run dev` or `npm run scheduler`. |
+| `WEBHOOK_PATH` | `/telegram/webhook` | Path that receives updates. |
+| `PORT` | `3000` | Webhook server port. |
+| `TELEGRAM_MODE` | | `send-only`, `polling`, or `webhook`. |
+| `TZ` | `Asia/Kuala_Lumpur` | Timezone used for run dates. |
+| `SLACK_WEBHOOK_URL` | | Slack Incoming Webhook for the default copy. |
+| `SMTP_USER` | | Gmail address that owns the App Password. |
+| `SMTP_PASS` | | 16-character Gmail App Password with no spaces. |
+| `DIGEST_EMAIL_TO` | | Recipient for the default email copy. |
+
+`SMTP_PASS` must be a [Google App Password](https://myaccount.google.com/apppasswords), not your account password. Gmail rejects an account password with `535-5.7.8 Username and Password not accepted`. App Passwords require 2-Step Verification. To test the credentials without a full pipeline run, use this command:
 
 ```bash
-npm run db:push      # Apply pending migrations to remote DB
-npm run db:status    # List migration history
-npm run db:diff      # Generate migration from schema changes
-npm run db:pull      # Sync remote schema to local
+npx tsx scripts/test-email.ts
 ```
 
-### Local reset
+## Production
 
-```bash
-npm run db:reset     # Reset the local database with migrations and the safe seed file
-```
-
-This command requires the local Supabase/Docker stack but does not require Supabase login, a linked project, or application secrets. `supabase/seed.sql` is intentionally comment-only, so reset creates a clean schema without inserting credentials or sample data.
-
-### Migration history
-
-| File | Description |
+| Component | Where it runs |
 |---|---|
-| `20240101000000_initial_schema.sql` | 13 tables + RLS policies |
-| `20240601000000_v2_user_alerts.sql` | `alerts_enabled`, `alerts_min_score` columns |
-| `20260624000000_v3_missing_columns.sql` | `ai_fast_model`, `is_sec_filing`, missing tables, RLS for new tables |
-| `20260624120000_v4_indexes_retention.sql` | 13 performance indexes + `cleanup_old_data()` retention function |
-| `20260624150000_v5_digest_length.sql` | `digest_length` column on `user_preferences` |
-| `20260625000000_v6_daily_derived_metrics.sql` | `daily_derived_metrics` table + 2 time-series indexes + RLS |
-| `20260626000000_v7_article_validations.sql` | `article_validations` table + `thumbs_up`/`thumbs_down` on `articles` + RLS |
-| `20260627000000_v63_articles_bear_case.sql` | `bear_case TEXT` column on `articles` |
-| `20260625100000_security_rls.sql` | Tighten RLS: service-role-only for `user_preferences`, `user_delivery_log`, `earnings_transcripts`; public read + service write for `sec_filings` |
-| `20260625200000_v80_articles_embedding.sql` | Enable `pgvector`; `embedding vector(1536)` column + IVFFlat index on `articles` |
-| `20260625300000_v9_daily_metrics_trending.sql` | `trending_json`, `trending_entities` columns on `daily_metrics` |
-| `20260625400000_v9_daily_metrics_feedback.sql` | `feedback_ratings` column on `daily_metrics` |
-| `20260629000000_v9_rls_writes_service_role.sql` | Security fix: scope the 9 `"Allow service full access"` policies (`digest_runs`, `articles`, `sector_activity`, `stock_mentions`, `pipeline_health`, `capex_tracking`, `ai_usage`, `daily_metrics`, `stock_prices`) to `TO service_role` — they previously had no `TO` clause and defaulted to `PUBLIC`, letting the client-exposed anon key write/delete |
-| `20260703000000_v10_ticker_theses.sql` | `ticker_theses` table (bull/bear thesis snapshots, `UNIQUE(ticker)`) + RLS (public read, service write) |
-| `20260704000000_v11_ticker_thesis_history.sql` | `ticker_thesis_history` table (`UNIQUE(ticker, week_of)`) — every weekly snapshot kept, not just the latest; public read + service write |
-| `20260704010000_v12_price_watches.sql` | `price_watches` table (`UNIQUE(chat_id, ticker)`) — one-shot price threshold pings; service-role-only RLS (private per-user data) |
-| `20260704020000_v13_command_usage.sql` | `command_usage` table — append-only bot-command invocation log; service-role-only RLS |
-| `20260707000000_v14_articles_intelligence_fields.sql` | `corroboration_count`, `grounding_text`, `effective_score` columns on `articles` — persist ranking/grounding data that was computed in-memory every run and discarded afterward |
-| `20260810000000_v141_capability_status.sql` | `capabilities` JSONB + `degraded_stages` on `digest_runs` — records which optional stages were enabled or degraded without storing credentials |
-| `20260810010000_v16_ranking_explanations.sql` | `ranking_explanation` JSONB on articles + daily validation-quality view |
-| `20260810020000_v17_personal_delivery_channels.sql` | Private per-user email + Slack destinations for personalized copies |
-| `20260810030000_v171_private_delivery_hardening.sql` | Removes stale PUBLIC policy/grants from private delivery settings; makes ranking view SELECT-only |
-| `20260810040000_v172_rls_policy_cleanup.sql` | Removes remaining stale PUBLIC write policies, protects validation chat IDs, and fixes retention-function search path |
-| `20260810082355_v173_delivery_metrics_public.sql` | Public daily delivery aggregates maintained from the private delivery log; exposes no chat IDs or destination details |
-| `20260815075950_delivery_reliability.sql` | Retryable delivery leases, stale-claim recovery, and the service-role-only `claim_user_delivery` RPC |
-| `20260815090616_v18_alert_idempotency_and_article_search.sql` | Idempotent alert claims, private product-funnel events, and indexed public article-search RPC |
-| `20260815091624_v181_onboarding_resume.sql` | Explicit onboarding-completion marker used by safe `/resume` activation |
-| `20260815091946_v182_consent_correction.sql` | Inactive-by-default users, removes inferred legacy consent, and records resume activation events |
-| `20260819112411_canonical_digest_publications.sql` | Immutable daily editorial publications, publication-linked delivery records, private email verification, privacy RPCs, and explicit Data API grants |
-| `20260823074758_private_digest_feedback.sql` | Private, atomic feedback storage; five-response public aggregates; legacy feedback archival; deletion and retention updates |
+| Editorial pipeline and delivery | GitHub Actions |
+| Workflow timing | pg_cron and pg_net in Supabase |
+| Bot commands | Webhook server on Render, built from the `Dockerfile` |
+| Database | Supabase (Postgres and pgvector) |
+| Website | Vercel, project `goldirham-stack` |
 
----
+Merging to `main` applies migrations through Supabase's GitHub integration and deploys Render. Stop the affected workers before you merge a release that includes a migration.
 
-## GitHub Actions (Production)
+### Scheduled workflows
 
-### Daily Digest
+| Workflow | Schedule (UTC) | Purpose |
+|---|---|---|
+| `daily-digest.yml` | Daily at 22:17 | Generate and publish the edition. |
+| `scheduled-delivery.yml` | Every 10 minutes | Personalize and deliver the current edition. It reads publications and delivery state only. |
+| `weekly-thesis.yml` | Sunday at 04:00 | Generate bull and bear snapshots for the top 10 tickers, at about $0.01 per week. |
+| `data-retention.yml` | Sunday at 03:00 | Call `cleanup_old_data()`. |
+| `api-contracts.yml` | Monday at 03:41 | Check live Yahoo and EDGAR responses. |
+| `ci.yml` | Push and PR to `main`, Monday at 04:19 | Run the checks listed under [Testing](#testing). |
+| `codeql.yml` | Push and PR to `main`, Monday at 05:00 | Run CodeQL with the `security-extended` pack. |
 
-`.github/workflows/daily-digest.yml` — scheduled for **06:17 MYT** (22:17 UTC). Generates and publishes the edition; `scheduled-delivery.yml` sends it.
+Migration `20261102140000` adds pg_cron jobs that dispatch the digest and delivery workflows on time. The jobs do nothing until the Vault secret `github_actions_dispatch_token` holds a fine-grained token with Actions read and write access to this repository. GitHub's own schedules stay in place as a backstop. Never put the token in a migration.
 
-### Scheduled Per-User Delivery
+To store or replace the token, run one of these statements in the Supabase SQL editor. Use `create_secret` the first time and `update_secret` after that.
 
-`.github/workflows/scheduled-delivery.yml` — runs **every 10 minutes** with overlapping runs serialized. It queries active users, finds those whose `preferred_time` is due and not successfully delivered for their local date, then fans out the current canonical editorial edition. The editorial date and each user's local delivery slot are deliberately separate, so cross-timezone users receive the same edition without duplicate delivery. The workflow receives no AI or embedding credentials and waits when the current edition is not ready. Delayed cron ticks remain eligible because due state is date-based rather than a narrow clock window.
+```sql
+select vault.create_secret('YOUR_TOKEN', 'github_actions_dispatch_token');
+select vault.update_secret((select id from vault.secrets where name = 'github_actions_dispatch_token'), 'YOUR_TOKEN');
+```
 
-### Data Retention
-
-`.github/workflows/data-retention.yml` — runs **weekly (Sunday 3 AM UTC)**, calling the `cleanup_old_data()` Supabase RPC (see `scripts/run-retention-cleanup.ts`) to prune high-volume operational and private event data according to the retention periods above. Supports manual `workflow_dispatch`.
-
-### Weekly Thesis Snapshots
-
-`.github/workflows/weekly-thesis.yml` — runs **weekly (Sunday 4 AM UTC)**, generating bull/bear thesis snapshots for the top-10 most-mentioned tickers from 30 days of `daily_derived_metrics` + `sec_filings` data (one batched strong-model call, ~$0.01/week); upserts into `ticker_theses`. Query via `/thesis NVDA` or the dashboard's Thesis Snapshots card. Supports manual `workflow_dispatch`.
-
-### CI
-
-`.github/workflows/ci.yml` — runs on every push and PR to `main`. Executes `tsc --noEmit`, unit tests, the full mocked integration suite, credential-free responsive website verification, dependency audit, blocking Semgrep static analysis, and local Supabase migration validation.
-
-### CodeQL
-
-`.github/workflows/codeql.yml` — runs on every push/PR to `main` plus a weekly full scan (Monday 5 AM UTC). Static security analysis over `javascript-typescript` with the `security-extended` query pack; results surface in the repo's Security tab. Added in v13 as the one AUDIT.md meta-recommendation that hadn't been implemented yet.
+To check the result of recent dispatches, read `net._http_response`. A working dispatch returns 204.
 
 ### GitHub Actions secrets
 
-| Secret | Value |
+| Secret | Purpose |
 |---|---|
-| `TELEGRAM_BOT_TOKEN` | Bot token |
-| `TELEGRAM_CHAT_ID` | Default chat ID |
-| `AI_API_KEY` | Groq/OpenAI API key |
-| `SUPABASE_URL` | Supabase project URL |
-| `SUPABASE_SERVICE_KEY` | Supabase service role key |
-| `SLACK_WEBHOOK_URL` | Slack Incoming Webhook URL (optional) |
-| `SMTP_USER` | Gmail sender address (optional) |
-| `SMTP_PASS` | Gmail App Password — 16 chars, no spaces (optional) |
-| `DIGEST_EMAIL_TO` | Recipient email address (optional) |
-| `WEBHOOK_SECRET` | Webhook validation secret (required for Render/Railway) |
-| `OPENAI_EMBEDDING_API_KEY` | Embedding API key (optional; absent in current scheduled production) |
-| `ROIC_AI_API_KEY` | Earnings transcript API key (optional; absent in current scheduled production) |
-| `AI_FALLBACK_API_KEY` | Secondary AI provider key (optional; absent in current scheduled production) |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Telegram delivery. |
+| `AI_API_KEY` | AI provider. |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | Database access. |
+| `SLACK_WEBHOOK_URL` | Optional Slack copy and failure alerts. |
+| `SMTP_USER`, `SMTP_PASS`, `DIGEST_EMAIL_TO` | Optional email copy. |
+| `WEBHOOK_SECRET`, `WEBHOOK_URL` | Webhook server. |
+| `OPENAI_EMBEDDING_API_KEY`, `ROIC_AI_API_KEY`, `AI_FALLBACK_API_KEY` | Optional stages, not configured in production. |
 
-Repository variables can configure optional model names, custom base URLs, fallback
-provider selection, and `AI_BUDGET_DAILY_USD` / `AI_BUDGET_MONTHLY_USD`; unset
-variables use the editorial workflow defaults. The daily editorial workflow passes
-the AI, embedding, earnings, fallback, and budget settings when configured. The
-scheduled-delivery workflow is intentionally credential-isolated: it reads the
-canonical publication and user delivery state only, and receives no AI, embedding,
-earnings, fallback, or default-chat credentials.
+Repository variables can set optional model names, custom base URLs, the fallback provider, and budgets. Unset variables use the workflow defaults.
 
----
-
-## Webhook Deployment (Always-On Bot)
-
-To make interactive commands work 24/7, deploy the webhook server:
+### Webhook server
 
 ```bash
-npm run build && npm run start:webhook   # production
+npm run build && npm run start:webhook
 ```
 
-A `Dockerfile` is included. Set env vars `TELEGRAM_BOT_TOKEN`, `WEBHOOK_URL`, `WEBHOOK_SECRET` on your host. The server auto-registers the webhook with Telegram on startup.
+The `Dockerfile` is a Node 22 build that runs `dist/webhook.js` as the unprivileged `node` user on port 3000. The server rejects requests without a matching `X-Telegram-Bot-Api-Secret-Token` header. See [WEBHOOK_SETUP.md](WEBHOOK_SETUP.md) for deployment steps on Render, Railway, or Fly.io.
 
-See **`WEBHOOK_SETUP.md`** for Render/Railway/Fly.io deployment steps.
+### Operations
 
----
+`scripts/operations.ts` handles the cases automation deliberately leaves to a person.
 
-## Project Structure
-
-```
-ai-infra-digest/
-├── .env.example
-├── AUDIT.md                                  # Full codebase audit — findings, root causes, roadmap, checklist
-├── .github/workflows/
-│   ├── ci.yml                                # Push/PR: lint + unit tests
-│   ├── codeql.yml                            # v13 — push/PR + weekly: CodeQL security analysis
-│   ├── daily-digest.yml                      # 06:17 MYT publish cron
-│   ├── scheduled-delivery.yml               # Every 10 min, per-user fan-out
-│   ├── data-retention.yml                    # Weekly: calls cleanup_old_data() RPC
-│   └── weekly-thesis.yml                     # Weekly: bull/bear thesis snapshots
-├── Dockerfile                                # Webhook bot container
-├── WEBHOOK_SETUP.md                          # Webhook deployment guide
-├── website/
-│   ├── index.html                            # Public landing page
-│   ├── build-dashboard-config.mjs             # Vercel-only config artifact generator; no client key is tracked
-│   └── dashboard/
-│       └── index.html                        # Graphite+copper terminal dashboard (public read + expand/collapse)
-├── scripts/
-│   ├── test-digest.ts                        # Manual pipeline test
-│   ├── test-email.ts                         # Standalone Gmail SMTP credential tester (verify auth before a full run)
-│   ├── preflight.ts                          # Local config audit + optional read-only credential checks
-│   ├── backfill-derived-metrics.ts           # Backfill daily_derived_metrics from historical data
-│   ├── run-retention-cleanup.ts              # Calls cleanup_old_data() RPC — used by data-retention.yml
-│   └── migration-v3.sql                      # Reference: applied via Supabase CLI
-├── supabase/
-│   ├── config.toml                           # Supabase CLI project config
-│   ├── seed.sql                               # Safe, empty local-reset seed
-│   └── migrations/                           # Numbered migration files
-├── src/
-│   ├── index.ts                              # Thin process entry point; wires commands and pipeline execution
-│   ├── index.commands.test.ts                # /coverage, /thesis, /watch command handler tests
-│   ├── index.faninout.test.ts                # Fan-out regression (generate once, deliver N times) + price watch delivery tests
-│   ├── commands/
-│   │   ├── register.ts                       # Single command-registration entry point
-│   │   ├── core.ts                           # /digest, /sources, /last
-│   │   ├── preferences.ts                    # /alert, /watch, /delivery, /feedback
-│   │   ├── trends.ts                         # /trending, /trends, /sources quality
-│   │   └── research.ts                       # /sec, /coverage, /thesis
-│   ├── delivery/
-│   │   ├── deliver.ts                        # Telegram/Slack/email fan-out and price-watch delivery
-│   │   └── personalization.ts                # Per-user filtering and digest-length shaping
-│   ├── pipeline/
-│   │   ├── run.ts                            # Generate once, then deliver to the default recipient
-│   │   ├── generate.ts                       # Collection, enrichment, ranking, and digest assembly
-│   │   ├── persist.ts                        # Database writes, metrics, trends, and budget alerts
-│   │   ├── trending.ts                       # Shared trending-item contract
-│   │   └── types.ts                          # GeneratedDigest boundary type
-│   ├── scheduler.ts                          # Per-user cron runner; due-state fan-out by local date
-│   ├── scheduler.test.ts                     # isDeliveryDue/getDeliveryDate unit tests
-│   ├── onboarding.ts                         # 4-step interactive onboarding state machine
-│   ├── webhook.ts                            # Zero-dep webhook HTTP server
-│   ├── config.ts                             # Env config loader (incl. budget caps)
-│   ├── collector/
-│   │   ├── rss.ts                            # 68 RSS feeds, conditional GET, retry backoff
-│   │   ├── sec.ts                            # SEC EDGAR watcher — 35 companies
-│   │   └── earnings.ts                       # Roic.ai earnings transcript fetcher
-│   ├── formatter/
-│   │   └── telegram.ts                       # HTML Telegram formatter (personalization note support)
-│   ├── processor/
-│   │   ├── ai.ts                             # Two-tier AI batch processing + ProcessedArticle type (incl. bearCase, embedding)
-│   │   ├── bear-cases.ts                     # Devil's Advocate — batched AI bear case generation for high-impact articles
-│   │   ├── embeddings.ts                     # v8.0 — generateEmbeddings() via OpenAI text-embedding-3-small (20-article batches)
-│   │   ├── relevance.ts                      # v8.2 — 20 seed sentences + embedSeeds() (disk-cached) + passesSemanticGate()
-│   │   ├── thesis.ts                         # v10.1 — weekly bull/bear thesis generation + history insert; v14 — collectRecentCoverage() grounds the prompt in /coverage's article data
-│   │   ├── sec.ts                            # SEC two-pass extraction
-│   │   └── earnings.ts                       # Earnings two-pass analysis + guidance delta
-│   ├── sender/
-│   │   ├── telegram.ts                       # Bot API; generic command dispatcher (v12.1) routes every registerCommand()-registered handler; sendValidationFollowUp, va_* callback
-│   │   ├── telegram.routing.test.ts          # v12.1/v13 — proves every registered command is actually dispatchable + usage-logging behavior
-│   │   ├── slack.ts                          # Slack Incoming Webhook — HTML→mrkdwn, chunked delivery
-│   │   └── email.ts                          # Gmail SMTP via nodemailer — HTML email template
-│   ├── webhook.test.ts                       # Webhook router unit tests
-│   ├── tests/
-│   │   ├── supabase.integration.test.ts      # Mocked Supabase REST boundary tests
-│   │   ├── telegram.integration.test.ts      # Mocked Telegram Bot API boundary tests
-│   │   └── stocks.integration.test.ts        # Mocked Yahoo Finance boundary tests
-│   └── utils/
-│       ├── grounding.ts                      # v9.1 — attachGroundingNotes(): cross-reference tickers vs SEC/earnings/stock data in-memory
-│       ├── ai-cache.ts                       # File-based AI response cache (SHA-256 key, 23h TTL)
-│       ├── ai-schema.ts                      # v10.2 — shared zod nullableFinancialNumber (used by processor/sec.ts + earnings.ts)
-│       ├── escape.ts                         # v10.2 — escapeHtml() + stripHtmlTags() (single source, used at collection + render time)
-│       ├── derived-metrics.ts                # daily_derived_metrics writer + query helpers
-│       ├── dedup.ts                          # URL + Jaccard/cosine dedup + cosineSimilarity() + buildCorroborationMap() (async cache I/O)
-│       ├── helpers.ts                        # sleep() + todayInTimezone() (v10.2 — timezone-correct run-date helper)
-│       ├── source-credibility.ts             # Static source-name → credibility multiplier + isPRWireSource() PR wire detection
-│       ├── novelty.ts                        # 48h rehash detection — flags isRehash via Jaccard similarity against recent DB articles
-│       ├── ranking.ts                        # v16 auditable score calculation + concise ranking reasons
-│       ├── trust-scores.ts                   # Vote-learned source/sector multipliers from article_validations (1h TTL cache)
-│       ├── price-watch.ts                    # v12 — pure inferDirection()/isTriggered() helpers for one-shot price watches
-│       ├── logger.ts                         # Structured timestamped logger
-│       ├── metrics.ts                        # NDJSON event logging (async file writes); emitCommandUsage() (v13)
-│       ├── metrics.test.ts                   # v13 — emitCommandUsage() event-shape tests
-│       ├── retry.ts                          # withRetry<T> + tryStage<T> utilities
-│       ├── stocks.ts                         # Yahoo Finance price fetcher
-│       └── supabase.ts                       # Supabase REST access; canonical publications; article/SEC persistence; retryable delivery and alert claims; private product events
-├── supabase-schema.sql                       # Historical schema reference snapshot — migrations/ is canonical, see header note
-├── vitest.config.ts
-├── package.json
-└── tsconfig.json
+```bash
+npm run operations -- status
+npm run operations -- activation
+npm run operations -- resolve digest ID success "evidence and reason"
+npm run operations -- release-editorial YYYY-MM-DD "evidence and reason"
 ```
 
----
+Reasons must be at least 20 characters and are kept in an audit table. Before you release a stuck editorial claim, inspect the publication and the AI ledger, because a retry can repeat paid work. The database refuses to release a claim under an hour old.
 
-## News Sources
+## Database
 
-**Tier 1 — Company & Financial (50 feeds)**
-NVIDIA, Microsoft, AMD, Broadcom, Amazon, Google, Meta, TSMC, Intel, Qualcomm, Oracle, IBM, Micron, ASML, Super Micro, Dell, ARM, Arista, Cisco, Marvell, Applied Materials, Lam Research, KLA, Tokyo Electron, Digital Realty, Equinix, Constellation Energy, Vistra, GE Vernova, Siemens Energy, Vertiv, Schneider Electric, Eaton, Anthropic, xAI, Mistral AI, Cohere, SK hynix, Samsung, GlobalFoundries + MarketWatch, Yahoo Finance, CNBC, Reuters Tech, Bloomberg Tech, FT Tech, Barron's, WSJ Markets, Investor's Business Daily, SEC Filings (EDGAR current filings feed)
+Supabase holds 35 public tables, managed by 40 migrations in `supabase/migrations/`. `supabase-schema.sql` is a historical snapshot. The migrations are canonical.
 
-**Tier 2 — Industry News (18 feeds)**
-Tom's Hardware, ServeTheHome, Ars Technica, TechCrunch, The Verge, Seeking Alpha, SemiAnalysis, The Register, Datacenter Dynamics, Semiconductor Engineering, Google AI Blog, OpenAI, AWS AI, VentureBeat AI, AI News, Medium AI, AI Business, ZDNet AI
+```bash
+npx supabase login
+npx supabase link --project-ref <your-ref>
+npm run db:status    # List migration history
+npm run db:diff      # Generate a migration from schema changes
+npm run db:pull      # Sync the remote schema to local
+npm run db:reset     # Reset the local database; requires Docker, not a login
+```
 
----
+Row-level security is on for all tables, and writes are limited to `service_role`. The dashboard can read public analytics tables only. Personal data such as `user_preferences` and `price_watches` is service-role only.
 
-## Cost Estimate
+`cleanup_old_data()` applies these retention periods:
 
-| Service | Cost |
+| Data | Kept for |
 |---|---|
-| GitHub Actions | Free (2,000 min/month; ~120 min/month used) |
-| Groq fast model (~80% of tokens) | ~$0.004/day |
-| Groq strong model (~20% of tokens) | ~$0.003/day |
-| SEC two-pass (~5 filings/day) | ~$0.02/day |
+| Pipeline health | 30 days |
+| Articles, AI usage, delivery logs, and alert logs | 90 days |
+| Private product events and digest feedback | 180 days |
+| Capex tracking | 365 days |
+
+## Testing
+
+```bash
+npm run lint                  # tsc for the app and scripts
+npm run test:unit             # Offline unit tests; no credentials
+npm test                      # Adds mocked integration suites; no credentials
+npm run verify:website        # Checks the site at 320, 768, 1024, and 1440px
+npm run verify:live-contracts # Reads live Yahoo and EDGAR responses
+```
+
+`npm test` reported 616 passing tests across 69 files on 2026-11-02. `verify:website` needs a local server, and `.claude/launch.json` has a `website` configuration for port 4321.
+
+CI runs lint, both test suites, website verification, `npm audit`, blocking Semgrep, a container check, and local Supabase migration validation. All actions are pinned to commit SHAs, and Dependabot proposes updates.
+
+## Project layout
+
+```
+.github/workflows/    Scheduled jobs and CI
+docs/                 Release notes, rollout records, and design documents
+scripts/              Operations, preflight checks, backfills, and verifiers
+src/
+  collector/          RSS, SEC EDGAR, and earnings transcripts
+  commands/           Telegram command handlers
+  delivery/           Fan-out, personalization, watches, and the webhook inbox
+  evaluation/         Editorial benchmark and signal-quality tools
+  formatter/          Telegram HTML formatting
+  pipeline/           Generation, persistence, publication, and quality alerts
+  processor/          AI classification, SEC extraction, bear cases, and theses
+  sender/             Telegram, Slack, and email
+  utils/              Supabase access, dedup, ranking, retries, and caching
+  scheduler.ts        Per-user delivery run
+  webhook.ts          Webhook HTTP server
+supabase/migrations/  Canonical database schema
+website/              Landing page, reader, and dashboard
+```
+
+## News sources
+
+**Tier 1, company and financial (50 feeds).** NVIDIA, Microsoft, AMD, Broadcom, Amazon, Google, Meta, TSMC, Intel, Qualcomm, Oracle, IBM, Micron, ASML, Super Micro, Dell, ARM, Arista, Cisco, Marvell, Applied Materials, Lam Research, KLA, Tokyo Electron, Digital Realty, Equinix, Constellation Energy, Vistra, GE Vernova, Siemens Energy, Vertiv, Schneider Electric, Eaton, Anthropic, xAI, Mistral AI, Cohere, SK hynix, Samsung, GlobalFoundries, MarketWatch, Yahoo Finance, CNBC, Reuters Tech, Bloomberg Tech, FT Tech, Barron's, WSJ Markets, Investor's Business Daily, and the SEC EDGAR current filings feed.
+
+**Tier 2, industry (18 feeds).** Tom's Hardware, ServeTheHome, Ars Technica, TechCrunch, The Verge, Seeking Alpha, SemiAnalysis, The Register, Datacenter Dynamics, Semiconductor Engineering, Google AI Blog, OpenAI, AWS AI, VentureBeat AI, AI News, Medium AI, AI Business, and ZDNet AI.
+
+## Estimated cost
+
+These are planning estimates and have not been measured recently.
+
+| Service | Estimated cost |
+|---|---|
+| GitHub Actions | Free on a public repository |
+| Groq fast model, about 80% of tokens | About $0.004 per day |
+| Groq strong model, about 20% of tokens | About $0.003 per day |
+| SEC extraction, about 5 filings per day | About $0.02 per day |
 | Supabase | Free tier (500 MB, 50k rows) |
-| Telegram Bot API | Free |
-| Yahoo Finance | Free |
-| **Total** | **< $1/month** |
+| Telegram Bot API and Yahoo Finance | Free |
+| **Total** | **Under $1 per month** |
 
----
+## Further reading
 
-## Implementation history
+- [Release notes for v1.1.0](docs/releases/v1.1.0.md)
+- [Roadmap implementation and rollout record](docs/roadmap-implementation.md)
+- [Stabilization record](docs/stabilization.md)
+- [Implementation history](docs/implementation-history.md), including the older migration table
+- [Codebase audit](AUDIT.md)
+- [Open and rejected work](TODOS.md)
 
-### Phase I · Foundation ✅ Shipped
-- **v1** — RSS → AI → Telegram → GitHub Actions cron. 57 feeds, 10 sectors, keyword filter, conditional GET
-- **v1.1** — Supabase metrics, Yahoo Finance stock prices, premium dashboard, URL + Jaccard dedup
-- **v1.2** — Token tracking, 58 Vitest unit tests, dashboard shimmer loading
-- **v1.3** — Interactive Telegram commands, user management, health alerts, exponential backoff
-- **v2.0** — Watchlist filtering, alert system, dashboard search + pagination, conditional RSS fetching
-- **v2.1** — NDJSON structured logging, enhanced error alerts, production webhook server
-- **v2.2** — Inline feedback keyboard, 7-day trending, per-user scheduled delivery, idempotent delivery log
+## License
 
-### Phase II · Intelligence ✅ Shipped
-- **v3.0** — SEC filing deep analysis — parse 8-K/10-K/10-Q for 35 companies via EDGAR; extract Capex, AI Revenue, Margins, Inventory, Guidance
-- **v3.0a** — Two-tier AI routing — fast model classification, strong model synthesis. Saves 40–60% on AI costs
-- **v3.0b** — Two-pass SEC extraction — keyword pre-filter → fast flag → strong extract. Saves 50–70% on SEC AI costs
-- **v3.0c** — 🏛️ SEC alert badge on filing articles; `is_sec_filing` stored in Supabase
-- **v3.1** — 🎙️ Earnings transcript mining — Roic.ai API, two-pass AI analysis, guidance delta QoQ, Earnings Watch section in digest
-
-### Phase III · Reliability ✅ Shipped
-- **v3.2** — Fan-out delivery refactor — `generateDigest()` once, `deliverDigest()` per user; Supabase persistence fixed (upsert headers, migration-v3); Supabase CLI with numbered migrations
-- **v3.3** — Real personalization — `applyUserFilter()` at delivery time using `watchlist`, `categories_enabled`, `min_impact_score` from each user's stored preferences; personalization note in digest header
-- **v3.4** — CI workflow — `npm run test:unit` (26 unit tests) on every push/PR via GitHub Actions; lint gate
-- **v3.5** — `withRetry<T>()` + `tryStage<T>()` utilities — pipeline stages now fail independently without crashing the run; budget cap alerts for daily and 30-day AI spend
-
-### Phase IV · Platform ✅ Shipped
-- **v4.0** — 4-step interactive onboarding (`/start`) — delivery time, watchlist, impact filter, digest length; `digest_length` preference stored in Supabase and applied at delivery (brief/standard/detailed)
-- **v4.1** — Database performance — 13 indexes (GIN full-text search, partial indexes); `cleanup_old_data()` automated retention function; migration v4 + v5
-- **v4.2** — Dashboard auth gate — historical credential entry screen with live Supabase verification before unlocking dashboard; replaced by generated public read-only configuration in the current source
-- **v4.3** — AI response caching — SHA-256 hash of article set as cache key; 23h TTL eliminates redundant AI spend on same-day re-runs
-- **v4.4** — Expandable article rows in dashboard — click to inline-expand summary, analyst reason, and source link
-
-### Phase V · Intelligence Layer ✅ Shipped
-- **v5.0** — `daily_derived_metrics` table — materialized time-series for every ticker and sector, written automatically on every pipeline run
-- **v5.1** — "What Changed" digest header — `buildWhatChanged()` computes WoW mention deltas, Market Pulse block appears when ≥7 days of history is available
-- **v5.2** — `/trends` command — Unicode sparkline + WoW delta + price for any ticker or sector (`/trends NVDA 30d`, `/trends sector Datacenters`)
-- **v5.3** — Backfill script — seeds up to 90 days of historical data from existing `sector_activity` + `stock_mentions`; idempotent (safe to re-run)
-
-### Phase VI · Validation + Trust Layer ✅ Shipped
-- **v6.0** — Inline 👍/👎 article validation — top-3 articles per digest get a "Quick Validation" follow-up with per-article buttons; `article_validations` table with idempotent per-user votes and "Already rated!" dedup toast; `thumbs_up`/`thumbs_down` aggregate counters on `articles`; `insertArticles()` returns `{id,url}[]` for fan-out safe threading
-- **v6.1** — Trust-weighted ranking — vote-learned source multipliers from `article_validations` (approval rate → [0.7, 1.3] multiplier, 1-hour TTL cache); `effectiveScore = impactScore × voteMultiplier × credibilityMultiplier × sectorMultiplier × corroborationBoost` drives validation follow-up order; `/sources quality` command; hallucination detection alert (source with ≥3 votes and approvalRate < 0.25)
-- **v6.2** — Static Source Credibility + Corroboration — cold-start fix: deterministic source-name → multiplier map (High 1.2x for TechCrunch/Reuters/WSJ/etc., Low 0.8x for vendor PR blogs, default 1.0x); `buildCorroborationMap()` clusters same-story articles via Jaccard similarity and adds +5% per extra corroborating source
-- **v6.3** — Devil's Advocate bear cases — second AI pass for articles scoring ≥ 7/10 generates a skeptical 1–2 sentence counter-argument; stored in `bear_case TEXT` column; rendered as `⚠️` italic line in each digest article
-
-### Phase VII · Sharper Signal ✅ Shipped
-- **v7.0** — Relevance scoring pass — `relevanceScore` (1–10) added to batch AI prompt; articles scoring < 4 dropped before ranking; `effectiveScore` promoted to real typed field on `ProcessedArticle` (removed `as` casts)
-- **v7.1** — Score calibration + PR wire dampening — anchored 1–10 impact rubric with tier examples; `isPRWireSource()` identifies BusinessWire/PRNewswire/GlobeNewswire etc.; PR wire articles capped at `effectiveScore = 6` regardless of content; PR wires added to credibility map at 0.8×
-- **v7.2** — Novelty flag — `flagRehashes()` queries articles from the past 48 hours, computes Jaccard similarity (threshold 0.5) against incoming titles, tags matches as `isRehash`; rehashed articles get a 0.6× multiplier in the effectiveScore chain so breaking news always surfaces above repeated coverage
-- **v7.3** — Test coverage — 10 new unit tests for `source-credibility.ts` and `novelty.ts`; total test count raised to 75
-
-### Phase VIII · Semantic Core ✅ Shipped
-- **v8.0** — Embeddings infrastructure — `text-embedding-3-small` vectors generated per article; stored in Supabase `pgvector` (`embedding vector(1536)` column, IVFFlat index). Graceful skip if `OPENAI_EMBEDDING_API_KEY` not set
-- **v8.1** — Semantic corroboration clustering — `cosineSimilarity()` added to `dedup.ts`; `buildCorroborationMap()` uses cosine (0.85 threshold) when embeddings available, falls back to Jaccard (0.65); corroboration map rebuilt after embeddings generated each run
-- **v8.2** — Semantic relevance gate — 20 canonical AI-infra seed sentences embedded once per run; articles failing cosine ≥ 0.55 against all seeds dropped after the AI relevance pre-filter; `src/processor/relevance.ts` + 4 new unit tests
-
-### Phase IX · Stabilization + Intelligence ✅ Shipped
-- **v9.0** — Audit quick-wins:
-  - **TypeScript clean** — fixed all 19 pre-existing type errors (named TelegramBot sub-type imports, polling union type, `disable_web_page_preview` → `link_preview_options`); `tsc --noEmit` now exits 0 and is gated in CI
-  - **Pipeline reorder** — embeddings + semantic gate moved to run *before* bear cases; stops LLM spend on articles the gate drops
-  - **Crash guards** — `cosineSimilarity` returns 0 on mismatched vector lengths; embeddings batch loop bounds-checks the returned index
-  - **Scheduler tolerance** — the original `isTimeMatch` ±2 minute window was superseded by date-based due delivery, so a late cron tick cannot permanently miss a user
-  - **Seed embedding cache** — `embedSeeds()` persists to `.cache/seed-embeddings.json` keyed by SHA-256 of seed list + model; eliminates one OpenAI API call per pipeline run after the first
-  - **+8 new unit tests** (cosine similarity × 4, scheduler `isTimeMatch` × 3) — total unit suite now **55 tests**
-- **v9.1 (channels)** — Slack + Gmail delivery — introduced optional external copies; the current v17.1 semantics send them only after the claimed Telegram delivery succeeds, with copy failures remaining non-fatal; `scripts/test-email.ts` verifies credentials without a full pipeline run
-- **v9.1 (grounding)** — Cross-source grounding — `attachGroundingNotes()` matches each article's `affectedStocks[]` against same-run SEC extracts, earnings analyses, and stock prices; emits a compact one-liner per article (e.g. `📊 NVDA: 8-K Jun-20 (score 9/10) | capex $500M`); zero extra Supabase calls; +4 unit tests
-- **v9.2** — Daily Deep-Dive — the single highest-scoring article per run gets a full `🔬 DAILY DEEP-DIVE` thesis block: bull case (🟢), bear case (🔴), and a one-sentence context note (📊) connecting the story to related financials; generated by extending the existing bear-case AI pass with two extra JSON fields — no additional API round-trip; total unit suite now **59 tests**
-- **v9.3** — Security + reliability audit fixes:
-  - **RLS hardening** — scoped 9 previously-`PUBLIC` write policies to `TO service_role` (the client-exposed anon key could otherwise write/delete `articles`, `digest_runs`, and 7 other tables)
-  - **Dashboard XSS fix** — escaped all DB-sourced fields before `innerHTML` insertion (untrusted RSS content flows through the AI pipeline into the dashboard)
-  - **Retry coverage** — embeddings, seed-embedding, and bear-case AI calls now use `withRetry` instead of silently degrading to zero output on a single 429
-  - **AI provider failover** — optional `AI_FALLBACK_*` secondary provider tried once after the primary exhausts retries
-  - **Budget pre-spend gate** — the 30-day cap now skips the run entirely instead of only alerting after the spend already happened
-  - **Bear-case index matching** — switched from exact-URL round-trip matching to 1-based index matching; long Google News redirect URLs weren't reliably echoed back by the model, silently dropping every bear case
-  - **Dead-feed detection** — feeds failing 3+ consecutive runs are now flagged distinctly from transient blips
-  - **SEC EDGAR 403 fix** — descriptive `User-Agent` header per their fair-use policy
-  - **Scheduled retention** — `.github/workflows/data-retention.yml` (weekly) actually invokes the `cleanup_old_data()` RPC that previously had no scheduler wired up
-  - **Webhook secret** — now required whenever `WEBHOOK_URL` is set, regardless of `NODE_ENV` (superseded in v10.2 — required unconditionally)
-  - Removed the stale duplicate `dashboard/` directory (`website/dashboard/` is canonical)
-
-### Phase X · Hardening + Thesis Layer ✅ Shipped
-- **v10.0 (code health)** — retry helpers deduplicated into `utils/retry.ts`; generic `supabase.queryRows<T>()` replaces 7 hand-rolled fetch call sites; PostgREST params URL-encoded; `resetSkippedFeeds()` per run; LLM article rows validated/normalized at the trust boundary; all 10 dead RSS feeds repaired (68/68 healthy, was 57/68)
-- **v10.0 (tests)** — 59 → 84 unit tests: bear-cases parsing/index-matching, Slack mrkdwn + chunking, email template, budget gate; new tests immediately caught + fixed a bug where Slack digests had every link silently stripped
-- **v10.0 (perf)** — AI batches run with concurrency 2 (was sequential); `.ai-cache/` prunes expired entries; embeddings abort with an operator-facing quota warning on persistent 429
-- **v10.0 (supply chain)** — GitHub Actions pinned to commit SHAs; container runs as non-root `node` user; `scripts/` now type-checked in CI
-- **v10.1** — 🧭 Bull/Bear Thesis Snapshots — weekly batched AI pass over 30d of `daily_derived_metrics` + latest SEC filings for the top-10 tickers; `ticker_theses` table; `/thesis NVDA` command; dashboard Thesis Snapshots card; `.github/workflows/weekly-thesis.yml` (Sunday 4 AM UTC)
-- **v10.2 — Full codebase audit + remediation** — see [`AUDIT.md`](AUDIT.md) for the complete report (30 findings, root-cause analysis, 3-horizon roadmap). Every Critical/High finding fixed, plus the full Short-Term checklist:
-  - **Security** — untrusted RSS content now passed to the AI as fenced/escaped JSON with explicit anti-injection instructions (was raw prose interpolation); RSS titles/content HTML-stripped at collection time in addition to render-time escaping; `WEBHOOK_SECRET` required unconditionally to start the webhook server; NDJSON logs untracked from git
-  - **Reliability** — `fetchTranscript()`'s 429 retry now caps at 2 attempts (was unbounded recursion); scheduler delivery is now claimed atomically per `(chat_id, run_date)` immediately before sending, closing a double-delivery race under overlapping cron runs; run dates computed in the configured timezone instead of UTC
-  - **Data integrity** — a zod validation layer now sits in front of every AI JSON response (`ai.ts`, `sec.ts`, `bear-cases.ts`, `thesis.ts`, `earnings.ts`), coercing type-confused fields (e.g. `"8"` instead of `8`) instead of crashing `.toFixed()` calls downstream — caught and fixed a live instance of this exact bug in `processor/earnings.ts` while adding coverage
-  - **Performance** — `metrics.ts` and `dedup.ts` switched from sync to async file I/O; onboarding sessions now expire after 30 minutes with a periodic sweep (was unbounded growth)
-  - **CI/CD** — all 5 workflows hardened with explicit `permissions: contents: read`, standardized on Node 22, and now alert Slack on failure
-  - **Tests** — expanded mocked coverage for the previously-uncovered AI/collector and operational boundaries; the current suite reports **425 passing tests across 57 files** (380 unit tests across 54 files)
-  - **Cleanup** — removed the redundant `node-telegram-bot-api` postinstall patch duplicated in `Dockerfile`/CI (the `package.json` postinstall already covers it via `npm ci`); consolidated `escapeHtml()` into one shared module
-- **v11** — `/coverage` command + Thesis Evolution History. Diagnosed via `/office-hours`: the original "Thesis Evolution Dashboard" pitch didn't match the validated incident (daily article coverage confusion, not the weekly AI narrative) — pivoted to two smaller, correct slices instead of one oversized wrong one:
-  - `/coverage TICKER [days]` — recent per-article coverage history for a ticker, pulled straight from `articles` (no new table)
-  - `ticker_thesis_history` table — every weekly thesis snapshot kept (not just latest); `/thesis TICKER` shows a 6-week confidence timeline with WoW deltas; dashboard Thesis Snapshots card gained a matching timeline view (T7)
-
-### Phase XI · Diagnosed one-at-a-time via `/office-hours` ✅ Complete
-Each roadmap candidate ran through the same demand-first diagnostic before any code — one shipped, one was already done, one was killed:
-- **✅ Shipped — v12, Price Watch**: `/watch TICKER PRICE` — one-shot, informational-only threshold ping (not the "instant trading alert" originally pitched — the actual evidence only supported an ambient awareness check). Checked once per existing digest generation cycle, no new polling infrastructure. New `price_watches` table; watched tickers are unioned into the daily stock-price fetch ahead of article tickers so a watch never silently fails to fire on a quiet news day.
-- **✅ Already shipped, no new work — Source Leaderboard**: turned out `/sources quality` already ranks every source by vote-learned trust multiplier with color-coded tiers — the roadmap item was redundant with an existing command.
-- **❌ Killed — Related Prior Coverage**: diagnosed and cut for lack of demand evidence (pushed twice on Q1, both times came back "hasn't actually happened") — logged in `TODOS.md` (`TODO-4`) so it isn't silently re-proposed without new evidence.
-
-### Phase XII · Production Hardening ✅ Shipped
-- **v12.1 — Command routing fix**: `registerCommand()` only ever stored handlers in a Map — actual dispatch needed a hand-written `onText` block per command, and those existed for just 6. `/alert`, `/sec`, `/trends`, `/thesis`, `/coverage`, and `/watch` (plus `/digest watchlist` / `/digest sector=X`) were registered, documented, and fully tested at the handler level — but **silently unreachable from the live bot**, going back as far as v2.0. Verified via `git log -S` that dispatch for them never existed in any commit. Replaced with one generic dispatcher (longest-prefix match, `@botname` stripping, unknown-command check derived from the registry itself); new `telegram.routing.test.ts` drives the *real* `initCommands()` against a fake bot so this class of gap can't silently recur.
-- **v13 — Command usage logging**: every bot command now writes a durable `command_usage` row (plus the existing NDJSON metrics) — fire-and-forget on both legs, never affects the command that triggered it. Directly answers "does this feature actually get used?" instead of guessing — including the open question from Price Watch's own design doc.
-- **v13 — CodeQL**: static security analysis added to CI (`security-extended` query pack), the one AUDIT.md meta-recommendation that hadn't shipped yet.
-- **v13 — Schema drift fix**: `supabase-schema.sql` was documenting 13 tables against an actual 18 — refreshed with the 6 missing tables and a header note that `supabase/migrations/` is the canonical source going forward.
-- Deployed the webhook server live (Render) and verified end-to-end: `/health` 200, Telegram's `getWebhookInfo` showing the URL registered with zero pending/failed updates, and a full command smoke test (`/watch`, `/coverage`, `/thesis`, `/trends`, `/alert`, `/digest watchlist`) all responding with real data.
-
-### Phase XIII · Intelligence Connections ✅ Shipped
-Two `TODOS.md` items connecting existing features instead of adding new surface:
-- **v14 — Persist article intelligence fields** (`TODO-1`): `corroboration_count`, `grounding_text`, and `effective_score` were computed fresh every pipeline run and discarded afterward — now persisted to `articles`, unlocking historical confidence-trend analysis without recomputation. Found and fixed a real bug in the same code path: `is_sec_filing` was declared, passed by the caller, and silently dropped before ever reaching the `INSERT` — the 🏛️ SEC badge flag had never actually been written to the database.
-- **v14 — Ground the weekly thesis in coverage data** (`TODO-2`): `/thesis`'s AI narrative and `/coverage`'s per-article feed used to pull from unrelated data with no connection between them. `generateTheses()` now includes each ticker's recent headlines (one batched query, not one per ticker) and is explicitly instructed to ground its bull/bear case in them — verified by asserting the actual headline text reaches the AI request body, not just that the data was fetched.
-
-### Phase XIV · Correctness + Operational Clarity ✅ Implemented in current source
-- **v14.1 — Correctness First**: conditional RSS failures are isolated per feed; historical failure streaks stop at the newest success; brief/standard/detailed Telegram output now renders the intended amount of article detail; successful and failed runs persist the configured AI provider instead of hard-coding Groq.
-- **v14.2 — Operational Parity**: local and hosted digest runs receive the same optional embedding, earnings, fallback, and budget configuration; every run logs and persists a credential-free capability report with degraded stages; `npm run preflight` validates local configuration and `npm run preflight:network` performs read-only authentication checks without sending a digest, email, or model request.
-
-### Phase XV · Modular Core ✅ Implemented in current source
-- **v15.0 — Pipeline boundaries**: the former all-in-one `src/index.ts` is now a thin entry point over focused generation, persistence, delivery, personalization, and orchestration modules. The public exports used by the scheduler and test suite remain stable.
-- **v15.1 — Command domains**: Telegram handlers are grouped into core, preference, trend, and research modules behind one `registerDigestCommands()` entry point. The real command dispatcher regression suite verifies that every registered command remains reachable.
-
-### Phase XVI · Measurable Signal Quality ✅ Implemented in current source
-- **v16.0 — Ranking explanations**: every article now carries a versioned breakdown of its impact/relevance inputs, source and sector trust, editorial credibility, corroboration, novelty penalty, PR-wire cap, final score, and concise human-readable reasons. Detailed Telegram digests expose the useful reasons without dumping raw internals.
-- **v16.1 — Ranking validation loop**: explanations persist in `articles.ranking_explanation`; the dashboard shows them in expanded article rows and adds a daily ranking-quality view that tracks approval rate and average effective score for reader-validated articles.
-- **v16.2 — Ranking-order correctness**: category lists are re-sorted after effective scores are calculated, so the visible sector sections now use the same trust-weighted order as validation prompts and persistence.
-
-### Phase XVII · Personal Delivery Parity ✅ Implemented in current source
-- **v17.0 — Personalized channel copies**: users can opt into email or Slack copies with `/delivery`; each copy is generated from the same per-user watchlist, sector, score, and digest-length result as Telegram.
-- **v17.1 — Safe delivery semantics**: Telegram remains the primary claimed delivery. External copies send only after it succeeds, remain non-fatal, and are recorded in delivery details, preventing a failed copy from causing a duplicate Telegram retry.
-- **v17.2 — Private destinations**: email addresses and Slack webhook URLs live only in the service-role-protected `user_preferences` table. Slack input is restricted to HTTPS Incoming Webhook hosts, and `/settings` never echoes a webhook URL.
-- **v17.3 — Public delivery metrics**: `delivery_metrics_daily` exposes aggregate delivery performance without Telegram chat IDs or per-user destinations.
-- **v18.0 — Reliability completion**: high-impact alerts use retryable per-user/content claims; dashboard search uses the `idx_articles_fts` GIN index through a least-privilege RPC; onboarding and delivery-lateness events remain service-role private; GitHub runners restore atomic RSS/dedup caches across runs.
-
-Catalyst Tracker and a `node-telegram-bot-api`→grammY migration remain
-unscheduled pending usage or maintenance evidence. Related Prior Coverage
-remains rejected; see `TODOS.md`.
-
----
-
-## Disclaimer
-
-**Not financial advice.** Informational tool for the AI infrastructure community — always do your own research before making investment decisions.
-
----
-
-Built with ❤️ — Provider-agnostic two-tier AI routing via Groq, OpenAI, OpenRouter, or a compatible custom endpoint · Optional embeddings when configured.
+MIT, as declared in `package.json`.
