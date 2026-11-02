@@ -10,7 +10,7 @@ Goldirham Stack is an informational tool, not financial advice. Do your own rese
 
 ## Current status
 
-Last reviewed on 2026-11-02. The package version is `1.1.0`.
+Last reviewed on 2026-11-02. The package version is `1.2.0`.
 
 | Area | Status |
 |---|---|
@@ -387,6 +387,7 @@ These are planning estimates and have not been measured recently.
 
 ## Further reading
 
+- [Release notes for v1.2.0](docs/releases/v1.2.0.md)
 - [Release notes for v1.1.0](docs/releases/v1.1.0.md)
 - [Roadmap implementation and rollout record](docs/roadmap-implementation.md)
 - [Stabilization record](docs/stabilization.md)
