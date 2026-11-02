@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { ProcessedArticle, NewsCategory } from "../processor/ai";
+import type { SECFinancialExtract } from "../processor/sec";
 
 // Helper: create a mock categories object with empty arrays for all 10 categories
 function emptyCategories(): Record<NewsCategory, ProcessedArticle[]> {
@@ -231,5 +232,58 @@ describe("formatDigestTelegram", () => {
     });
     expect(result).toContain("AI Infra Morning Digest");
     expect(result).toContain("Quiet day.");
+  });
+});
+
+describe("SEC highlights", () => {
+  function extract(ticker: string, impactScore: number): SECFinancialExtract {
+    return {
+      ticker, impactScore, formType: "8-K", filingDate: "2026-10-29", companyName: `${ticker} Inc.`,
+      capex: null, capexGuidance: null, capexSource: "", aiRevenue: null, aiRevenueGrowthPct: null,
+      aiRevenueSource: "", grossMargin: null, operatingMargin: null, marginSource: "", inventory: null,
+      inventoryTurnover: null, inventorySource: "", revenueGuidance: null, epsGuidance: null,
+      guidanceText: "", impactRationale: "", keyTakeaways: [],
+    };
+  }
+
+  async function render(secExtracts: SECFinancialExtract[]) {
+    const { formatDigestTelegram } = await import("./telegram");
+    return formatDigestTelegram({
+      articles: [],
+      topStocks: [],
+      marketOutlook: "Outlook.",
+      summary: "Summary.",
+      categories: emptyCategories(),
+      usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 },
+      batchesRun: 0,
+    }, { secExtracts });
+  }
+
+  it("shows the two highest-impact extracts, not the first two processed (Groq run order)", async () => {
+    const text = await render([extract("MRVL", 7), extract("AMZN", 8), extract("INTC", 8), extract("DLR", 7)]);
+
+    expect(text).not.toContain("MRVL Inc.");
+    expect(text).not.toContain("DLR Inc.");
+    expect(text.indexOf("AMZN Inc.")).toBeGreaterThanOrEqual(0);
+    expect(text.indexOf("AMZN Inc.")).toBeLessThan(text.indexOf("INTC Inc."));
+  });
+
+  it("shows a high-impact extract that was not processed first", async () => {
+    const text = await render([extract("IBM", 4), extract("AMZN", 8)]);
+
+    expect(text).toContain("SEC HIGHLIGHTS");
+    expect(text.indexOf("AMZN Inc.")).toBeLessThan(text.indexOf("IBM Inc."));
+  });
+
+  it("leaves the section out when nothing is high impact", async () => {
+    expect(await render([extract("IBM", 6), extract("AMZN", 4)])).not.toContain("SEC HIGHLIGHTS");
+  });
+
+  it("does not reorder the extracts it was given, which are also persisted", async () => {
+    const extracts = [extract("IBM", 4), extract("AMZN", 8)];
+
+    await render(extracts);
+
+    expect(extracts.map((e) => e.ticker)).toEqual(["IBM", "AMZN"]);
   });
 });
