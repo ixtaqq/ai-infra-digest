@@ -52,7 +52,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/node": "^22.5.0",
+    "@types/node": "^26.6.6",
     "@types/node-telegram-bot-api": "^0.64.7",
     "@types/nodemailer": "^8.0.1",
     "supabase": "^2.107.0",
