@@ -1,7 +1,7 @@
 /**
  * SEC EDGAR Filing Collector
  *
- * Fetches recent 8-K filings for tracked AI infrastructure companies via
+ * Fetches recent 8-K and 6-K filings for tracked AI infrastructure companies via
  * the SEC's public data.sec.gov REST API.
  *
  * SEC API documentation: https://www.sec.gov/edgar/sec-api-documentation
@@ -23,7 +23,7 @@ export interface SECFiling {
   ticker: string;
   /** Company name */
   companyName: string;
-  /** Filing type: 8-K, 10-K, 10-Q */
+  /** Filing type: 8-K, 6-K, 10-K, 10-Q */
   formType: string;
   /** Filing date (YYYY-MM-DD) */
   filingDate: string;
@@ -33,8 +33,10 @@ export interface SECFiling {
   primaryDocumentUrl: string;
   /** Full filing description / items disclosed */
   items: string[];
-  /** Raw filing text extracted from primary document (truncated for AI) */
+  /** Filing text for AI (truncated): the press-release exhibit when there is one, then the primary document */
   rawText: string;
+  /** A document could not be fetched, so a rejection of this text says nothing about the filing */
+  textIncomplete?: boolean;
   /** URL to the XBRL / financial data if available */
   xbrlUrl?: string;
   /** Brief one-line description of the filing */
@@ -133,17 +135,23 @@ async function secFetch<T>(url: string): Promise<T> {
 }
 
 /**
- * Rate-limit helper: ensure at most 10 requests per second.
- * We use a conservative 120ms gap between requests.
+ * Rate-limit helper: ensure at most 10 requests per second across every
+ * EDGAR request. Slots are reserved synchronously so concurrent callers
+ * each get their own.
  */
-let lastRequestTime = 0;
-async function rateLimitedFetch<T>(url: string): Promise<T> {
-  const now = Date.now();
+let nextRequestAt = 0;
+async function waitForRequestSlot(): Promise<void> {
   const gap = 150; // ms between requests (~6.7 req/s, well under 10/s limit)
-  if (now - lastRequestTime < gap) {
-    await sleep(gap - (now - lastRequestTime));
+  const now = Date.now();
+  const slot = Math.max(now, nextRequestAt);
+  nextRequestAt = slot + gap;
+  if (slot > now) {
+    await sleep(slot - now);
   }
-  lastRequestTime = Date.now();
+}
+
+async function rateLimitedFetch<T>(url: string): Promise<T> {
+  await waitForRequestSlot();
   return secFetch<T>(url);
 }
 
@@ -151,10 +159,17 @@ async function rateLimitedFetch<T>(url: string): Promise<T> {
 
 /** Filing types we're interested in, ordered by priority.
  * 8-K = material events (earnings, M&A, guidance changes)
+ * 6-K = the same role for foreign private issuers (TSM, ASML, ARM)
  * 10-Q = quarterly financials
  * 10-K = annual financials
  */
-export const INTERESTING_FORM_TYPES = new Set(["8-K", "10-K", "10-Q", "10-K/A", "10-Q/A", "8-K/A"]);
+export const INTERESTING_FORM_TYPES = new Set(["8-K", "10-K", "10-Q", "10-K/A", "10-Q/A", "8-K/A", "6-K", "6-K/A"]);
+
+/** 8-K items whose substance is furnished as an exhibit, not in the primary document. */
+const EXHIBIT_ITEMS = new Set([
+  "2.02", // Results of Operations and Financial Condition
+  "7.01", // Regulation FD Disclosure
+]);
 
 // ─── Fetch Filings for a Company ────────────────────────
 
@@ -195,8 +210,12 @@ interface CompanyFactsResponse {
 /**
  * Fetch recent SEC filings for a given company.
  * Returns the raw text of the most recent 8-K (or 10-K/10-Q if no 8-K).
+ * Accessions in `processedAccessions` are skipped before any download.
  */
-export async function fetchCompanyFilings(company: CompanyEntry): Promise<SECFilingResult> {
+export async function fetchCompanyFilings(
+  company: CompanyEntry,
+  processedAccessions: ReadonlySet<string> = new Set()
+): Promise<SECFilingResult> {
   const startTime = Date.now();
   const cik10 = company.cik.padStart(10, "0");
 
@@ -226,6 +245,8 @@ export async function fetchCompanyFilings(company: CompanyEntry): Promise<SECFil
       if (interestingFilings.length >= 3) break; // Max 3 filings per company
 
       const accessionNo = recent.accessionNumber[i];
+      if (processedAccessions.has(accessionNo)) continue;
+
       const filingDate = recent.filingDate[i];
       const primaryDoc = recent.primaryDocument[i];
       const desc = recent.primaryDocDescription[i] || "";
@@ -240,15 +261,31 @@ export async function fetchCompanyFilings(company: CompanyEntry): Promise<SECFil
       // Build the document URL
       const cikNoLeading = company.cik.replace(/^0+/, "");
       const accessionNoDir = accessionNo.replace(/-/g, ""); // e.g. "000104581025000012"
-      const docUrl = `https://www.sec.gov/Archives/edgar/data/${cikNoLeading}/${accessionNoDir}/${primaryDoc}`;
+      const filingDir = `https://www.sec.gov/Archives/edgar/data/${cikNoLeading}/${accessionNoDir}`;
+      const docUrl = `${filingDir}/${primaryDoc}`;
 
       // Step 3: Download the primary document text
       let rawText = "";
+      let textIncomplete = false;
       try {
         rawText = await downloadFilingText(docUrl);
       } catch (downloadError) {
+        textIncomplete = true;
         logger.warn(`SEC download failed for ${company.ticker} ${formType}: ${(downloadError as Error).message}`);
         // Continue with empty text — AI can still use metadata
+      }
+
+      // Step 4: Earnings numbers live in the press-release exhibit, so lead with it
+      if (!textIncomplete && (formType.startsWith("6-K") || items.some((item) => EXHIBIT_ITEMS.has(item)))) {
+        try {
+          const exhibitUrl = await findPressReleaseExhibit(filingDir, accessionNo);
+          if (exhibitUrl) {
+            rawText = `${await downloadFilingText(exhibitUrl)}\n\n${rawText}`.trim();
+          }
+        } catch (exhibitError) {
+          textIncomplete = true;
+          logger.warn(`SEC exhibit failed for ${company.ticker} ${formType}: ${(exhibitError as Error).message}`);
+        }
       }
 
       interestingFilings.push({
@@ -260,7 +297,8 @@ export async function fetchCompanyFilings(company: CompanyEntry): Promise<SECFil
         accessionNumber: accessionNo,
         primaryDocumentUrl: docUrl,
         items,
-        rawText: rawText.slice(0, 15000), // Truncate for AI context window
+        rawText: rawText.slice(0, 30000), // Reaches guidance and cash-flow rows; each AI pass takes its own window
+        ...(textIncomplete ? { textIncomplete } : {}),
         description: desc,
       });
     }
@@ -293,6 +331,23 @@ export async function fetchCompanyFilings(company: CompanyEntry): Promise<SECFil
  * SEC requires a descriptive User-Agent.
  */
 async function downloadFilingText(url: string): Promise<string> {
+  const html = await downloadFilingPage(url);
+
+  // Strip HTML tags to get readable text
+  const text = html
+    .replace(/<(ix:header|head|style|script)\b[\s\S]*?<\/\1>/gi, " ") // Remove hidden XBRL data, CSS, scripts
+    .replace(/<[^>]*>/g, " ")    // Remove tags
+    .replace(ENTITY_PATTERN, decodeEntity)
+    .replace(/\u200b/g, "")      // Remove zero-width padding
+    .replace(/\s+/g, " ")        // Collapse whitespace
+    .replace(/\n\s*\n/g, "\n\n") // Collapse blank lines
+    .trim();
+
+  return text;
+}
+
+async function downloadFilingPage(url: string): Promise<string> {
+  await waitForRequestSlot();
   const response = await fetch(url, {
     signal: AbortSignal.timeout(15_000),
     headers: {
@@ -305,20 +360,37 @@ async function downloadFilingText(url: string): Promise<string> {
     throw new Error(`Download HTTP ${response.status}`);
   }
 
-  const html = await response.text();
+  return response.text();
+}
 
-  // Strip HTML tags to get readable text
-  const text = html
-    .replace(/<[^>]*>/g, " ")    // Remove tags
-    .replace(/&nbsp;/g, " ")     // Remove &nbsp;
-    .replace(/&lt;/g, "<")       // Fix less-than
-    .replace(/&gt;/g, ">")       // Fix greater-than
-    .replace(/&amp;/g, "&")      // Fix ampersands last so "&amp;lt;" stays "&lt;"
-    .replace(/\s+/g, " ")        // Collapse whitespace
-    .replace(/\n\s*\n/g, "\n\n") // Collapse blank lines
-    .trim();
+const NAMED_ENTITIES: Record<string, string> = { nbsp: " ", amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+const ENTITY_PATTERN = /&(?:#(\d+)|#x([0-9a-f]+)|(nbsp|amp|lt|gt|quot|apos));/gi;
 
-  return text;
+// One pass over all entities, so "&amp;lt;" decodes once to "&lt;".
+function decodeEntity(match: string, decimal?: string, hex?: string, named?: string): string {
+  if (named) return NAMED_ENTITIES[named.toLowerCase()];
+  const codePoint = decimal ? parseInt(decimal, 10) : parseInt(hex as string, 16);
+  return codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : match;
+}
+
+/**
+ * Find the first EX-99 document in a filing's index page, the press release
+ * on results filings. The JSON directory listing has no document types, so
+ * this reads the HTML index table: Seq | Description | Document | Type | Size.
+ */
+async function findPressReleaseExhibit(filingDir: string, accessionNo: string): Promise<string | null> {
+  const html = await downloadFilingPage(`${filingDir}/${accessionNo}-index.htm`);
+
+  for (const [row] of html.matchAll(/<tr[\s\S]*?<\/tr>/gi)) {
+    const cells = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((cell) => cell[1]);
+    const type = cells[3]?.trim();
+    const fileName = cells[2]?.match(/href="[^"]*\/([^"/]+\.(?:htm|html|txt))"/i)?.[1];
+    if (type && /^EX-99/i.test(type) && fileName) {
+      return `${filingDir}/${fileName}`;
+    }
+  }
+
+  return null;
 }
 
 // ─── Main Collection ────────────────────────────────────
@@ -327,7 +399,9 @@ async function downloadFilingText(url: string): Promise<string> {
  * Collect recent SEC filings for all tracked companies.
  * Fetches Tier 1 companies first, then Tier 2 with a gap.
  */
-export async function collectSECFilings(): Promise<SECCollectorResult> {
+export async function collectSECFilings(
+  processedAccessions: ReadonlySet<string> = new Set()
+): Promise<SECCollectorResult> {
   logger.info("Starting SEC filing collection...");
 
   const tier1 = TRACKED_COMPANIES.filter((c) => c.tier === 1);
@@ -338,7 +412,7 @@ export async function collectSECFilings(): Promise<SECCollectorResult> {
   // Fetch Tier 1 companies in parallel (batched to avoid rate limits)
   logger.info(`Fetching SEC filings for ${tier1.length} Tier 1 companies...`);
   const tier1Results = await Promise.all(
-    tier1.map((company) => fetchCompanyFilings(company))
+    tier1.map((company) => fetchCompanyFilings(company, processedAccessions))
   );
   allResults.push(...tier1Results);
 
@@ -348,7 +422,7 @@ export async function collectSECFilings(): Promise<SECCollectorResult> {
   // Fetch Tier 2 companies
   logger.info(`Fetching SEC filings for ${tier2.length} Tier 2 companies...`);
   const tier2Results = await Promise.all(
-    tier2.map((company) => fetchCompanyFilings(company))
+    tier2.map((company) => fetchCompanyFilings(company, processedAccessions))
   );
   allResults.push(...tier2Results);
 
@@ -413,7 +487,7 @@ export function getTopFilings(filings: SECFiling[], maxCount = 3): SECFiling[] {
 
   const scored = filings.map((f) => {
     let score = 0;
-    if (f.formType === "8-K") score += 3;
+    if (f.formType === "8-K" || f.formType === "6-K") score += 3;
     if (f.formType === "10-K") score += 2;
     if (f.formType === "10-Q") score += 1;
     // Bonus for earnings-related items

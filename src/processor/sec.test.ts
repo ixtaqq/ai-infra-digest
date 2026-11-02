@@ -18,7 +18,8 @@ vi.mock("../utils/logger", () => ({
 
 vi.mock("../utils/helpers", () => ({ sleep: vi.fn(() => Promise.resolve()) }));
 
-import { analyzeSECFilings, formatSECExtract } from "./sec";
+import { analyzeSECFilings, extractionText, flagExcerpt, formatSECExtract } from "./sec";
+import { config } from "../config";
 import type { SECFiling } from "../collector/sec";
 
 function makeFiling(overrides: Partial<SECFiling> = {}): SECFiling {
@@ -71,6 +72,280 @@ function extractionPayload(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+describe("flagExcerpt", () => {
+  it("keeps the opening text when it already shows a dollar figure", () => {
+    const text = "Net sales increased 13% to $180.2 billion. " + "x".repeat(5000);
+    expect(flagExcerpt(text)).toBe(text.slice(0, 3000));
+  });
+
+  it("moves past a figure-free cover page to the first dollar figure", () => {
+    const cover = "FORM 10-Q table of contents ".repeat(200);
+    const excerpt = flagExcerpt(cover + "Total net sales $ 180,169 and inventory $ 41,000.");
+    expect(excerpt).toContain("$ 180,169");
+    expect(excerpt.length).toBeLessThanOrEqual(3000);
+  });
+
+  it("does not treat a cover page's par value as financial data (real 10-Q shape)", () => {
+    const cover = "Common Stock, $0.01 par value per share. Table of contents ".repeat(1) + "x ".repeat(2000);
+    const excerpt = flagExcerpt(cover + "Total net sales $ 180,169 $ 158,877 Inventories $ 41,000.");
+    expect(excerpt).toContain("$ 180,169");
+    expect(excerpt).not.toContain("par value");
+  });
+
+  it("recognises euro figures as well as dollars (ASML reports in euros)", () => {
+    const text = "x ".repeat(2000) + "Total net sales of €7.5 billion, gross margin 52%.";
+    expect(flagExcerpt(text)).toContain("€7.5 billion");
+  });
+
+  it("falls back to the opening text when no figure exists", () => {
+    expect(flagExcerpt("No numbers here.")).toBe("No numbers here.");
+  });
+});
+
+describe("extractionText", () => {
+  const BUDGET = 14000;
+  const padding = (chars: number) => "Business highlights without figures. ".repeat(Math.ceil(chars / 37)).slice(0, chars);
+
+  it("leaves a filing shorter than the budget untouched", () => {
+    const text = "Revenue was $5 billion. " + padding(3000);
+    expect(extractionText(text)).toBe(text);
+  });
+
+  it("reaches guidance past the opening (AMZN shape, guidance at char 14000)", () => {
+    const guidance = "Fourth Quarter 2026 Guidance • Net sales are expected to be between $240.0 billion and $247.0 billion. " +
+      padding(600) + "We expect capital expenditures to be approximately $220 billion.";
+    const text = extractionText("Operating income was $28.1 billion. " + padding(14000) + guidance + padding(26000));
+
+    expect(text).toContain("Operating income was $28.1 billion");
+    expect(text).toContain("$240.0 billion and $247.0 billion");
+    expect(text).toContain("approximately $220 billion");
+  });
+
+  it("reaches a cash-flow capex row, whose figures carry no dollar sign (GOOGL shape)", () => {
+    const text = extractionText(padding(20000) + "Purchases of property and equipment (23,953) (17,197) " + padding(9000));
+    expect(text).toContain("(23,953)");
+  });
+
+  it("keeps the column headers above a capex row (DLR's outlook table shape)", () => {
+    const headers = "2026 Outlook As of As of As of As of Top-Line February 5, 2026 April 23, 2026 July 23, 2026 October 29, 2026 ";
+    const row = "Development CapEx (Net of Partner Contributions) (4) $3,250 - $3,750 million $4,250 - $4,750 million";
+    const text = extractionText(padding(23000) + headers + padding(1300) + row + padding(5000));
+
+    expect(text).toContain("October 29, 2026");
+    expect(text).toContain("$4,250 - $4,750 million");
+  });
+
+  it("stays within the budget however long the filing is", () => {
+    const text = extractionText(
+      padding(16000) + "Full year outlook: revenue of $9 billion. " + padding(9000) +
+      "Capital expenditures of 1,200. " + padding(400000)
+    );
+    expect(text).toContain("revenue of $9 billion");
+    expect(text).toContain("Capital expenditures of 1,200");
+    expect(text.length).toBeLessThanOrEqual(BUDGET + 20);
+  });
+
+  it("does not jump to a guidance mention with no figure near it (safe-harbor shape)", () => {
+    const text = extractionText(padding(16000) + "Our guidance and outlook are subject to risks. " + padding(16000));
+    expect(text).not.toContain("subject to risks");
+  });
+
+  it("spends the whole budget on the opening when no later section exists", () => {
+    const raw = padding(40000);
+    expect(extractionText(raw)).toBe(raw.slice(0, BUDGET));
+  });
+});
+
+describe("analyzeSECFilings review outcomes", () => {
+  beforeEach(() => vi.resetAllMocks());
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("sends the flagging pass the dollar figures from a cover-page filing", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      chatCompletionResponse(JSON.stringify({ hasFinancialData: false, reason: "no" }))
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const cover = "FORM 10-Q table of contents with inventory discussion ".repeat(100);
+
+    await analyzeSECFilings([makeFiling({ formType: "10-Q", rawText: cover + "Total net sales $ 180,169." })], 1);
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).messages[1].content).toContain("$ 180,169");
+  });
+
+  it("reports filings the model or keyword filter rejected", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      chatCompletionResponse(JSON.stringify({ hasFinancialData: false, reason: "cover page only" }))
+    ));
+    const rejected = makeFiling({ accessionNumber: "ai-no" });
+    const noKeywords = makeFiling({ accessionNumber: "kw-no", rawText: "Director resignation." });
+
+    const result = await analyzeSECFilings([rejected, noKeywords], 2);
+
+    expect(result.notFlagged.map((r) => [r.filing.accessionNumber, r.reason])).toEqual([
+      ["ai-no", "cover page only"],
+      ["kw-no", "No relevant keywords found in filing text"],
+    ]);
+  });
+
+  it("does not report a rejection based on incomplete or empty text, so it is retried", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      chatCompletionResponse(JSON.stringify({ hasFinancialData: false, reason: "no figures" }))
+    ));
+
+    const result = await analyzeSECFilings([
+      makeFiling({ accessionNumber: "partial", textIncomplete: true }),
+      makeFiling({ accessionNumber: "empty", rawText: "" }),
+    ], 2);
+
+    expect(result.notFlagged).toEqual([]);
+  });
+
+  it("does not report a filing whose extraction failed, so it is retried", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(chatCompletionResponse(JSON.stringify({ hasFinancialData: true, reason: "yes" })))
+      .mockResolvedValueOnce(chatCompletionResponse("not json")));
+
+    const result = await analyzeSECFilings([makeFiling()], 1);
+
+    expect(result.extracts).toEqual([]);
+    expect(result.notFlagged).toEqual([]);
+  });
+
+  it("tells extraction not to report foreign-currency amounts as USD millions", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(chatCompletionResponse(JSON.stringify({ hasFinancialData: true, reason: "yes" })))
+      .mockResolvedValueOnce(chatCompletionResponse(JSON.stringify(extractionPayload())));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await analyzeSECFilings([makeFiling({ formType: "6-K", rawText: "Capex was NT$300 billion." })], 1);
+
+    const prompt = JSON.parse(fetchMock.mock.calls[1][1].body as string).messages[1].content as string;
+    expect(prompt).toContain("millions of US dollars");
+    expect(prompt).toMatch(/another currency[^.]*null/);
+  });
+
+  it("sends extraction the guidance from past the opening", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(chatCompletionResponse(JSON.stringify({ hasFinancialData: true, reason: "yes" })))
+      .mockResolvedValueOnce(chatCompletionResponse(JSON.stringify(extractionPayload())));
+    vi.stubGlobal("fetch", fetchMock);
+    const rawText = "Capital expenditure was $5 billion. " + "x ".repeat(8000) +
+      "Fourth Quarter Guidance • Net sales are expected to be between $240.0 billion and $247.0 billion.";
+
+    await analyzeSECFilings([makeFiling({ rawText })], 1);
+
+    const prompt = JSON.parse(fetchMock.mock.calls[1][1].body as string).messages[1].content as string;
+    expect(prompt).toContain("$240.0 billion and $247.0 billion");
+  });
+
+  describe("earnings filings", () => {
+    const release = "Net sales were $180.2 billion, operating income $28.1 billion, and net income $21.2 billion.";
+
+    function stubModel(answers: string[]) {
+      const fetchMock = vi.fn();
+      for (const answer of answers) fetchMock.mockResolvedValueOnce(chatCompletionResponse(answer));
+      vi.stubGlobal("fetch", fetchMock);
+      return fetchMock;
+    }
+
+    it("goes straight to extraction, so the fast model can't reject it for good", async () => {
+      const fetchMock = stubModel([JSON.stringify(extractionPayload())]);
+
+      const result = await analyzeSECFilings([makeFiling({ items: ["2.02", "9.01"], rawText: release })], 1);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).model).toBe("strong-model");
+      expect(result.extracts).toHaveLength(1);
+      expect(result.notFlagged).toEqual([]);
+    });
+
+    it("still asks the model about an Item 2.02 filing with too few figures to be a results release", async () => {
+      const fetchMock = stubModel([JSON.stringify({ hasFinancialData: false, reason: "cover only" })]);
+
+      const result = await analyzeSECFilings([makeFiling({ rawText: "Capex discussion with one figure, $5 million." })], 1);
+
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).model).toBe("fast-model");
+      expect(result.notFlagged.map((r) => r.reason)).toEqual(["cover only"]);
+    });
+
+    it("still asks the model about other filings, however many figures they show", async () => {
+      const fetchMock = stubModel([JSON.stringify({ hasFinancialData: false, reason: "not relevant" })]);
+
+      await analyzeSECFilings([makeFiling({ items: ["8.01"], rawText: `${release} Capital expenditure.` })], 1);
+
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).model).toBe("fast-model");
+    });
+  });
+
+  describe("extraction rules", () => {
+    async function extractionPrompt() {
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(chatCompletionResponse(JSON.stringify({ hasFinancialData: true, reason: "yes" })))
+        .mockResolvedValueOnce(chatCompletionResponse(JSON.stringify(extractionPayload())));
+      vi.stubGlobal("fetch", fetchMock);
+      await analyzeSECFilings([makeFiling()], 1);
+      return JSON.parse(fetchMock.mock.calls[1][1].body as string).messages[1].content as string;
+    }
+
+    // Each rule answers a wrong number from the Groq run on live filings.
+    it.each([
+      ["a range becomes its midpoint (AMZN took the low end of $240-247B)", /range[^.\n]*midpoint/i],
+      ["a change is not capex (AMZN's $94.8B year-over-year increase)", /capex[^\n]*(?:change|increase)[^\n]*null/i],
+      ["whole-company revenue is not AI revenue (DLR's $1.9B total)", /aiRevenue[^\n]*names?[^\n]*(?:AI|data center)[^\n]*null/i],
+      ["the newest outlook column wins (DLR's first of four columns)", /most recent[^.\n]*column/i],
+      ["the current period beats comparatives", /current period[^.\n]*column|column[^.\n]*current period/i],
+      ["next-quarter fields stay next-quarter (DLR's full-year EPS)", /revenueGuidance[^\n]*epsGuidance[^\n]*next quarter[^\n]*full-year[^\n]*guidanceText/i],
+    ])("tells the model: %s", async (_rule, pattern) => {
+      expect(await extractionPrompt()).toMatch(pattern);
+    });
+  });
+
+  describe("token settings", () => {
+    const ai = config.ai as { provider: string; model: string; fastModel: string };
+    const original = { ...ai };
+    afterEach(() => Object.assign(ai, original));
+
+    async function requests() {
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(chatCompletionResponse(JSON.stringify({ hasFinancialData: true, reason: "yes" })))
+        .mockResolvedValueOnce(chatCompletionResponse(JSON.stringify(extractionPayload())));
+      vi.stubGlobal("fetch", fetchMock);
+      await analyzeSECFilings([makeFiling()], 1);
+      return fetchMock.mock.calls.map((call) => JSON.parse(call[1].body as string));
+    }
+
+    it("uses low reasoning effort on Groq's gpt-oss models, as the digest pass does", async () => {
+      Object.assign(ai, { provider: "groq", model: "openai/gpt-oss-120b", fastModel: "openai/gpt-oss-20b" });
+
+      const [flag, extraction] = await requests();
+
+      expect(flag.reasoning_effort).toBe("low");
+      expect(extraction.reasoning_effort).toBe("low");
+    });
+
+    it("keeps a Groq extraction under its 8000 tokens-per-minute limit, prompt included", async () => {
+      Object.assign(ai, { provider: "groq", model: "openai/gpt-oss-120b", fastModel: "openai/gpt-oss-20b" });
+
+      const [, extraction] = await requests();
+
+      // 14000 chars of filing plus the instructions, at a pessimistic 3 chars per token.
+      expect(extraction.max_tokens).toBe(2400);
+      expect(Math.ceil((14000 + extraction.messages[1].content.length) / 3) + extraction.max_tokens).toBeLessThanOrEqual(8000);
+    });
+
+    it("leaves room for a reasoning model that has no reasoning control (OpenRouter run: 4590 tokens)", async () => {
+      Object.assign(ai, { provider: "openrouter", model: "nvidia/nemotron-3.5-super-vl:free", fastModel: "liquid/lfm-2.5-2.6b:free" });
+
+      const [flag, extraction] = await requests();
+
+      expect(extraction.max_tokens).toBe(8192);
+      expect(flag.max_tokens).toBe(1024);
+      expect(flag.reasoning_effort).toBeUndefined();
+      expect(extraction.reasoning_effort).toBeUndefined();
+    });
+  });
+});
 
 describe("analyzeSECFilings", () => {
   beforeEach(() => vi.resetAllMocks());

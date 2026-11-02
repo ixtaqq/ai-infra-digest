@@ -37,6 +37,7 @@ import { getSourceCredibility, isPRWireSource } from "../utils/source-credibilit
 import { fetchStockPrices } from "../utils/stocks";
 import { supabase } from "../utils/supabase";
 import { getTrustScores } from "../utils/trust-scores";
+import { loadProcessedSecAccessions, persistSecReviews } from "./persist";
 import type { GeneratedDigest } from "./types";
 
 const MIN_ALERT_SCORE = 8;
@@ -176,11 +177,13 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
     logger.info("Step 1b: Collecting recent SEC filings...");
     let secExtracts: SECFinancialExtract[] = [];
     const secStage = await tryStage(async () => {
-      const secResult = await collectSECFilings();
+      const processedAccessions = await loadProcessedSecAccessions(runDate);
+      const secResult = await collectSECFilings(processedAccessions);
       if (secResult.newFilings.length === 0) return [];
       logger.info(`SEC: ${secResult.newFilings.length} new filings found, analyzing top ones...`);
       const topFilings = getTopFilings(secResult.newFilings, 5);
       const secAnalysis = await analyzeSECFilings(topFilings, 5);
+      await persistSecReviews(runDate, secAnalysis.notFlagged);
       return secAnalysis.extracts;
     }, "SEC collection");
     if (secStage.ok) {

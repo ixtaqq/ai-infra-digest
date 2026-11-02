@@ -13,6 +13,7 @@ const h = vi.hoisted(() => ({
   updateStockMentions: vi.fn(),
   insertStockPrices: vi.fn(),
   updateDailyMetrics: vi.fn(),
+  queryRows: vi.fn(),
 }));
 
 vi.mock("../config", () => ({
@@ -33,7 +34,8 @@ vi.mock("../utils/capabilities", () => ({ degradedCapabilities: vi.fn(() => []) 
 vi.mock("../utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 vi.mock("../utils/supabase", () => ({ supabase: h }));
 
-import { persistDigestMetrics, persistSecFilings } from "./persist";
+import { loadProcessedSecAccessions, persistDigestMetrics, persistSecFilings, persistSecReviews } from "./persist";
+import type { SECFiling } from "../collector/sec";
 
 const fetchMock = vi.fn();
 
@@ -113,6 +115,53 @@ afterEach(() => {
 });
 
 describe("SEC persistence", () => {
+  it("writes a 6-K extract instead of dropping it", async () => {
+    await persistDigestMetrics(makeGenerated([makeExtract({ formType: "6-K", ticker: "TSM" })]), "success");
+
+    const [, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(options.body as string)[0]).toMatchObject({ ticker: "TSM", form_type: "6-K" });
+  });
+
+  it("treats earlier-run extracts and rejected reviews as processed, but not same-day extracts", async () => {
+    h.queryRows.mockImplementation(async (table: string) =>
+      table === "sec_filings" ? [{ accession_number: "extracted" }] : [{ accession_number: "rejected" }]);
+
+    const processed = await loadProcessedSecAccessions("2026-08-15");
+
+    expect([...processed].sort()).toEqual(["extracted", "rejected"]);
+    const params = Object.fromEntries(h.queryRows.mock.calls as [string, string][]);
+    expect(params.sec_filings).toContain("date=lt.2026-08-15");
+    expect(params.sec_filings).toContain("accession_number=not.is.null");
+    expect(params.sec_filing_reviews).toContain("select=accession_number");
+  });
+
+  it("records rejected filings idempotently and ignores an empty list", async () => {
+    await persistSecReviews("2026-08-15", []);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await persistSecReviews("2026-08-15", [{
+      filing: { ticker: "NVDA", accessionNumber: "a-1", formType: "8-K", filingDate: "2026-08-14" } as SECFiling,
+      reason: "cover page only",
+    }]);
+
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("/rest/v1/sec_filing_reviews?on_conflict=ticker,accession_number");
+    expect(options.headers).toMatchObject({ Prefer: "return=minimal,resolution=merge-duplicates" });
+    expect(JSON.parse(options.body as string)).toEqual([{
+      ticker: "NVDA", accession_number: "a-1", form_type: "8-K", filing_date: "2026-08-14",
+      reason: "cover page only", reviewed_on: "2026-08-15",
+    }]);
+  });
+
+  it("survives a failed review write", async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 500 });
+
+    await expect(persistSecReviews("2026-08-15", [{
+      filing: { ticker: "NVDA", accessionNumber: "a-1", formType: "8-K", filingDate: "2026-08-14" } as SECFiling,
+      reason: "r",
+    }])).resolves.toBeUndefined();
+  });
+
   it("writes normalized extracts and preserves the existing aggregate metrics", async () => {
     const extract = makeExtract();
 
