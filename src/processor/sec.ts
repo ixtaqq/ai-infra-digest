@@ -137,6 +137,7 @@ function hasRelevantKeywords(text: string): boolean {
 
 const FLAG_EXCERPT_CHARS = 3000;
 const MIN_OPENING_FIGURES = 3; // A 10-Q cover page still shows its par value
+const MONEY_FIGURE = /[$€]\s?\d/g;
 
 /**
  * The window of filing text the flagging pass sees: the opening, or for a
@@ -144,7 +145,7 @@ const MIN_OPENING_FIGURES = 3; // A 10-Q cover page still shows its par value
  * money figure after it.
  */
 export function flagExcerpt(rawText: string): string {
-  const figures = [...rawText.matchAll(/[$€]\s?\d/g)].map((match) => match.index);
+  const figures = [...rawText.matchAll(MONEY_FIGURE)].map((match) => match.index);
   const firstLater = figures.find((index) => index >= FLAG_EXCERPT_CHARS);
   const openingFigures = figures.filter((index) => index < FLAG_EXCERPT_CHARS).length;
   const start = openingFigures >= MIN_OPENING_FIGURES || firstLater === undefined
@@ -463,6 +464,12 @@ async function flagFiling(
   client: OpenAI,
   filing: SECFiling
 ): Promise<FlagResult> {
+  // An earnings release skips the model: it rejected the same one between runs, and a rejection is never retried
+  const figures = flagExcerpt(filing.rawText).match(MONEY_FIGURE)?.length ?? 0;
+  if (filing.items.includes("2.02") && figures >= MIN_OPENING_FIGURES) {
+    return { hasData: true, reason: "Earnings filing with figures", tokenUsage: EMPTY_TOKEN_USAGE };
+  }
+
   // Step 1a: Free keyword pre-filter — skip if no relevant keywords found
   if (!hasRelevantKeywords(filing.rawText)) {
     return {

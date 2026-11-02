@@ -239,6 +239,45 @@ describe("analyzeSECFilings review outcomes", () => {
     expect(prompt).toContain("$240.0 billion and $247.0 billion");
   });
 
+  describe("earnings filings", () => {
+    const release = "Net sales were $180.2 billion, operating income $28.1 billion, and net income $21.2 billion.";
+
+    function stubModel(answers: string[]) {
+      const fetchMock = vi.fn();
+      for (const answer of answers) fetchMock.mockResolvedValueOnce(chatCompletionResponse(answer));
+      vi.stubGlobal("fetch", fetchMock);
+      return fetchMock;
+    }
+
+    it("goes straight to extraction, so the fast model can't reject it for good", async () => {
+      const fetchMock = stubModel([JSON.stringify(extractionPayload())]);
+
+      const result = await analyzeSECFilings([makeFiling({ items: ["2.02", "9.01"], rawText: release })], 1);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).model).toBe("strong-model");
+      expect(result.extracts).toHaveLength(1);
+      expect(result.notFlagged).toEqual([]);
+    });
+
+    it("still asks the model about an Item 2.02 filing with too few figures to be a results release", async () => {
+      const fetchMock = stubModel([JSON.stringify({ hasFinancialData: false, reason: "cover only" })]);
+
+      const result = await analyzeSECFilings([makeFiling({ rawText: "Capex discussion with one figure, $5 million." })], 1);
+
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).model).toBe("fast-model");
+      expect(result.notFlagged.map((r) => r.reason)).toEqual(["cover only"]);
+    });
+
+    it("still asks the model about other filings, however many figures they show", async () => {
+      const fetchMock = stubModel([JSON.stringify({ hasFinancialData: false, reason: "not relevant" })]);
+
+      await analyzeSECFilings([makeFiling({ items: ["8.01"], rawText: `${release} Capital expenditure.` })], 1);
+
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).model).toBe("fast-model");
+    });
+  });
+
   describe("extraction rules", () => {
     async function extractionPrompt() {
       const fetchMock = vi.fn()
