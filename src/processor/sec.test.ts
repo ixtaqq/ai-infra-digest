@@ -127,6 +127,15 @@ describe("extractionText", () => {
     expect(text).toContain("(23,953)");
   });
 
+  it("keeps the column headers above a capex row (DLR's outlook table shape)", () => {
+    const headers = "2026 Outlook As of As of As of As of Top-Line February 5, 2026 April 23, 2026 July 23, 2026 October 29, 2026 ";
+    const row = "Development CapEx (Net of Partner Contributions) (4) $3,250 - $3,750 million $4,250 - $4,750 million";
+    const text = extractionText(padding(23000) + headers + padding(1300) + row + padding(5000));
+
+    expect(text).toContain("October 29, 2026");
+    expect(text).toContain("$4,250 - $4,750 million");
+  });
+
   it("stays within the budget however long the filing is", () => {
     const text = extractionText(
       padding(16000) + "Full year outlook: revenue of $9 billion. " + padding(9000) +
@@ -230,6 +239,29 @@ describe("analyzeSECFilings review outcomes", () => {
     expect(prompt).toContain("$240.0 billion and $247.0 billion");
   });
 
+  describe("extraction rules", () => {
+    async function extractionPrompt() {
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(chatCompletionResponse(JSON.stringify({ hasFinancialData: true, reason: "yes" })))
+        .mockResolvedValueOnce(chatCompletionResponse(JSON.stringify(extractionPayload())));
+      vi.stubGlobal("fetch", fetchMock);
+      await analyzeSECFilings([makeFiling()], 1);
+      return JSON.parse(fetchMock.mock.calls[1][1].body as string).messages[1].content as string;
+    }
+
+    // Each rule answers a wrong number from the Groq run on live filings.
+    it.each([
+      ["a range becomes its midpoint (AMZN took the low end of $240-247B)", /range[^.\n]*midpoint/i],
+      ["a change is not capex (AMZN's $94.8B year-over-year increase)", /capex[^\n]*(?:change|increase)[^\n]*null/i],
+      ["whole-company revenue is not AI revenue (DLR's $1.9B total)", /aiRevenue[^\n]*names?[^\n]*(?:AI|data center)[^\n]*null/i],
+      ["the newest outlook column wins (DLR's first of four columns)", /most recent[^.\n]*column/i],
+      ["the current period beats comparatives", /current period[^.\n]*column|column[^.\n]*current period/i],
+      ["next-quarter fields stay next-quarter (DLR's full-year EPS)", /revenueGuidance[^\n]*epsGuidance[^\n]*next quarter[^\n]*full-year[^\n]*guidanceText/i],
+    ])("tells the model: %s", async (_rule, pattern) => {
+      expect(await extractionPrompt()).toMatch(pattern);
+    });
+  });
+
   describe("token settings", () => {
     const ai = config.ai as { provider: string; model: string; fastModel: string };
     const original = { ...ai };
@@ -259,7 +291,7 @@ describe("analyzeSECFilings review outcomes", () => {
       const [, extraction] = await requests();
 
       // 14000 chars of filing plus the instructions, at a pessimistic 3 chars per token.
-      expect(extraction.max_tokens).toBe(2600);
+      expect(extraction.max_tokens).toBe(2400);
       expect(Math.ceil((14000 + extraction.messages[1].content.length) / 3) + extraction.max_tokens).toBeLessThanOrEqual(8000);
     });
 
