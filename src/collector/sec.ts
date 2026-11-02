@@ -297,7 +297,7 @@ export async function fetchCompanyFilings(
         accessionNumber: accessionNo,
         primaryDocumentUrl: docUrl,
         items,
-        rawText: rawText.slice(0, 15000), // Truncate for AI context window
+        rawText: rawText.slice(0, 30000), // Reaches guidance and cash-flow rows; each AI pass takes its own window
         ...(textIncomplete ? { textIncomplete } : {}),
         description: desc,
       });

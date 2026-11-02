@@ -18,7 +18,8 @@ vi.mock("../utils/logger", () => ({
 
 vi.mock("../utils/helpers", () => ({ sleep: vi.fn(() => Promise.resolve()) }));
 
-import { analyzeSECFilings, flagExcerpt, formatSECExtract } from "./sec";
+import { analyzeSECFilings, extractionText, flagExcerpt, formatSECExtract } from "./sec";
+import { config } from "../config";
 import type { SECFiling } from "../collector/sec";
 
 function makeFiling(overrides: Partial<SECFiling> = {}): SECFiling {
@@ -102,6 +103,51 @@ describe("flagExcerpt", () => {
   });
 });
 
+describe("extractionText", () => {
+  const BUDGET = 14000;
+  const padding = (chars: number) => "Business highlights without figures. ".repeat(Math.ceil(chars / 37)).slice(0, chars);
+
+  it("leaves a filing shorter than the budget untouched", () => {
+    const text = "Revenue was $5 billion. " + padding(3000);
+    expect(extractionText(text)).toBe(text);
+  });
+
+  it("reaches guidance past the opening (AMZN shape, guidance at char 14000)", () => {
+    const guidance = "Fourth Quarter 2026 Guidance • Net sales are expected to be between $240.0 billion and $247.0 billion. " +
+      padding(600) + "We expect capital expenditures to be approximately $220 billion.";
+    const text = extractionText("Operating income was $28.1 billion. " + padding(14000) + guidance + padding(26000));
+
+    expect(text).toContain("Operating income was $28.1 billion");
+    expect(text).toContain("$240.0 billion and $247.0 billion");
+    expect(text).toContain("approximately $220 billion");
+  });
+
+  it("reaches a cash-flow capex row, whose figures carry no dollar sign (GOOGL shape)", () => {
+    const text = extractionText(padding(20000) + "Purchases of property and equipment (23,953) (17,197) " + padding(9000));
+    expect(text).toContain("(23,953)");
+  });
+
+  it("stays within the budget however long the filing is", () => {
+    const text = extractionText(
+      padding(16000) + "Full year outlook: revenue of $9 billion. " + padding(9000) +
+      "Capital expenditures of 1,200. " + padding(400000)
+    );
+    expect(text).toContain("revenue of $9 billion");
+    expect(text).toContain("Capital expenditures of 1,200");
+    expect(text.length).toBeLessThanOrEqual(BUDGET + 20);
+  });
+
+  it("does not jump to a guidance mention with no figure near it (safe-harbor shape)", () => {
+    const text = extractionText(padding(16000) + "Our guidance and outlook are subject to risks. " + padding(16000));
+    expect(text).not.toContain("subject to risks");
+  });
+
+  it("spends the whole budget on the opening when no later section exists", () => {
+    const raw = padding(40000);
+    expect(extractionText(raw)).toBe(raw.slice(0, BUDGET));
+  });
+});
+
 describe("analyzeSECFilings review outcomes", () => {
   beforeEach(() => vi.resetAllMocks());
   afterEach(() => vi.unstubAllGlobals());
@@ -170,15 +216,63 @@ describe("analyzeSECFilings review outcomes", () => {
     expect(prompt).toMatch(/another currency[^.]*null/);
   });
 
-  it("gives extraction the same output budget as the other strong-model passes", async () => {
+  it("sends extraction the guidance from past the opening", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(chatCompletionResponse(JSON.stringify({ hasFinancialData: true, reason: "yes" })))
       .mockResolvedValueOnce(chatCompletionResponse(JSON.stringify(extractionPayload())));
     vi.stubGlobal("fetch", fetchMock);
+    const rawText = "Capital expenditure was $5 billion. " + "x ".repeat(8000) +
+      "Fourth Quarter Guidance • Net sales are expected to be between $240.0 billion and $247.0 billion.";
 
-    await analyzeSECFilings([makeFiling()], 1);
+    await analyzeSECFilings([makeFiling({ rawText })], 1);
 
-    expect(JSON.parse(fetchMock.mock.calls[1][1].body as string).max_tokens).toBe(2048);
+    const prompt = JSON.parse(fetchMock.mock.calls[1][1].body as string).messages[1].content as string;
+    expect(prompt).toContain("$240.0 billion and $247.0 billion");
+  });
+
+  describe("token settings", () => {
+    const ai = config.ai as { provider: string; model: string; fastModel: string };
+    const original = { ...ai };
+    afterEach(() => Object.assign(ai, original));
+
+    async function requests() {
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(chatCompletionResponse(JSON.stringify({ hasFinancialData: true, reason: "yes" })))
+        .mockResolvedValueOnce(chatCompletionResponse(JSON.stringify(extractionPayload())));
+      vi.stubGlobal("fetch", fetchMock);
+      await analyzeSECFilings([makeFiling()], 1);
+      return fetchMock.mock.calls.map((call) => JSON.parse(call[1].body as string));
+    }
+
+    it("uses low reasoning effort on Groq's gpt-oss models, as the digest pass does", async () => {
+      Object.assign(ai, { provider: "groq", model: "openai/gpt-oss-120b", fastModel: "openai/gpt-oss-20b" });
+
+      const [flag, extraction] = await requests();
+
+      expect(flag.reasoning_effort).toBe("low");
+      expect(extraction.reasoning_effort).toBe("low");
+    });
+
+    it("keeps a Groq extraction under its 8000 tokens-per-minute limit, prompt included", async () => {
+      Object.assign(ai, { provider: "groq", model: "openai/gpt-oss-120b", fastModel: "openai/gpt-oss-20b" });
+
+      const [, extraction] = await requests();
+
+      // 14000 chars of filing plus the instructions, at a pessimistic 3 chars per token.
+      expect(extraction.max_tokens).toBe(2600);
+      expect(Math.ceil((14000 + extraction.messages[1].content.length) / 3) + extraction.max_tokens).toBeLessThanOrEqual(8000);
+    });
+
+    it("leaves room for a reasoning model that has no reasoning control (OpenRouter run: 4590 tokens)", async () => {
+      Object.assign(ai, { provider: "openrouter", model: "nvidia/nemotron-3.5-super-vl:free", fastModel: "liquid/lfm-2.5-2.6b:free" });
+
+      const [flag, extraction] = await requests();
+
+      expect(extraction.max_tokens).toBe(8192);
+      expect(flag.max_tokens).toBe(1024);
+      expect(flag.reasoning_effort).toBeUndefined();
+      expect(extraction.reasoning_effort).toBeUndefined();
+    });
   });
 });
 

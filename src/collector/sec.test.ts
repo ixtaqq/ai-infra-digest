@@ -196,6 +196,19 @@ describe("press-release exhibits", () => {
     expect(filings[0].primaryDocumentUrl).toBe(PRIMARY_URL);
   });
 
+  it("keeps text deep in a press release, where guidance and cash-flow rows sit (DLR, IBM shape)", async () => {
+    stubFiling("2.02,9.01", {
+      [PRIMARY_URL]: inlineXbrl8K,
+      [INDEX_URL]: filingIndex(DIR, [["2", "EX-99.1", `${DIR}/q3-release.htm`, "EX-99.1"]]),
+      [`https://www.sec.gov${DIR}/q3-release.htm`]: `<p>${"Highlights. ".repeat(2200)}Purchases of property and equipment (23,953)</p>`,
+    });
+
+    const { filings } = await fetchCompanyFilings(company);
+
+    expect(filings[0].rawText).toContain("(23,953)");
+    expect(filings[0].rawText.length).toBeLessThanOrEqual(30000);
+  });
+
   it("picks the EX-99 exhibit over an earlier EX-10 and accepts a bare EX-99 type", async () => {
     const exhibitUrl = `https://www.sec.gov${DIR}/a991results.htm`;
     const fetchMock = stubFiling("1.01,2.02,8.01,9.01", {
