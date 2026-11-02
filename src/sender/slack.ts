@@ -11,9 +11,8 @@ export function htmlToSlack(html: string): string {
     // Strip remaining HTML tags — but NOT Slack link syntax (<https://...|text>)
     // produced by the anchor conversion above, which also starts with "<".
     .replace(/<\/?(?!https?:)[a-zA-Z][^>]*>/g, "")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">");
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
 }
 
 /** Split text into newline-aligned chunks ≤ maxLen chars (Slack block text limit is 3000). */

@@ -13,6 +13,7 @@ const h = vi.hoisted(() => ({
   fetchStockPrices: vi.fn(),
   formatDigestTelegram: vi.fn(),
   deduplicateArticles: vi.fn(),
+  markArticlesSeen: vi.fn(),
   buildCorroborationMap: vi.fn(),
   getCached: vi.fn(),
   setCached: vi.fn(),
@@ -83,6 +84,7 @@ vi.mock("../utils/stocks", () => ({ fetchStockPrices: h.fetchStockPrices }));
 vi.mock("../formatter/telegram", () => ({ formatDigestTelegram: h.formatDigestTelegram }));
 vi.mock("../utils/dedup", () => ({
   deduplicateArticles: h.deduplicateArticles,
+  markArticlesSeen: h.markArticlesSeen,
   buildCorroborationMap: h.buildCorroborationMap,
 }));
 vi.mock("../utils/ai-cache", () => ({ getCached: h.getCached, setCached: h.setCached }));
@@ -218,6 +220,41 @@ describe("generateDigest pipeline safety", () => {
     expect(h.sendMessage).toHaveBeenCalledTimes(1);
     expect(h.sendMessage.mock.calls[0][1]).toContain("Relevant high impact");
     expect(h.sendMessage.mock.calls[0][1]).not.toContain("Off-topic high impact");
+  });
+
+  it("marks only the articles the AI actually analyzed as seen", async () => {
+    const analyzed = { url: "https://example.com/analyzed", title: "Analyzed GPU story", source: "A", summary: "", contentSnippet: "", date: new Date() };
+    const dropped = { url: "https://example.com/dropped", title: "Dropped GPU story", source: "B", summary: "", contentSnippet: "", date: new Date() };
+    h.collectArticles.mockResolvedValue({ articles: [analyzed, dropped], feedStatuses: [] });
+    h.processArticles.mockResolvedValue(digestOf([article({ title: analyzed.title, url: analyzed.url })]));
+
+    await generateDigest();
+
+    expect(h.markArticlesSeen).toHaveBeenCalledWith([analyzed]);
+  });
+
+  it("removes gated articles from the categories the formatter renders", async () => {
+    const lowRelevance = article({ title: "Off-topic", url: "https://example.com/off", relevanceScore: 2 });
+    const relevant = article({ title: "Relevant", url: "https://example.com/on", relevanceScore: 8 });
+    h.processArticles.mockResolvedValue(digestOf([lowRelevance, relevant]));
+
+    const generated = await generateDigest();
+
+    const rendered = Object.values(generated!.digest.categories).flat();
+    expect(rendered.map((item) => item.title)).toEqual(["Relevant"]);
+  });
+
+  it("carries enrichment into categories when they hold separate article copies", async () => {
+    const relevant = article({ title: "Relevant", url: "https://example.com/on", relevanceScore: 8 });
+    h.processArticles.mockResolvedValue({
+      ...digestOf([relevant]),
+      categories: { "Chips & GPUs": [{ ...relevant }] } as DigestResult["categories"],
+    });
+    h.generateBearCases.mockResolvedValue({ bearCases: new Map([["https://example.com/on", "Bear case"]]) });
+
+    const generated = await generateDigest();
+
+    expect(Object.values(generated!.digest.categories).flat()[0].bearCase).toBe("Bear case");
   });
 
   it("keeps the lexical corroboration map when no embedding vectors are available", async () => {

@@ -9,6 +9,7 @@
 
 import TelegramBot, { type InlineKeyboardMarkup, type Message, type CallbackQuery } from "node-telegram-bot-api";
 import { supabase } from "./utils/supabase";
+import { escapeHtml } from "./utils/escape";
 import { logger } from "./utils/logger";
 
 type OnboardingStep = "delivery_time" | "watchlist" | "min_score" | "digest_length" | "done";
@@ -125,7 +126,7 @@ async function sendTimeStep(bot: TelegramBot, chatId: number, firstName: string)
   const msg = await bot.sendMessage(
     chatId,
     `⏰ <b>Step 1/4 — Delivery time</b>\n\n` +
-      `Hi ${firstName}! When do you want your daily AI infra digest?\n\n` +
+      `Hi ${escapeHtml(firstName)}! When do you want your daily AI infra digest?\n\n` +
       `<i>All times are in Malaysia Time (MYT, UTC+8).</i>`,
     { parse_mode: "HTML", reply_markup: timeKeyboard() }
   );

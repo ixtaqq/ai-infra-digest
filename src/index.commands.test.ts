@@ -32,7 +32,7 @@ vi.mock("./collector/earnings", () => ({ collectEarningsTranscripts: vi.fn(async
 vi.mock("./processor/earnings", () => ({ analyzeEarningsTranscripts: vi.fn(async () => ({ analyses: [], totalTokens: 0 })) }));
 vi.mock("./utils/stocks", () => ({ fetchStockPrices: h.fetchStockPricesMock }));
 vi.mock("./formatter/telegram", () => ({ formatDigestTelegram: vi.fn(() => "DIGEST_MSG") }));
-vi.mock("./utils/dedup", () => ({ deduplicateArticles: (a: unknown[]) => a, buildCorroborationMap: vi.fn(() => new Map()) }));
+vi.mock("./utils/dedup", () => ({ deduplicateArticles: (a: unknown[]) => a, markArticlesSeen: vi.fn(), buildCorroborationMap: vi.fn(() => new Map()) }));
 vi.mock("./utils/metrics", () => ({ emitFeedFetch: vi.fn(), emitStockFetch: vi.fn(), emitDigestDelivery: vi.fn(), emitError: vi.fn() }));
 vi.mock("./utils/ai-cache", () => ({ getCached: vi.fn(() => null), setCached: vi.fn() }));
 

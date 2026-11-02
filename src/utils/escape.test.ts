@@ -36,6 +36,10 @@ describe("stripHtmlTags", () => {
     expect(stripHtmlTags(`hi<script>evil()</script>there`)).toBe("hievil()there");
   });
 
+  it("keeps comparison text that only looks like a tag", () => {
+    expect(stripHtmlTags("Revenue <5% vs >3%")).toBe("Revenue <5% vs >3%");
+  });
+
   it("leaves tag-free text untouched", () => {
     expect(stripHtmlTags("plain headline")).toBe("plain headline");
   });

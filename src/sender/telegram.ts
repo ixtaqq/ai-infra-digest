@@ -87,6 +87,8 @@ export async function handleWebhookUpdate(update: Update): Promise<void> {
 
 export interface SendResult {
   ambiguous?: boolean;
+  /** Another run owns this slot or it awaits reconciliation; nothing was attempted. */
+  held?: boolean;
   success: boolean;
   messageId?: number;
   error?: string;
@@ -262,7 +264,7 @@ function initCommands() {
   });
 
   // Handle /stop and /unsubscribe — explicit opt-out from scheduled delivery.
-  onText(/^\/(?:stop|unsubscribe)(@\w+)?$/, async (msg) => {
+  onText(/^\/(?:stop|unsubscribe)(@\w+)?(?:\s[\s\S]*)?$/i, async (msg) => {
     if (await rejectNonPrivateMessage(pollingBot, msg)) return;
     const chatId = msg.chat.id;
     const command = (msg.text || "/stop")
@@ -644,7 +646,7 @@ function initCommands() {
   });
 
   // Handle /watchlist
-  onText(/^\/watchlist(@\w+)?\s*(.*)/, async (msg, match) => {
+  onText(/^\/watchlist(@\w+)?(?:\s+([\s\S]*))?$/, async (msg, match) => {
     if (await rejectNonPrivateMessage(pollingBot, msg)) return;
     const chatId = msg.chat.id;
     await logCommandUse("watchlist", chatId);

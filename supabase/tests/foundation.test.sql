@@ -57,5 +57,17 @@ SELECT ok(public.delete_user_data(987654322),'privacy deletion includes operatio
 SELECT is((SELECT count(*)::int FROM public.telegram_inbox WHERE chat_id=987654322),0,'inbox deleted with user');
 SELECT is((SELECT count(*)::int FROM public.email_verification_requests WHERE chat_id=987654322),0,'verification request history deleted with user');
 RESET ROLE;
+SELECT ok(NOT has_function_privilege('anon', 'public.release_editorial_run(date,text)', 'EXECUTE'), 'anon cannot release editorial claims');
+SELECT ok(NOT has_schema_privilege('service_role', 'private', 'USAGE'), 'workers cannot call the dispatch function');
+SELECT is(private.dispatch_github_workflow('scheduled-delivery.yml'), NULL, 'dispatch is a no-op without the Vault secret');
+SELECT is((SELECT count(*)::int FROM cron.job WHERE jobname IN ('dispatch-scheduled-delivery','dispatch-daily-digest')), 2, 'workflow dispatches are scheduled');
+INSERT INTO public.editorial_jobs(editorial_date, owner, status, started_at)
+  VALUES ('2001-01-01', gen_random_uuid(), 'running', CURRENT_TIMESTAMP - INTERVAL '2 hours'),
+         ('2001-01-02', gen_random_uuid(), 'running', CURRENT_TIMESTAMP);
+SELECT ok(public.release_editorial_run('2001-01-01', 'worker died; publication and ledger inspected'), 'a stale claim can be released');
+SELECT ok(NOT public.release_editorial_run('2001-01-01', 'worker died; publication and ledger inspected'), 'release is not repeated');
+SELECT ok(NOT public.release_editorial_run('2001-01-02', 'worker died; publication and ledger inspected'), 'a recent claim cannot be released');
+SELECT ok(NOT public.release_editorial_run('2001-01-01', 'too short'), 'release needs a reason');
+SELECT is((SELECT count(*)::int FROM public.reconciliation_audit WHERE target = 'editorial' AND identity->>'date' = '2001-01-01'), 1, 'release is audited once');
 SELECT * FROM finish();
 ROLLBACK;

@@ -144,3 +144,23 @@ describe("getTopFilings", () => {
     expect(getTopFilings(filings, 2)).toHaveLength(2);
   });
 });
+
+describe("8-K item parsing", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("decodes filing entities once", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(submissionsResponse())
+      .mockResolvedValueOnce(htmlResponse("<p>R&amp;D &amp;lt;b&amp;gt;</p>")));
+    const result = await fetchCompanyFilings(company);
+    expect(result.filings[0].rawText).toContain("R&D &lt;b&gt;");
+  });
+
+  it("splits EDGAR's comma-separated items so earnings 8-Ks are recognised", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(submissionsResponse({ items: ["2.02,9.01"] }))
+      .mockResolvedValueOnce(htmlResponse("<p>Results</p>")));
+    const result = await fetchCompanyFilings(company);
+    expect(result.filings[0].items).toEqual(["2.02", "9.01"]);
+  });
+});

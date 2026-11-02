@@ -206,3 +206,42 @@ describe("collectArticles", () => {
     expect(result.feedStatuses.every((feed) => feed.status === "success")).toBe(true);
   });
 });
+
+describe("untrusted feed fields", () => {
+  async function fetchItem(item: string) {
+    const rss = `<?xml version="1.0"?><rss version="2.0"><channel><title>Example</title><item>${item}</item></channel></rss>`;
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(rss, { status: 200 })));
+    const { fetchFeedWithStatus } = await import("./rss");
+    return fetchFeedWithStatus({ name: "Example feed", url: "https://example.com/feed.xml" }, 5);
+  }
+
+  it("replaces an unparseable pubDate so the edition can still serialize", async () => {
+    const result = await fetchItem("<title>GPU news</title><link>https://example.com/a</link><pubDate>not a date</pubDate>");
+    expect(Number.isNaN(result.articles[0].date.getTime())).toBe(false);
+  });
+
+  it("drops a non-http article link", async () => {
+    const result = await fetchItem("<title>GPU news</title><link>javascript:alert(1)</link>");
+    expect(result.articles[0].url).toBe("");
+  });
+});
+
+describe("matchesKeywords ticker matching", () => {
+  it.each(["Better butter recipes", "How much is too much", "Life on the farm", "What to read now", "A social club"])(
+    "does not treat a ticker as a substring of %s", async (title) => {
+      const { matchesKeywords } = await import("./rss");
+      expect(matchesKeywords(title, "")).toBe(false);
+    });
+
+  it("matches AI as its own word but not inside other words", async () => {
+    const { matchesKeywords } = await import("./rss");
+    expect(matchesKeywords("Is this the first clear evidence of AI's impact?", "")).toBe(true);
+    expect(matchesKeywords("Fans wait for the rain to stop", "")).toBe(false);
+  });
+
+  it("still matches the ticker as its own word", async () => {
+    const { matchesKeywords } = await import("./rss");
+    expect(matchesKeywords("MU beats estimates", "")).toBe(true);
+    expect(matchesKeywords("Shares of (TT) rose", "")).toBe(true);
+  });
+});

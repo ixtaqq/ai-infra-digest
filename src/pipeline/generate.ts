@@ -22,7 +22,7 @@ import {
   formatCapabilityReport,
   getCapabilityReport,
 } from "../utils/capabilities";
-import { buildCorroborationMap, deduplicateArticles } from "../utils/dedup";
+import { buildCorroborationMap, deduplicateArticles, markArticlesSeen } from "../utils/dedup";
 import { queryRecentDerivedMetrics, writeDerivedMetrics } from "../utils/derived-metrics";
 import { escapeHtml } from "../utils/escape";
 import { findConsistentlyFailingFeeds } from "../utils/feed-health";
@@ -238,6 +238,9 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
       throw error;
     });
 
+    const analyzedUrls = new Set(digest.articles.map((article) => article.url));
+    await markArticlesSeen(articlesToProcess.filter((article) => analyzedUrls.has(article.url)));
+
     // ─── Step 2a0: Relevance Filter (v7.0) ───────────────────────────────────
     const beforeFilter = digest.articles.length;
     digest.articles = digest.articles.filter(
@@ -420,11 +423,14 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
     digest.articles.sort(
       (a, b) => (b.effectiveScore ?? b.impactScore) - (a.effectiveScore ?? a.impactScore)
     );
-    for (const articles of Object.values(digest.categories)) {
-      articles.sort(
-        (a, b) => (b.effectiveScore ?? b.impactScore) - (a.effectiveScore ?? a.impactScore)
-      );
+    // The formatter renders categories, so rebuild them from the articles that
+    // passed every gate and carry the enrichment above.
+    const categories = {} as typeof digest.categories;
+    for (const article of digest.articles) {
+      const category = NEWS_CATEGORIES.includes(article.category) ? article.category : NEWS_CATEGORIES[0];
+      (categories[category] ??= []).push(article);
     }
+    digest.categories = categories;
 
     // ─── Step 3a.1: Cross-Source Grounding (v9.1) ────────────────────────────
     attachGroundingNotes(digest.articles, secExtracts, earningsAnalyses, stockPrices);

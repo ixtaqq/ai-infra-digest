@@ -26,6 +26,20 @@ beforeEach(() => {
   registerTrendCommands();
 });
 
+describe("/trends entity lookup", () => {
+  it("queries sectors with their stored name, not upper-cased", async () => {
+    h.queryDerivedMetrics.mockResolvedValue([]);
+    await h.handlers.get("trends")!({ chatId: 1, text: "/trends sector datacenters 30d" });
+    expect(h.queryDerivedMetrics).toHaveBeenCalledWith("sector", "Datacenters", 30);
+  });
+
+  it("still upper-cases tickers", async () => {
+    h.queryDerivedMetrics.mockResolvedValue([]);
+    await h.handlers.get("trends")!({ chatId: 1, text: "/trends nvda" });
+    expect(h.queryDerivedMetrics).toHaveBeenCalledWith("ticker", "NVDA", 30);
+  });
+});
+
 describe("/trends week-over-week output", () => {
   it("does not compare the latest value with the oldest short-history row", async () => {
     h.queryDerivedMetrics.mockResolvedValue(

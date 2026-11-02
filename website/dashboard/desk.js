@@ -410,7 +410,7 @@
           queryDashboardData('Ticker theses', 'ticker_theses', { order: 'confidence', limit: 10 }, partialErrors),
           // v11 — up to ~10 tracked tickers × recent weeks; one batched fetch,
           // no per-ticker query loop. Sorted client-side (see renderThesesSection).
-          queryDashboardData('Thesis history', 'ticker_thesis_history', { limit: 100 }, partialErrors),
+          queryDashboardData('Thesis history', 'ticker_thesis_history', { order: 'week_of', limit: 100 }, partialErrors),
           queryDashboardData('Ranking quality', 'ranking_quality_daily', { order: 'date', limit: 30 }, partialErrors),
         ]);
 
@@ -608,7 +608,7 @@
           responsive: true,
           plugins: {
             legend: { display: false },
-            tooltip: { ...createGlassTooltip(), callbacks: { afterLabel: (ctx) => { const s = top[ctx.dataIndex]; return `Mentions: ${s.mention_count}\nSentiment: ${(s.avg_sentiment || 0).toFixed(2)}`; } } }
+            tooltip: { ...createGlassTooltip(), callbacks: { afterLabel: (ctx) => { const s = top[ctx.dataIndex]; return `Mentions: ${s.mention_count}`; } } }
           },
           scales: {
             x: { ticks: { color: c, font: { weight: '600' } }, grid: { color: gc } },
@@ -834,7 +834,7 @@
     function renderTokenChart(metrics) {
       if (chartsUnavailable('tokenChartFallback')) return;
       if (charts.token) charts.token.destroy();
-      const recent = (metrics || []).slice(-14);
+      const recent = (metrics || []).slice(0, 14).reverse();
       if (!recent.length) { setChartFallback('tokenChartFallback', 'No AI token usage metrics are available.'); return; }
       setChartFallback('tokenChartFallback', `${recent.length} daily AI token usage points, showing the most recent two weeks.`);
       const ctx = document.getElementById('tokenChart').getContext('2d');

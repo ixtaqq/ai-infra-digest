@@ -37,7 +37,25 @@ async function main() {
     console.log("Resolution recorded with an audit trail.");
     return;
   }
-  if (action !== "status") throw new Error("Use operations status, activation, or resolve");
+  if (action === "release-editorial") {
+    const date = target;
+    const reason = [rawId, status, ...reasonParts].join(" ").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? "") || reason.length < 20) {
+      throw new Error("Usage: operations release-editorial YYYY-MM-DD evidence-and-reason-at-least-20-characters");
+    }
+    const [job] = await supabase.requiredRows<{ started_at: string }>("editorial_jobs",
+      `editorial_date=eq.${date}&status=eq.running&select=started_at`);
+    if (!job) throw new Error(`No running editorial claim for ${date}; no change made`);
+    const attempts = await supabase.requiredRows<{ stage: string; status: string; total_tokens: number | null }>("ai_attempts",
+      `started_at=gte.${encodeURIComponent(job.started_at)}&select=stage,status,total_tokens&order=started_at.asc&limit=500`);
+    console.log(JSON.stringify({ startedAt: job.started_at, aiAttemptsSinceStart: attempts.length,
+      tokensSinceStart: attempts.reduce((total, attempt) => total + (attempt.total_tokens ?? 0), 0) }, null, 2));
+    const released = await supabase.requiredRpc("release_editorial_run", { p_date: date, p_reason: reason });
+    if (!released) throw new Error("Claim is less than one hour old or already changed; no change made");
+    console.log("Claim released with an audit trail. Retrying generation can repeat the paid work counted above.");
+    return;
+  }
+  if (action !== "status") throw new Error("Use operations status, activation, resolve, or release-editorial");
   const [edition, digests, alerts, inbox, jobs] = await Promise.all([
     supabase.getLatestDigestPublication(),
     supabase.requiredRows("user_delivery_log", "status=in.(pending,ambiguous)&select=id,run_date,status,publication_id,claimed_at&order=id.asc&limit=100"),

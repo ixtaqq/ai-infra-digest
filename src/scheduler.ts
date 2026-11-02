@@ -25,6 +25,14 @@ import { flushMetrics } from "./utils/metrics";
 import { deserializeDigestPublication } from "./pipeline/publication";
 import type { GeneratedDigest } from "./pipeline/types";
 
+/** An edition still missing at this editorial-timezone time is an incident, not a wait. */
+const PUBLICATION_DEADLINE_MINUTES = 12 * 60;
+
+type EditionState =
+  | { kind: "ready"; generated: GeneratedDigest; articleIds: Map<string, number> }
+  | { kind: "missing" }
+  | { kind: "invalid" };
+
 // ─── Time Helpers ───────────────────────────────────────
 
 /** Get the current local clock minutes in a given timezone. */
@@ -156,12 +164,9 @@ export async function schedulerMain(): Promise<void> {
   // Watches are intentionally refreshed at delivery time. They are user state,
   // unlike the immutable editorial content stored in digest_publications.
   const activeWatches = await supabase.getAllPriceWatches();
-  let publication:
-    | { generated: GeneratedDigest; articleIds: Map<string, number> }
-    | null
-    | undefined;
+  let publication: EditionState | undefined;
 
-  const getPublication = async () => {
+  const getPublication = async (): Promise<EditionState> => {
     if (publication !== undefined) return publication;
 
     const row = await supabase.getDigestPublication(editorialDate);
@@ -170,12 +175,13 @@ export async function schedulerMain(): Promise<void> {
         event: "publication_wait", checked_at: now.toISOString(), editorial_date: editorialDate,
         pending_deliveries: pendingCount,
       });
-      publication = null;
-      return null;
+      publication = { kind: "missing" };
+      return publication;
     }
 
     try {
       publication = {
+        kind: "ready",
         generated: deserializeDigestPublication(
           row.payload,
           activeWatches,
@@ -193,13 +199,23 @@ export async function schedulerMain(): Promise<void> {
       logger.error(
         `Canonical publication #${row.id} is invalid: ${(error as Error).message}`
       );
-      publication = null;
-      return null;
+      publication = { kind: "invalid" };
+      return publication;
     }
   };
 
-  let successCount = 0;
-  let failCount = 0;
+  const pastDeadline =
+    getCurrentMinutesInTimezone(config.app.timezone, now) >= PUBLICATION_DEADLINE_MINUTES;
+  const tally = { delivered: 0, held: 0, waiting: 0, failed: 0 };
+  const recordUnavailable = (edition: EditionState) => {
+    if (edition.kind === "missing" && !pastDeadline) tally.waiting++;
+    else tally.failed++;
+  };
+  const recordSend = (result: { success: boolean; held?: boolean }) => {
+    if (result.success) tally.delivered++;
+    else if (result.held) tally.held++;
+    else tally.failed++;
+  };
   const successfulDeliveries: {
     chatId: number;
     generated: GeneratedDigest;
@@ -210,16 +226,16 @@ export async function schedulerMain(): Promise<void> {
   if (defaultPending) {
     try {
       const current = await getPublication();
-      if (!current) failCount++;
+      if (current.kind !== "ready") recordUnavailable(current);
       else {
         const { result, delivered } = await deliverDefaultPublication(current.generated);
-        if (result.success) {
-          successCount++;
-          if (delivered) successfulDeliveries.push({ chatId: defaultChat, ...current });
-        } else failCount++;
+        recordSend(result);
+        if (result.success && delivered) {
+          successfulDeliveries.push({ chatId: defaultChat, generated: current.generated, articleIds: current.articleIds });
+        }
       }
     } catch (error) {
-      failCount++;
+      tally.failed++;
       logger.error(`Default delivery failed: ${(error as Error).message}`);
     }
   }
@@ -228,8 +244,8 @@ export async function schedulerMain(): Promise<void> {
     if (defaultPending && user.chat_id === defaultChat && deliveryDate === editorialDate) return;
     try {
       const currentPublication = await getPublication();
-      if (!currentPublication) {
-        failCount++;
+      if (currentPublication.kind !== "ready") {
+        recordUnavailable(currentPublication);
         return;
       }
       const result = await deliverDigest(
@@ -238,18 +254,16 @@ export async function schedulerMain(): Promise<void> {
         user,
         deliveryDate
       );
+      recordSend(result);
       if (result.success) {
-        successCount++;
         successfulDeliveries.push({
           chatId: user.chat_id,
           generated: currentPublication.generated,
           articleIds: currentPublication.articleIds,
         });
-      } else {
-        failCount++;
       }
     } catch (error) {
-      failCount++;
+      tally.failed++;
       logger.error(`Delivery failed for user ${user.chat_id}: ${(error as Error).message}`);
     }
   });
@@ -273,11 +287,14 @@ export async function schedulerMain(): Promise<void> {
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   logger.info(
     `✅ Scheduled delivery complete in ${elapsed}s — ` +
-      `${successCount} delivered, ${failCount} failed ` +
+      `${tally.delivered} delivered, ${tally.held} held, ${tally.waiting} waiting, ${tally.failed} failed ` +
       `(${pendingCount} targets, ${publication === undefined ? 0 : 1} publication lookup(s), 0 generations)`
   );
-  if (failCount > 0) {
-    throw new Error(`Scheduled delivery incomplete: ${successCount} delivered, ${failCount} failed`);
+  if (tally.held > 0) {
+    logger.warn(`${tally.held} delivery slot(s) held. If they stay unresolved, run npm run operations -- status.`);
+  }
+  if (tally.failed > 0) {
+    throw new Error(`Scheduled delivery incomplete: ${tally.delivered} delivered, ${tally.failed} failed`);
   }
 }
 

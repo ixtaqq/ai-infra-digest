@@ -16,5 +16,5 @@ export function escapeHtml(text: string): string {
  * verbatim by the model or reaches a call site that forgets to escape.
  */
 export function stripHtmlTags(text: string): string {
-  return text.replace(/<[^>]*>/g, "");
+  return text.replace(/<\/?[a-zA-Z][^>]*>/g, "");
 }

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GeneratedDigest } from "./types";
 
 const h = vi.hoisted(() => ({
@@ -36,6 +36,40 @@ vi.mock("../sender/telegram", () => ({ sendValidationFollowUp: vi.fn() }));
 vi.mock("../utils/logger", () => ({ logger: { info: vi.fn(), error: vi.fn() } }));
 
 import { runPipeline } from "./run";
+
+describe("editorial claim release", () => {
+  beforeEach(() => {
+    h.isConfigured.mockReturnValue(true);
+    h.requiredRpc.mockReset().mockResolvedValue(true);
+    h.getDigestPublication.mockReset();
+    h.generateDigest.mockReset();
+  });
+
+  afterEach(() => {
+    h.requiredRpc.mockReset().mockResolvedValue(true);
+  });
+
+  it("releases the claim and keeps the original error when the final lookup fails", async () => {
+    h.getDigestPublication.mockResolvedValueOnce(null).mockRejectedValueOnce(new Error("lookup timeout"));
+    h.generateDigest.mockRejectedValue(new Error("generation failed"));
+
+    await expect(runPipeline(undefined, { publishOnly: true })).rejects.toThrow("generation failed");
+
+    expect(h.requiredRpc).toHaveBeenCalledWith("finish_editorial_run",
+      expect.objectContaining({ p_status: "failed" }));
+  });
+
+  it("keeps the original error when releasing the claim also fails", async () => {
+    h.getDigestPublication.mockResolvedValue(null);
+    h.generateDigest.mockRejectedValue(new Error("generation failed"));
+    h.requiredRpc.mockImplementation(async (name: string) => {
+      if (name === "finish_editorial_run") throw new Error("finish failed");
+      return true;
+    });
+
+    await expect(runPipeline(undefined, { publishOnly: true })).rejects.toThrow("generation failed");
+  });
+});
 
 const generated = {
   runDate: "2026-08-19",

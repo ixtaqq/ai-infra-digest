@@ -57,6 +57,8 @@ try {
       'sec_filings?select=*&ticker=eq.NVDA&order=filing_date.desc,id.desc&limit=20',
       'ticker_thesis_history?select=*&ticker=eq.NVDA&order=week_of.desc&limit=12',
     ]) await check(path, role);
+    await check('rpc/release_editorial_run', role, { method: 'POST', body: JSON.stringify({ p_date: '2001-01-01', p_reason: 'contract check, no such claim exists' }) }, role === 'service_role' ? [200] : [401, 403]);
+    await check('rpc/search_articles', role, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ p_query: 'nvidia', p_limit: 1, p_offset: 0 }) });
     for (const table of ['user_preferences','price_watches','telegram_inbox','digest_publications','editorial_jobs','ai_attempts','ai_budget_reservations']) {
       await check(`${table}?select=*&limit=1`, role, {}, role === 'service_role' ? [200] : [401,403]);
     }
@@ -72,6 +74,11 @@ try {
   await check('rpc/claim_editorial_run', 'service_role', { method: 'POST', body: JSON.stringify({ p_date: '2099-12-31', p_owner: '00000000-0000-0000-0000-000000000001' }) });
   const result = await check(`price_watches?chat_id=eq.${fixtureChat}`, 'service_role');
   assert.deepEqual(await result.json(), [], 'Fixture writes must roll back');
+  for (const path of [
+    'digest_publications?publication_date=lt.2001-01-01&select=secExtracts:payload->secExtracts&order=publication_date.desc&limit=13',
+    'user_delivery_log?status=in.(pending,ambiguous)&claimed_at=lt.2001-01-01&select=id&limit=100',
+    'product_events?event_name=eq.delivery_succeeded&select=properties&order=created_at.desc&limit=1',
+  ]) await check(path, 'service_role');
   console.log(`Local PostgREST contracts passed: ${checks} checks; anonymous, authenticated and service roles; fixture writes rolled back.`);
 
   // Restart real inbox workers in separate processes; dispatch itself is offline.

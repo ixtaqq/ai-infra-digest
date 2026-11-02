@@ -78,7 +78,7 @@ export const TRACKED_COMPANIES: CompanyEntry[] = [
   { ticker: "AMZN",  name: "Amazon.com Inc.",               cik: "0001018724", tier: 1 },
   { ticker: "GOOGL", name: "Alphabet Inc.",                 cik: "0001652044", tier: 1 },
   { ticker: "META",  name: "Meta Platforms Inc.",           cik: "0001326801", tier: 1 },
-  { ticker: "TSM",   name: "Taiwan Semiconductor (ADR)",    cik: "0001122304", tier: 1 },
+  { ticker: "TSM",   name: "Taiwan Semiconductor (ADR)",    cik: "0001046179", tier: 1 },
   { ticker: "INTC",  name: "Intel Corporation",             cik: "0000050863", tier: 1 },
   { ticker: "QCOM",  name: "Qualcomm Inc.",                 cik: "0000804328", tier: 1 },
   { ticker: "ORCL",  name: "Oracle Corporation",            cik: "0001341439", tier: 1 },
@@ -89,17 +89,17 @@ export const TRACKED_COMPANIES: CompanyEntry[] = [
   { ticker: "DELL",  name: "Dell Technologies Inc.",        cik: "0001571996", tier: 1 },
   { ticker: "AMAT",  name: "Applied Materials Inc.",        cik: "0000006951", tier: 1 },
   { ticker: "LRCX",  name: "Lam Research Corporation",      cik: "0000707549", tier: 1 },
-  { ticker: "KLAC",  name: "KLA Corporation",               cik: "0000319016", tier: 1 },
+  { ticker: "KLAC",  name: "KLA Corporation",               cik: "0000319201", tier: 1 },
   { ticker: "CSCO",  name: "Cisco Systems Inc.",            cik: "0000858877", tier: 1 },
   // Alternate Tier 2 — secondary monitoring
   { ticker: "MRVL",  name: "Marvell Technology Inc.",       cik: "0001835632", tier: 2 },
   { ticker: "ANET",  name: "Arista Networks Inc.",          cik: "0001596532", tier: 2 },
-  { ticker: "DLR",   name: "Digital Realty Trust Inc.",     cik: "0001426046", tier: 2 },
-  { ticker: "EQIX",  name: "Equinix Inc.",                  cik: "0001102541", tier: 2 },
+  { ticker: "DLR",   name: "Digital Realty Trust Inc.",     cik: "0001297996", tier: 2 },
+  { ticker: "EQIX",  name: "Equinix Inc.",                  cik: "0001101239", tier: 2 },
   { ticker: "CEG",   name: "Constellation Energy Corp.",    cik: "0001868275", tier: 2 },
   { ticker: "VST",   name: "Vistra Corp.",                  cik: "0001692819", tier: 2 },
-  { ticker: "GEV",   name: "GE Vernova Inc.",               cik: "0001996862", tier: 2 },
-  { ticker: "VRT",   name: "Vertiv Holdings Co.",           cik: "0001637864", tier: 2 },
+  { ticker: "GEV",   name: "GE Vernova Inc.",               cik: "0001996810", tier: 2 },
+  { ticker: "VRT",   name: "Vertiv Holdings Co.",           cik: "0001674101", tier: 2 },
   { ticker: "ETN",   name: "Eaton Corporation PLC",         cik: "0001551182", tier: 2 },
   { ticker: "ARM",   name: "Arm Holdings PLC (ADR)",        cik: "0001973239", tier: 2 },
   { ticker: "WDC",   name: "Western Digital Corp.",         cik: "0000106040", tier: 2 },
@@ -230,7 +230,7 @@ export async function fetchCompanyFilings(company: CompanyEntry): Promise<SECFil
       const primaryDoc = recent.primaryDocument[i];
       const desc = recent.primaryDocDescription[i] || "";
       const items = (recent.items?.[i] || "")
-        .split(/\s+/)
+        .split(/[\s,]+/)
         .filter(Boolean);
 
       // Skip filings older than 60 days
@@ -311,9 +311,9 @@ async function downloadFilingText(url: string): Promise<string> {
   const text = html
     .replace(/<[^>]*>/g, " ")    // Remove tags
     .replace(/&nbsp;/g, " ")     // Remove &nbsp;
-    .replace(/&amp;/g, "&")      // Fix ampersands
     .replace(/&lt;/g, "<")       // Fix less-than
     .replace(/&gt;/g, ">")       // Fix greater-than
+    .replace(/&amp;/g, "&")      // Fix ampersands last so "&amp;lt;" stays "&lt;"
     .replace(/\s+/g, " ")        // Collapse whitespace
     .replace(/\n\s*\n/g, "\n\n") // Collapse blank lines
     .trim();

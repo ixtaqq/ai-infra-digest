@@ -9,6 +9,7 @@ import { supabase } from "../utils/supabase";
 import { withAIAccounting } from "../utils/ai-accounting";
 import { generateDigest } from "./generate";
 import { persistDigestMetrics } from "./persist";
+import { reportEditionQuality } from "./quality";
 import {
   deserializeDigestPublication,
   serializeDigestPublication,
@@ -32,15 +33,31 @@ export async function runPipeline(targetChatId?: number, options: { publishOnly?
     try {
       return await runEditorialPipeline(targetChatId, options.publishOnly);
     } finally {
-      const published = await supabase.getDigestPublication(date);
-      await supabase.requiredRpc("finish_editorial_run", { p_date: date, p_owner: owner, p_status: published ? "published" : "failed" });
+      await releaseEditorialClaim(date, owner);
     }
   });
+}
+
+/**
+ * Runs in a finally block, so it must not replace the run's own error. Marking an
+ * unknown outcome failed is safe: claim_editorial_run refuses a published date.
+ */
+async function releaseEditorialClaim(date: string, owner: string): Promise<void> {
+  try {
+    const published = await supabase.getDigestPublication(date).catch((error: Error) => {
+      logger.error(`Publication lookup failed while releasing the ${date} claim: ${error.message}`);
+      return null;
+    });
+    await supabase.requiredRpc("finish_editorial_run", { p_date: date, p_owner: owner, p_status: published ? "published" : "failed" });
+  } catch (error) {
+    logger.error(`Editorial claim for ${date} stays locked: ${(error as Error).message}. See npm run operations -- release-editorial.`);
+  }
 }
 
 async function runEditorialPipeline(targetChatId?: number, publishOnly = false): Promise<boolean> {
   const generated = await generateDigest();
   if (!generated) return false;
+  generated.qualityIssues = await reportEditionQuality(generated);
 
   // The editorial run is persisted and published before any channel delivery.
   // Schedulers consume this immutable edition and never repeat the AI pipeline.

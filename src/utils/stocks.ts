@@ -75,7 +75,7 @@ async function fetchPrice(ticker: string): Promise<StockPrice | null> {
           };
           indicators?: {
             quote?: Array<{
-              close?: number[];
+              close?: (number | null)[];
             }>;
           };
         }>;
@@ -89,8 +89,13 @@ async function fetchPrice(ticker: string): Promise<StockPrice | null> {
     const meta = result.meta;
     const price = meta.regularMarketPrice;
     if (typeof price !== "number" || !Number.isFinite(price) || price <= 0) return null;
-    const prevClose = typeof meta.previousClose === "number" && Number.isFinite(meta.previousClose) && meta.previousClose > 0
-      ? meta.previousClose : price;
+    // Yahoo omits meta.previousClose on multi-day ranges. The last bar is the
+    // latest session, so the prior close is the last value before it.
+    const priorClose = (result.indicators?.quote?.[0]?.close ?? []).slice(0, -1)
+      .filter((close): close is number => typeof close === "number").at(-1);
+    const reportedClose = meta.previousClose ?? priorClose;
+    const prevClose = typeof reportedClose === "number" && Number.isFinite(reportedClose) && reportedClose > 0
+      ? reportedClose : price;
     const change = price - prevClose;
     const changePercent = prevClose > 0 ? (change / prevClose) * 100 : 0;
 

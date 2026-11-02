@@ -91,3 +91,26 @@ describe("stocks TICKER_MAP", () => {
     expect(result.size).toBe(6);
   });
 });
+
+describe("previous close", () => {
+  function chart(close: (number | null)[], price: number) {
+    return { ok: true, json: async () => ({ chart: { result: [{
+      meta: { regularMarketPrice: price, chartPreviousClose: 210.96 },
+      indicators: { quote: [{ close }] },
+    }] } }) };
+  }
+
+  it("uses the prior session when a 5d chart omits meta.previousClose", async () => {
+    mockFetch.mockResolvedValue(chart([216, 217.94, 215.38, 213.66, 204.64], 204.64));
+    const { fetchStockPrices } = await import("./stocks");
+    const quote = (await fetchStockPrices(["NVDA"])).get("NVDA")!;
+    expect(quote.previousClose).toBe(213.66);
+    expect(quote.changePercent).toBeCloseTo(-4.22, 2);
+  });
+
+  it("ignores an unfinished current session bar", async () => {
+    mockFetch.mockResolvedValue(chart([215.38, null, 213.66, null], 220));
+    const { fetchStockPrices } = await import("./stocks");
+    expect((await fetchStockPrices(["NVDA"])).get("NVDA")!.previousClose).toBe(213.66);
+  });
+});
