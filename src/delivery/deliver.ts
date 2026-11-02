@@ -69,6 +69,7 @@ export async function deliverDigest(
         earningsAnalyses: earningsAnalyses.length > 0 ? earningsAnalyses : undefined,
         personalizationNote: personalization!.note,
         whatChanged: generated.whatChanged,
+        deepDive: generated.deepDive,
         digestLength: personalization!.length,
       })
     : generated.formattedMessage;
@@ -85,8 +86,8 @@ export async function deliverDigest(
       ? await supabase.claimUserDelivery(targetChatId, runDate)
       : true;
     if (!claimed) {
-      logger.info(`Skipping delivery to user ${targetChatId} — already claimed for ${runDate} (concurrent run)`);
-      return { success: false, error: "already delivered for this run date" };
+      logger.info(`Skipping delivery to user ${targetChatId} — slot already claimed for ${runDate}`);
+      return { success: false, held: true, error: "delivery slot already claimed" };
     }
 
     try {

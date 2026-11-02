@@ -14,7 +14,7 @@ export async function deliverDefaultPublication(generated: GeneratedDigest): Pro
     const succeeded = await supabase.wasUserDeliveredToday(chat, date);
     return {
       delivered: false,
-      result: succeeded ? { success: true } : { success: false, ambiguous: true, error: "Default delivery claim requires reconciliation" },
+      result: succeeded ? { success: true } : { success: false, ambiguous: true, held: true, error: "Default delivery claim requires reconciliation" },
     };
   }
   const result = await deliverDigest(generated, undefined, undefined, undefined, result =>

@@ -222,7 +222,7 @@ const AI_KEYWORDS = [
   "AI infrastructure", "GPU", "Blackwell", "datacenter", "data center",
   "inference", "training", "LLM", "AI spending", "cloud AI",
   "power demand", "semiconductor", "chip", "accelerator",
-  "artificial intelligence", "machine learning",
+  "AI", "artificial intelligence", "machine learning",
   "HPC", "high performance computing",
   "cloud capex", "AI revenue", "earnings",
   "analyst upgrade", "analyst downgrade", "price target",
@@ -277,9 +277,31 @@ const AI_KEYWORDS = [
   "GlobalFoundries", "GFS", "Samsung",
 ];
 
+// Tickers are short enough to appear inside ordinary words ("MU" in "much"), so
+// they match case-sensitively as whole words.
+const isTickerKeyword = (keyword: string) => /^[A-Z][A-Z0-9]{0,4}$/.test(keyword);
+const TICKER_KEYWORDS = new RegExp(`\\b(?:${AI_KEYWORDS.filter(isTickerKeyword).join("|")})\\b`);
+const PHRASE_KEYWORDS = AI_KEYWORDS.filter((keyword) => !isTickerKeyword(keyword))
+  .map((keyword) => keyword.toLowerCase());
+
 export function matchesKeywords(title: string, content: string): boolean {
-  const text = `${title} ${content}`.toLowerCase();
-  return AI_KEYWORDS.some((kw) => text.includes(kw.toLowerCase()));
+  const text = `${title} ${content}`;
+  if (TICKER_KEYWORDS.test(text)) return true;
+  const lowered = text.toLowerCase();
+  return PHRASE_KEYWORDS.some((keyword) => lowered.includes(keyword));
+}
+
+function feedItemDate(pubDate: string | undefined): Date {
+  const date = pubDate ? new Date(pubDate) : new Date();
+  return Number.isNaN(date.getTime()) ? new Date() : date;
+}
+
+function feedItemUrl(link: string | undefined): string {
+  try {
+    return /^https?:$/.test(new URL(link || "").protocol) ? link! : "";
+  } catch {
+    return "";
+  }
 }
 
 // ─── Types ────────────────────────────────────────────
@@ -339,10 +361,10 @@ export async function fetchFeedWithStatus(
         );
         articles.push({
           title,
-          url: item.link || "",
+          url: feedItemUrl(item.link),
           summary: contentSnippet.slice(0, 500),
           source: feed.name,
-          date: item.pubDate ? new Date(item.pubDate) : new Date(),
+          date: feedItemDate(item.pubDate),
           contentSnippet,
         });
       }

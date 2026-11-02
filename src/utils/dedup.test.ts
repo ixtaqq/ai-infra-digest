@@ -67,7 +67,7 @@ describe("deduplicateArticles", () => {
   });
 
   it("should return all articles on first run (empty cache)", async () => {
-    const { deduplicateArticles } = await import("./dedup");
+    const { deduplicateArticles, markArticlesSeen } = await import("./dedup");
     const articles = [
       { url: "https://example.com/1", title: "Article 1" },
       { url: "https://example.com/2", title: "Article 2" },
@@ -78,25 +78,40 @@ describe("deduplicateArticles", () => {
   });
 
   it("should skip already-seen articles", async () => {
-    const { deduplicateArticles } = await import("./dedup");
+    const { deduplicateArticles, markArticlesSeen } = await import("./dedup");
     const articles = [
       { url: "https://example.com/1", title: "Article 1" },
     ];
-    // First call: all articles are new
     await deduplicateArticles(articles, 48);
-    // Second call with same articles: should be empty
+    await markArticlesSeen(articles, 48);
     const result = await deduplicateArticles(articles, 48);
     expect(result).toHaveLength(0);
   });
 
+  it("keeps an article eligible until it has been marked as analyzed", async () => {
+    const { deduplicateArticles, markArticlesSeen } = await import("./dedup");
+    const articles = [{ url: "https://example.com/unselected", title: "Unselected story" }];
+    await deduplicateArticles(articles, 48);
+    expect(await deduplicateArticles(articles, 48)).toHaveLength(1);
+  });
+
+  it("marks an article once however many times it is marked", async () => {
+    const { markArticlesSeen } = await import("./dedup");
+    const articles = [{ url: "https://example.com/1", title: "Article 1" }];
+    await markArticlesSeen(articles, 48);
+    await markArticlesSeen(articles, 48);
+    expect(JSON.parse(fs.readFileSync(testCachePath, "utf8")).entries).toHaveLength(1);
+  });
+
   it("should keep articles without URLs", async () => {
-    const { deduplicateArticles } = await import("./dedup");
+    const { deduplicateArticles, markArticlesSeen } = await import("./dedup");
     const articles = [
       { url: "", title: "No URL" },
       { url: "https://example.com/1", title: "Has URL" },
     ];
     const firstRun = await deduplicateArticles(articles, 48);
     expect(firstRun).toHaveLength(2);
+    await markArticlesSeen(articles, 48);
 
     // Second run: no-URL article should pass through, has-URL should be skipped
     const secondRun = await deduplicateArticles(articles, 48);
@@ -105,7 +120,7 @@ describe("deduplicateArticles", () => {
   });
 
   it("should remove exact URL and title duplicates within the current batch", async () => {
-    const { deduplicateArticles } = await import("./dedup");
+    const { deduplicateArticles, markArticlesSeen } = await import("./dedup");
     const articles = [
       { url: "https://example.com/1", title: "Same story" },
       { url: "https://example.com/1", title: "Same story from another feed" },
@@ -122,7 +137,7 @@ describe("deduplicateArticles", () => {
   });
 
   it("should respect retention hours", async () => {
-    const { deduplicateArticles } = await import("./dedup");
+    const { deduplicateArticles, markArticlesSeen } = await import("./dedup");
     const articles = [
       { url: "https://example.com/1", title: "Article 1" },
     ];

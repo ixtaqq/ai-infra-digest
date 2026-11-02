@@ -270,6 +270,12 @@ describe("delivery opt-out", () => {
     ]);
   });
 
+  it.each(["/stop please", "/STOP", "/Unsubscribe now"])("does not ignore the opt-out %s", async (command) => {
+    await simulate(command);
+
+    expect(h.upsertUserPreferences).toHaveBeenCalledWith({ chat_id: 42, is_active: false });
+  });
+
   it("resumes a user who previously completed onboarding", async () => {
     h.getUserPreferences.mockResolvedValueOnce({
       chat_id: 42,
@@ -354,6 +360,11 @@ describe("watchlist input", () => {
     await simulate(`/watchlist ${value}`);
     expect(h.upsertUserPreferences).not.toHaveBeenCalled();
     expect(String(h.sendMessage.mock.calls.at(-1)?.[1])).toContain("valid ticker");
+  });
+
+  it("does not overwrite the watchlist for the typo /watchlists", async () => {
+    await simulate("/watchlists");
+    expect(h.upsertUserPreferences).not.toHaveBeenCalled();
   });
 
   it("does not claim to save session preferences when persistence fails", async () => {

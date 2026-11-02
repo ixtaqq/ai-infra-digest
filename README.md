@@ -478,7 +478,7 @@ This command requires the local Supabase/Docker stack but does not require Supab
 
 ### Daily Digest
 
-`.github/workflows/daily-digest.yml` — runs at **8:00 AM MYT** (midnight UTC). Generates and sends the digest to the default `TELEGRAM_CHAT_ID`.
+`.github/workflows/daily-digest.yml` — scheduled for **06:17 MYT** (22:17 UTC). Generates and publishes the edition; `scheduled-delivery.yml` sends it.
 
 ### Scheduled Per-User Delivery
 
@@ -551,7 +551,7 @@ ai-infra-digest/
 ├── .github/workflows/
 │   ├── ci.yml                                # Push/PR: lint + unit tests
 │   ├── codeql.yml                            # v13 — push/PR + weekly: CodeQL security analysis
-│   ├── daily-digest.yml                      # 8 AM MYT cron
+│   ├── daily-digest.yml                      # 06:17 MYT publish cron
 │   ├── scheduled-delivery.yml               # Every 10 min, per-user fan-out
 │   ├── data-retention.yml                    # Weekly: calls cleanup_old_data() RPC
 │   └── weekly-thesis.yml                     # Weekly: bull/bear thesis snapshots

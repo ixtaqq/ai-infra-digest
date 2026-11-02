@@ -1,5 +1,6 @@
 import { registerCommand } from "../sender/telegram";
 import type { TrendingItem } from "../pipeline/trending";
+import { NEWS_CATEGORIES } from "../processor/ai";
 import { escapeHtml } from "../utils/escape";
 import { queryDerivedMetrics } from "../utils/derived-metrics";
 import { supabase } from "../utils/supabase";
@@ -45,7 +46,7 @@ export function registerTrendCommands(): void {
         lines.push(`${typeEmoji} <b>${escapeHtml(item.entity)}</b> ${sentimentEmoji}`);
         lines.push(`   ${item.mentionCount} mentions, avg score ${item.avgScore}/10`);
         if (item.topArticles.length) {
-          lines.push(`   📰 <a href="${item.topArticles[0].url}">${escapeHtml(item.topArticles[0].title.slice(0, 80))}</a>`);
+          lines.push(`   📰 <a href="${escapeHtml(item.topArticles[0].url)}">${escapeHtml(item.topArticles[0].title.slice(0, 80))}</a>`);
         }
         lines.push("");
       }
@@ -68,7 +69,10 @@ export function registerTrendCommands(): void {
     const days = daysMatch ? parseInt(daysMatch, 10) : 30;
     const entityTypePart: "ticker" | "sector" = parts.find((p: string) => p.toLowerCase() === "sector") ? "sector" : "ticker";
     const entityParts = parts.filter((p: string) => p !== daysMatch && p.toLowerCase() !== "sector");
-    const entity = entityParts.join(" ").toUpperCase() || "NVDA";
+    const requested = entityParts.join(" ");
+    const entity = entityTypePart === "sector"
+      ? NEWS_CATEGORIES.find((category) => category.toLowerCase() === requested.toLowerCase()) ?? requested
+      : requested.toUpperCase() || "NVDA";
 
     try {
       const rows = await queryDerivedMetrics(entityTypePart, entity, days);

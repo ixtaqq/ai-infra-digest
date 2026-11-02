@@ -166,8 +166,8 @@ export function buildCorroborationMap(
 }
 
 /**
- * Removes entries older than the specified hours and
- * filters out articles that were already processed.
+ * Filters out articles already analyzed within the retention window. It records
+ * nothing, because an article skipped by the AI cap is still unread.
  */
 export async function deduplicateArticles<T extends { url: string; title: string }>(
   articles: T[],
@@ -177,14 +177,13 @@ export async function deduplicateArticles<T extends { url: string; title: string
   const now = new Date();
   const cutoff = new Date(now.getTime() - retentionHours * 60 * 60 * 1000);
 
-  // Clean old entries
-  cache.entries = cache.entries.filter(
+  const recentEntries = cache.entries.filter(
     (e) => new Date(e.firstSeen) > cutoff
   );
 
   // Build set of seen URLs
-  const seenUrls = new Set(cache.entries.map((e) => e.url));
-  const seenTitles = cache.entries.map((e) => e.title);
+  const seenUrls = new Set(recentEntries.map((e) => e.url));
+  const seenTitles = recentEntries.map((e) => e.title);
   const batchUrls = new Set<string>();
   const batchTitles = new Set<string>();
 
@@ -211,20 +210,28 @@ export async function deduplicateArticles<T extends { url: string; title: string
     return true;
   });
 
-  // Add new articles to cache
-  const newEntries: CacheEntry[] = newArticles.map((a) => ({
-    url: a.url,
-    title: a.title,
-    firstSeen: now.toISOString(),
-  }));
-
-  cache.entries.push(...newEntries);
-  await saveCache(cache);
-
   const skipped = articles.length - newArticles.length;
   if (skipped > 0) {
     logger.info(`Dedup: skipped ${skipped} articles (current-batch URL/title match + Jaccard similarity)`);
   }
 
   return newArticles;
+}
+
+/** Records analyzed articles and prunes expired entries. Repeat calls change nothing. */
+export async function markArticlesSeen(
+  articles: Array<{ url: string; title: string }>,
+  retentionHours = 48
+): Promise<void> {
+  const cache = await loadCache();
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - retentionHours * 60 * 60 * 1000);
+  cache.entries = cache.entries.filter((e) => new Date(e.firstSeen) > cutoff);
+  const known = new Set(cache.entries.map((e) => e.url));
+  for (const article of articles) {
+    if (!article.url || known.has(article.url)) continue;
+    known.add(article.url);
+    cache.entries.push({ url: article.url, title: article.title, firstSeen: now.toISOString() });
+  }
+  await saveCache(cache);
 }

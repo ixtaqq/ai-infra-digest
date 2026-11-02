@@ -100,7 +100,7 @@ const publicationSchema = z.object({
   runDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), formattedMessage: z.string().min(1),
   digest: z.object({ articles: z.array(article),
     topStocks: z.array(z.object({ ticker: z.string(), reason: z.string(), sentiment: z.enum(["positive", "negative", "neutral"]) })),
-    marketOutlook: z.string(), summary: z.string(), categories: z.record(z.array(article)),
+    marketOutlook: z.string(), summary: z.string(), categories: z.record(z.string(), z.array(article)),
     usage, batchesRun: count }),
   articlesCollected: count,
   feedStatuses: z.array(z.object({ name: z.string(), url: z.string(),

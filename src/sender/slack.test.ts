@@ -19,8 +19,16 @@ describe("htmlToSlack", () => {
     expect(htmlToSlack('<a href="https://x.com/a">Title</a>')).toBe("<https://x.com/a|Title>");
   });
 
-  it("strips unknown tags and unescapes entities", () => {
-    expect(htmlToSlack("<blockquote>a &amp; b &lt;c&gt;</blockquote>")).toBe("a & b <c>");
+  it("strips unknown tags and keeps the entities Slack requires", () => {
+    expect(htmlToSlack("<blockquote>a &amp; b &lt;c&gt;</blockquote>")).toBe("a &amp; b &lt;c&gt;");
+  });
+
+  it("does not turn escaped feed text into a live Slack mention", () => {
+    expect(htmlToSlack("&lt;!channel&gt; buy now")).toBe("&lt;!channel&gt; buy now");
+  });
+
+  it("decodes quotes that Slack does not treat as entities", () => {
+    expect(htmlToSlack("Nvidia&#39;s &quot;Rubin&quot;")).toBe('Nvidia\'s "Rubin"');
   });
 
   it("handles multi-line bold spans (dotall)", () => {

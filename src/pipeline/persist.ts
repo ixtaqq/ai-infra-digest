@@ -195,7 +195,7 @@ export async function persistDigestMetrics(
     duration_seconds: durationSeconds,
     error_message: status === "success" ? undefined : errorMessage,
     capabilities: generated.capabilities,
-    degraded_stages: degradedCapabilities(generated.capabilities),
+    degraded_stages: [...degradedCapabilities(generated.capabilities), ...(generated.qualityIssues ?? [])],
     prompt_version: AI_PROMPT_VERSION,
     analysis_schema_version: AI_ANALYSIS_SCHEMA_VERSION,
     quality_metrics: { ...qualityMetrics, baselinePassed: qualityAssessment.passed,

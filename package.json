@@ -22,6 +22,7 @@
     "test:unit": "vitest run --exclude '**/*.integration.test.ts'",
     "test:watch": "vitest",
     "verify:website": "node scripts/verify-website.mjs",
+    "verify:live-contracts": "tsx scripts/verify-live-contracts.ts",
     "verify:local-api": "node scripts/verify-local-api.mjs",
     "verify:local-concurrency": "node scripts/verify-local-concurrency.mjs",
     "db:diff": "supabase db diff",
@@ -45,10 +46,10 @@
   "dependencies": {
     "dotenv": "^16.4.5",
     "node-telegram-bot-api": "^1.1.1",
-    "nodemailer": "10.0.15",
-    "openai": "^4.73.0",
+    "nodemailer": "10.3.1",
+    "openai": "^7.47.0",
     "rss-parser": "^3.13.0",
-    "zod": "^3.25.76"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^22.5.0",

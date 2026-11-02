@@ -75,7 +75,7 @@ vi.mock("./utils/novelty", () => ({ flagRehashes: vi.fn(async () => undefined) }
 vi.mock("./utils/grounding", () => ({ attachGroundingNotes: vi.fn() }));
 vi.mock("./utils/stocks", () => ({ fetchStockPrices: h.fetchStockPrices }));
 vi.mock("./formatter/telegram", () => ({ formatDigestTelegram: vi.fn(() => "DIGEST_MSG") }));
-vi.mock("./utils/dedup", () => ({ deduplicateArticles: (a: unknown[]) => a, buildCorroborationMap: vi.fn(() => new Map()) }));
+vi.mock("./utils/dedup", () => ({ deduplicateArticles: (a: unknown[]) => a, markArticlesSeen: vi.fn(), buildCorroborationMap: vi.fn(() => new Map()) }));
 vi.mock("./utils/metrics", () => ({
   emitFeedFetch: vi.fn(), emitStockFetch: vi.fn(), emitDigestDelivery: vi.fn(), emitError: vi.fn(),
 }));
@@ -259,6 +259,16 @@ describe("digest fan-out", () => {
   });
 });
 
+describe("personalized rendering", () => {
+  it("keeps the deep dive that the default edition shows", async () => {
+    const { formatDigestTelegram } = await import("./formatter/telegram");
+    const generated = await generateDigest();
+    const deepDive = { title: "Deep dive" } as unknown as NonNullable<typeof generated>["deepDive"];
+    await deliverDigest({ ...generated!, deepDive }, 101, { chat_id: 101, digest_length: "brief" });
+    expect(vi.mocked(formatDigestTelegram).mock.lastCall?.[1]).toMatchObject({ deepDive });
+  });
+});
+
 describe("delivery state", () => {
   it("releases a failed claim so the next attempt can retry", async () => {
     h.isConfigured.mockReturnValue(true);
@@ -320,7 +330,7 @@ describe("delivery state", () => {
     const second = await deliverDigest(generated!, 101, undefined, deliveryDate);
 
     expect(first.success).toBe(true);
-    expect(second).toEqual({ success: false, error: "already delivered for this run date" });
+    expect(second).toEqual({ success: false, held: true, error: "delivery slot already claimed" });
     expect(h.sendDigestMessageToUser).toHaveBeenCalledTimes(1);
     expect(h.logUserDelivery).toHaveBeenCalledTimes(1);
   });

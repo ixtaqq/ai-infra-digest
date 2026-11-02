@@ -74,6 +74,21 @@ describe("onboarding consent", () => {
     expect(supabase.recordProductEvent).toHaveBeenCalledWith("onboarding_started", 42);
   });
 
+  it("escapes the first name in the HTML welcome message", async () => {
+    const sendMessage = vi.fn(async () => ({ message_id: 1 }));
+    const bot = { sendMessage } as unknown as Parameters<typeof startOnboarding>[0];
+    const msg = {
+      chat: { id: 43 },
+      from: { first_name: "Sam <3", username: "sam" },
+    } as unknown as Parameters<typeof startOnboarding>[1];
+
+    await startOnboarding(bot, msg);
+
+    const text = sendMessage.mock.calls.map((call) => String((call as unknown[])[1])).join("\n");
+    expect(text).toContain("Sam &lt;3");
+    expect(text).not.toContain("Sam <3");
+  });
+
   it("expires an abandoned session at the TTL boundary", async () => {
     vi.useFakeTimers();
     try {

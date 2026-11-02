@@ -111,7 +111,7 @@ describe("scheduled publication delivery", () => {
     h.config.telegram.chatId = "-100";
     h.getAllActiveUsers.mockResolvedValue([]);
     h.claimUserDelivery.mockResolvedValue(false);
-    await expect(schedulerMain()).rejects.toThrow("1 failed");
+    await schedulerMain();
     expect(h.deliverDigest).not.toHaveBeenCalled();
   });
 
@@ -173,13 +173,31 @@ describe("scheduled publication delivery", () => {
     );
   });
 
-  it("waits safely when no canonical publication is ready", async () => {
+  it("waits without failing the run before the publication deadline", async () => {
+    vi.setSystemTime(new Date("2026-08-19T11:59:00Z"));
+    h.getDigestPublication.mockResolvedValueOnce(null);
+
+    await schedulerMain();
+
+    expect(h.deliverDigest).not.toHaveBeenCalled();
+    expect(h.generateDigest).not.toHaveBeenCalled();
+  });
+
+  it("fails the run when the edition is still missing at the deadline", async () => {
+    vi.setSystemTime(new Date("2026-08-19T12:00:00Z"));
     h.getDigestPublication.mockResolvedValueOnce(null);
 
     await expect(schedulerMain()).rejects.toThrow("1 failed");
 
     expect(h.deliverDigest).not.toHaveBeenCalled();
-    expect(h.generateDigest).not.toHaveBeenCalled();
+  });
+
+  it("reports a held delivery without failing every later run", async () => {
+    h.deliverDigest.mockResolvedValue({ success: false, held: true, error: "delivery slot already claimed" });
+
+    await schedulerMain();
+
+    expect(h.deliverDigest).toHaveBeenCalledTimes(1);
   });
 });
 

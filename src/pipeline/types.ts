@@ -24,4 +24,5 @@ export interface GeneratedDigest {
   deepDive?: DeepDiveResult;
   activeWatches: PriceWatch[];
   capabilities: CapabilityReport;
+  qualityIssues?: string[];
 }
