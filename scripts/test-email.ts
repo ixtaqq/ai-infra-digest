@@ -11,7 +11,7 @@ import dotenv from "dotenv";
 import path from "path";
 import nodemailer from "nodemailer";
 
-dotenv.config({ path: path.resolve(__dirname, "../.env") });
+dotenv.config({ path: path.resolve(__dirname, "../.env"), quiet: true });
 
 const user = process.env.SMTP_USER;
 const pass = process.env.SMTP_PASS;

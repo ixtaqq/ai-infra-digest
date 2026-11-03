@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 import path from "path";
 
-dotenv.config({ path: path.resolve(__dirname, "../.env") });
+dotenv.config({ path: path.resolve(__dirname, "../.env"), quiet: true });
 
 const DEFAULT_BUDGET_DAILY_USD = 0.5;
 const DEFAULT_BUDGET_MONTHLY_USD = 5.0;
