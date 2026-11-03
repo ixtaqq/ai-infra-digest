@@ -8,9 +8,9 @@ export function htmlToSlack(html: string): string {
     .replace(/<i>(.*?)<\/i>/gs, "_$1_")
     .replace(/<code>(.*?)<\/code>/gs, "`$1`")
     .replace(/<a href="(.*?)">(.*?)<\/a>/gs, "<$1|$2>")
-    // Strip remaining HTML tags — but NOT Slack link syntax (<https://...|text>)
-    // produced by the anchor conversion above, which also starts with "<".
-    .replace(/<\/?(?!https?:)[a-zA-Z][^>]*>/g, "")
+    .replace(/<[^<>]*>/g, (tag) => (/^<\/?(?!https?:)[a-zA-Z]/.test(tag) ? "" : tag))
+    // Removing a tag can expose <!channel> or another Slack control sequence.
+    .replace(/<(?!https?:)/g, "&lt;")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'");
 }
