@@ -39,8 +39,8 @@ describe("htmlToSlack", () => {
 describe("htmlToSlack control sequences", () => {
   it("cannot rebuild a mention or tag from nested markup", () => {
     expect(htmlToSlack("<<b>!channel>")).toBe("&lt;!channel>");
-    expect(htmlToSlack("<<i>script>x")).toBe("&lt;script>x");
-    expect(htmlToSlack("<scr<b>ipt>x")).toBe("&lt;script>x");
+    expect(htmlToSlack("<<i>script>x")).toBe("x");
+    expect(htmlToSlack("<scr<b>ipt>x")).toBe("x");
   });
 
   it("keeps links and plain comparisons readable", () => {
