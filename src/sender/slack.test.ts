@@ -38,9 +38,16 @@ describe("htmlToSlack", () => {
 
 describe("htmlToSlack control sequences", () => {
   it("cannot rebuild a mention or tag from nested markup", () => {
-    expect(htmlToSlack("<<b>!channel>")).toBe("&lt;!channel>");
-    expect(htmlToSlack("<<i>script>x")).toBe("x");
-    expect(htmlToSlack("<scr<b>ipt>x")).toBe("x");
+    for (const hostile of ["<<b>!channel>", "<<x>!channel>", "<<i>script>x", "<scr<b>ipt>x", "</<b>script>x"]) {
+      expect(htmlToSlack(hostile)).not.toMatch(/<(?!https?:)/);
+    }
+    expect(htmlToSlack("<<x>!channel>")).toBe("&lt;!channel>");
+  });
+
+  it("stays fast on unclosed tags", () => {
+    const start = performance.now();
+    htmlToSlack("<b>a".repeat(50_000));
+    expect(performance.now() - start).toBeLessThan(1_000);
   });
 
   it("keeps links and plain comparisons readable", () => {

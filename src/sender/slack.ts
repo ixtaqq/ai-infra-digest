@@ -5,10 +5,11 @@ import { logger } from "../utils/logger";
 // Convert Telegram HTML to Slack mrkdwn (exported for unit tests)
 export function htmlToSlack(html: string): string {
   const converted = html
-    .replace(/<b>(.*?)<\/b>/gs, "*$1*")
-    .replace(/<i>(.*?)<\/i>/gs, "_$1_")
-    .replace(/<code>(.*?)<\/code>/gs, "`$1`")
-    .replace(/<a href="(.*?)">(.*?)<\/a>/gs, "<$1|$2>");
+    .replace(/<\/?b>/g, "*")
+    .replace(/<\/?i>/g, "_")
+    .replace(/<\/?code>/g, "`")
+    .replace(/<a href="([^"<>]*)">/g, "<$1|")
+    .replace(/<\/a>/g, ">");
   return stripHtmlTags(converted, (tag) => /^<https?:/.test(tag))
     // Removing a tag can expose <!channel> or another Slack control sequence.
     .replace(/<(?!https?:)/g, "&lt;")
