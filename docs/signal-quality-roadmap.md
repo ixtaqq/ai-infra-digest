@@ -1,6 +1,6 @@
 # Signal Quality Roadmap — Phase VII–IX
 
-**Status:** Approved · 2026-06-24  
+**Status:** Shipped. See [the implementation history](implementation-history.md), Phases VII to IX. Approved 2026-06-24.  
 **Framing:** Hybrid B-wins → A-core → C-depth  
 **Constraint:** Solo, nights-and-weekends, sub-$1/month AI cost budget
 

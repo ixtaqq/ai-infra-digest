@@ -84,7 +84,7 @@ This file keeps the project's milestone record, moved unchanged from the README 
 - **v10.0 (perf)** — AI batches run with concurrency 2 (was sequential); `.ai-cache/` prunes expired entries; embeddings abort with an operator-facing quota warning on persistent 429
 - **v10.0 (supply chain)** — GitHub Actions pinned to commit SHAs; container runs as non-root `node` user; `scripts/` now type-checked in CI
 - **v10.1** — 🧭 Bull/Bear Thesis Snapshots — weekly batched AI pass over 30d of `daily_derived_metrics` + latest SEC filings for the top-10 tickers; `ticker_theses` table; `/thesis NVDA` command; dashboard Thesis Snapshots card; `.github/workflows/weekly-thesis.yml` (Sunday 4 AM UTC)
-- **v10.2 — Full codebase audit + remediation** — see [`AUDIT.md`](AUDIT.md) for the complete report (30 findings, root-cause analysis, 3-horizon roadmap). Every Critical/High finding fixed, plus the full Short-Term checklist:
+- **v10.2 — Full codebase audit + remediation** — see [`AUDIT.md`](../AUDIT.md) for the complete report (30 findings, root-cause analysis, 3-horizon roadmap). Every Critical/High finding fixed, plus the full Short-Term checklist:
   - **Security** — untrusted RSS content now passed to the AI as fenced/escaped JSON with explicit anti-injection instructions (was raw prose interpolation); RSS titles/content HTML-stripped at collection time in addition to render-time escaping; `WEBHOOK_SECRET` required unconditionally to start the webhook server; NDJSON logs untracked from git
   - **Reliability** — `fetchTranscript()`'s 429 retry now caps at 2 attempts (was unbounded recursion); scheduler delivery is now claimed atomically per `(chat_id, run_date)` immediately before sending, closing a double-delivery race under overlapping cron runs; run dates computed in the configured timezone instead of UTC
   - **Data integrity** — a zod validation layer now sits in front of every AI JSON response (`ai.ts`, `sec.ts`, `bear-cases.ts`, `thesis.ts`, `earnings.ts`), coercing type-confused fields (e.g. `"8"` instead of `8`) instead of crashing `.toFixed()` calls downstream — caught and fixed a live instance of this exact bug in `processor/earnings.ts` while adding coverage
@@ -137,6 +137,13 @@ Two `TODOS.md` items connecting existing features instead of adding new surface:
 Catalyst Tracker and a `node-telegram-bot-api`→grammY migration remain
 unscheduled pending usage or maintenance evidence. Related Prior Coverage
 remains rejected; see `TODOS.md`.
+
+### 2026-11 · Data accuracy and delivery timing ✅ Shipped
+
+Entries from here on are added as work ships.
+
+- **v1.2.0** — Real stock moves from the prior session close, SEC extraction that reads real filing numbers and Form 6-K, pg_cron workflow dispatch, scheduler states, five quality alerts, weekly live API contract checks, and a stuck-claim release command.
+- **After v1.2.0** — "Why it moved", three replacement feeds, ticker corrections, one search result per URL, a 30-day URL memory, a Slack control-sequence fix, and a repair of 1,251 historical price rows. See `docs/releases/unreleased.md`.
 
 ## Migration history to 2026-08-23
 
