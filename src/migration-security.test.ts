@@ -17,6 +17,17 @@ const feedbackMigration = readFileSync(
   "utf8"
 );
 
+describe("search_articles distinct URLs", () => {
+  it("still reads only columns granted to anon", () => {
+    const sql = readFileSync(
+      resolve(process.cwd(), "supabase/migrations/20261103090000_search_articles_distinct_urls.sql"), "utf8"
+    );
+    expect(sql).toContain("SECURITY INVOKER");
+    expect(sql).not.toContain("a.*");
+    expect(sql).not.toContain("embedding");
+  });
+});
+
 describe("canonical publication migration security contract", () => {
   it("keeps publications immutable and service-role-only", () => {
     expect(migration).toMatch(/publication_date DATE NOT NULL UNIQUE/);

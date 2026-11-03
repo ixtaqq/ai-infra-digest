@@ -136,6 +136,26 @@ describe("deduplicateArticles", () => {
     ]);
   });
 
+  it("skips a URL the feed republishes after the title window ends", async () => {
+    const { deduplicateArticles, markArticlesSeen } = await import("./dedup");
+    const url = "https://example.com/republished";
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() - 5 * 24 * 3_600_000 });
+    await markArticlesSeen([{ url, title: "Republished story about GPUs" }]);
+    vi.useRealTimers();
+
+    expect(await deduplicateArticles([{ url, title: "Republished story about GPUs" }])).toEqual([]);
+  });
+
+  it("allows a similar headline at a new URL after the title window ends", async () => {
+    const { deduplicateArticles, markArticlesSeen } = await import("./dedup");
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() - 5 * 24 * 3_600_000 });
+    await markArticlesSeen([{ url: "https://example.com/old", title: "NVIDIA announces new GPU roadmap" }]);
+    vi.useRealTimers();
+
+    const fresh = [{ url: "https://example.com/new", title: "NVIDIA announces new GPU roadmap" }];
+    expect(await deduplicateArticles(fresh)).toEqual(fresh);
+  });
+
   it("should respect retention hours", async () => {
     const { deduplicateArticles, markArticlesSeen } = await import("./dedup");
     const articles = [

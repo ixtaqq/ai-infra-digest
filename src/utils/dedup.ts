@@ -169,21 +169,21 @@ export function buildCorroborationMap(
  * Filters out articles already analyzed within the retention window. It records
  * nothing, because an article skipped by the AI cap is still unread.
  */
+const URL_RETENTION_HOURS = 30 * 24;
+
 export async function deduplicateArticles<T extends { url: string; title: string }>(
   articles: T[],
-  retentionHours = 48
+  titleWindowHours = 48
 ): Promise<T[]> {
   const cache = await loadCache();
-  const now = new Date();
-  const cutoff = new Date(now.getTime() - retentionHours * 60 * 60 * 1000);
+  const titleCutoff = new Date(Date.now() - titleWindowHours * 60 * 60 * 1000);
 
-  const recentEntries = cache.entries.filter(
-    (e) => new Date(e.firstSeen) > cutoff
-  );
-
-  // Build set of seen URLs
-  const seenUrls = new Set(recentEntries.map((e) => e.url));
-  const seenTitles = recentEntries.map((e) => e.title);
+  // Feeds relist old stories, so a URL stays seen for as long as the cache keeps it.
+  // Titles expire sooner, because a new story can share a headline with an old one.
+  const seenUrls = new Set(cache.entries.map((e) => e.url));
+  const seenTitles = cache.entries
+    .filter((e) => new Date(e.firstSeen) > titleCutoff)
+    .map((e) => e.title);
   const batchUrls = new Set<string>();
   const batchTitles = new Set<string>();
 
@@ -221,7 +221,7 @@ export async function deduplicateArticles<T extends { url: string; title: string
 /** Records analyzed articles and prunes expired entries. Repeat calls change nothing. */
 export async function markArticlesSeen(
   articles: Array<{ url: string; title: string }>,
-  retentionHours = 48
+  retentionHours = URL_RETENTION_HOURS
 ): Promise<void> {
   const cache = await loadCache();
   const now = new Date();

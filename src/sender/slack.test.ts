@@ -36,6 +36,20 @@ describe("htmlToSlack", () => {
   });
 });
 
+describe("htmlToSlack control sequences", () => {
+  it("cannot rebuild a mention or tag from nested markup", () => {
+    for (const hostile of ["<<b>!channel>", "<<x>!channel>", "<<i>script>x", "<scr<b>ipt>x", "</<b>script>x"]) {
+      expect(htmlToSlack(hostile)).not.toMatch(/<(?!https?:)/);
+    }
+    expect(htmlToSlack("<<x>!channel>")).toBe("&lt;!channel>");
+  });
+
+  it("keeps links and plain comparisons readable", () => {
+    expect(htmlToSlack('<a href="https://x.com/a">T</a> <b>b</b>')).toBe("<https://x.com/a|T> *b*");
+    expect(htmlToSlack("&lt;5% vs &gt;3%")).toBe("&lt;5% vs &gt;3%");
+  });
+});
+
 describe("chunkForSlack", () => {
   it("returns a single chunk for short text", () => {
     expect(chunkForSlack("hello\nworld")).toEqual(["hello\nworld"]);

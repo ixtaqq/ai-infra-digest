@@ -18,7 +18,7 @@ export function escapeHtml(text: string): string {
  * Scans once with a stack of open "<" positions. Removing a tag can expose another
  * (<<b>script>), and re-running a regex until stable is quadratic on hostile feeds.
  */
-export function stripHtmlTags(text: string): string {
+export function stripHtmlTags(text: string, keep?: (tag: string) => boolean): string {
   const kept: string[] = [];
   const opens: number[] = [];
   const startsTag = (open: number) => {
@@ -28,7 +28,7 @@ export function stripHtmlTags(text: string): string {
   for (const char of text) {
     if (char === ">") {
       const open = opens.pop();
-      if (open !== undefined && startsTag(open)) {
+      if (open !== undefined && startsTag(open) && !keep?.(kept.slice(open).join(""))) {
         kept.length = open;
         continue;
       }

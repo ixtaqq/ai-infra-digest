@@ -34,6 +34,34 @@ describe("formatDigestTelegram", () => {
     expect(result).toContain("MARKET OUTLOOK");
   });
 
+  it("shows why a large move happened, with an escaped link", async () => {
+    const { formatDigestTelegram } = await import("./telegram");
+    const covering = {
+      title: "Deal <b>news</b>", url: "https://example.com/?a=1&b=2", source: "T", summary: "", impact: "Neutral",
+      impactScore: 7, affectedStocks: ["MRVL"], reason: "", category: "Chips & GPUs",
+    } as ProcessedArticle;
+    const result = formatDigestTelegram({
+      articles: [covering], topStocks: [], marketOutlook: "", summary: "", categories: emptyCategories(),
+      usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 }, batchesRun: 0,
+    }, {
+      stockPrices: new Map([["MRVL", { ticker: "MRVL", price: 171.41, change: -25, changePercent: -12.72, previousClose: 196 }]]),
+    });
+
+    expect(result).toContain("<b>Why it moved</b>");
+    expect(result).toContain('<b>MRVL</b> -12.72% · <a href="https://example.com/?a=1&amp;b=2">Deal &lt;b&gt;news&lt;/b&gt;</a>');
+    expect(result).toContain("not a proven cause");
+  });
+
+  it("omits why it moved when no move qualifies", async () => {
+    const { formatDigestTelegram } = await import("./telegram");
+    const result = formatDigestTelegram({
+      articles: [], topStocks: [], marketOutlook: "", summary: "", categories: emptyCategories(),
+      usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 }, batchesRun: 0,
+    }, { stockPrices: new Map([["NVDA", { ticker: "NVDA", price: 1, change: 0, changePercent: 0, previousClose: 1 }]]) });
+
+    expect(result).not.toContain("Why it moved");
+  });
+
   it("should include articles when provided", async () => {
     const { formatDigestTelegram } = await import("./telegram");
     const cat = emptyCategories();
