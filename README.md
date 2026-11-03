@@ -18,7 +18,7 @@ Last reviewed on 2026-11-03. The package version is `1.2.0`.
 | Telegram bot | Deployed as a webhook service on Render. |
 | Website | Deployed on Vercel. |
 | Workflow timing | pg_cron dispatches both workflows, and GitHub's own crons stay as a backstop. On 2026-11-03 the digest started at 06:17 MYT and the delivery reached Telegram at 08:00 MYT. GitHub alone had run the digest 1.8 to 3.7 hours late, and the 10-minute delivery cron about every 4.4 hours (median gap, 2026-10-18 to 2026-11-02). |
-| Stock quotes | Working. All 21 quotes in the 2026-11-03 edition show real moves. The 1,307 rows stored before the fix all show 0% change. |
+| Stock quotes | Working. All 21 quotes in the 2026-11-03 edition show real moves. On 2026-11-03, 1,251 of the 1,307 rows stored before the fix were recomputed from Yahoo closes and checked against Nasdaq. The other 56 stay at 0%, because they were really flat or have no matching close or no second source. |
 | SEC extracts | Working. The 2026-11-03 edition has the first 4 extracts, for MRVL, ON, and AMZN. The 64 earlier editions have none. |
 | Email copies | Working. The 2026-11-03 delivery logged a successful email copy. Email and Slack failures do not stop delivery. |
 | RSS | Yahoo Finance, VentureBeat AI, and AI News had dead URLs. Their replacement URLs returned items on 2026-11-03 but have not run in production yet. |
@@ -250,7 +250,7 @@ npx tsx scripts/test-email.ts
 | Database | Supabase (Postgres and pgvector) |
 | Website | Vercel, project `goldirham-stack` |
 
-Merging to `main` applies migrations through Supabase's GitHub integration and deploys Render. Stop the affected workers before you merge a release that includes a migration.
+Merging to `main` applies migrations through Supabase's GitHub integration and deploys Render. Stop the affected workers before you merge a release that includes a migration. Merging does not update the website, which needs its own Vercel deploy.
 
 ### Scheduled workflows
 
@@ -392,6 +392,8 @@ These are planning estimates and have not been measured recently.
 
 ## Further reading
 
+- [Release notes for v1.2.0](docs/releases/v1.2.0.md)
+- [Changes since v1.2.0](docs/releases/unreleased.md)
 - [Release notes for v1.2.0](docs/releases/v1.2.0.md)
 - [Release notes for v1.1.0](docs/releases/v1.1.0.md)
 - [Roadmap implementation and rollout record](docs/roadmap-implementation.md)

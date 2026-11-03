@@ -1,6 +1,6 @@
 # Roadmap implementation and release checklist
 
-Status: implemented release deployed on 2026-09-24 through PR #8. See the production rollout record below for live verification and remaining limits. The roadmap release names are milestones, not changes to the existing package or migration version history.
+Status: implemented release deployed on 2026-09-24 through PR #8, followed by the updates recorded under "Production updates — 2026-11-02 and 2026-11-03". See the production rollout record below for live verification and remaining limits. The roadmap release names are milestones, not changes to the existing package or migration version history.
 
 ## Implemented
 
@@ -213,6 +213,25 @@ Subsequent database tests, lint, real HTTP contracts, and concurrent claims all 
 - The database backup is outside the repository at `%USERPROFILE%/.codex/backups/ai-infra-digest/20260924-141951/`. Public application schema, migration history, data and roles were exported, file structure checked, and SHA-256 hashes rechecked before the cutover. Its manifest records `restoreTested: false`; this was not a restore drill.
 - Vercel hosted build `dpl_22o2Xxmd75k4tYz9fFzKRx5EnsbB` was verified with `vercel curl`, then promoted to [goldirham-stack.vercel.app](https://goldirham-stack.vercel.app). The source was a clean staging copy of tracked website files plus generated public configuration and project identity. No private environment files were uploaded. The public configuration contains a publishable key.
 - All four production workflows are active again. No manual pipeline run, paid model request, test message, or delivery reconciliation was performed.
+
+### Production updates — 2026-11-02 and 2026-11-03
+
+These PRs merged after the rollout below: [#12](https://github.com/ixtaqq/ai-infra-digest/pull/12), [#13](https://github.com/ixtaqq/ai-infra-digest/pull/13), [#14](https://github.com/ixtaqq/ai-infra-digest/pull/14), [#15](https://github.com/ixtaqq/ai-infra-digest/pull/15), [#16](https://github.com/ixtaqq/ai-infra-digest/pull/16), [#19](https://github.com/ixtaqq/ai-infra-digest/pull/19), [#20](https://github.com/ixtaqq/ai-infra-digest/pull/20), [#21](https://github.com/ixtaqq/ai-infra-digest/pull/21), [#22](https://github.com/ixtaqq/ai-infra-digest/pull/22), and [#25](https://github.com/ixtaqq/ai-infra-digest/pull/25). Five migrations were added, and production now has 41. Render was suspended and the digest and delivery workflows were paused around the merges that carried migrations.
+
+| Check | Result |
+| --- | --- |
+| pg_cron dispatch | Returned 204 from 2026-11-02 14:50 UTC. Two earlier dispatches returned 401, because the Vault entry held its own name instead of the token. |
+| First dispatched digest | Started 2026-11-02 22:17:01 UTC and succeeded |
+| First delivery with the fixes | Reached Telegram, Slack, and email at 08:00:25 MYT on 2026-11-03 |
+| Stock quotes | 21 of 21 non-zero in the 2026-11-03 edition |
+| SEC extracts | 4 in the 2026-11-03 edition, the first ever |
+| Gated articles | 32 articles and 32 in categories, compared with 30 and 35 the day before |
+| Price history repair | 1,251 of 1,307 rows updated. All 1,251 match the plan, and Nasdaq agreed on all of them. |
+| Public search | HTTP 200 for anonymous callers, with 20 distinct URLs in 20 results |
+| Website | Live files match the repository on 2026-11-03 |
+| CI and CodeQL | Pass on `f24be08`, with no open CodeQL alerts |
+
+Not yet verified: the first production run of PR 25's changes, and a database restore drill. The remaining operational evidence in the 2026-09-24 record below is now partly met: delivery, Slack, and email succeeded, and successful generation within provider rate limits was seen on 2026-11-02, with 429s recovered by retries. See `TODOS.md` for open work.
 
 ### Live checks
 

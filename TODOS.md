@@ -1,5 +1,31 @@
 # TODOS
 
+## Open
+
+Last reviewed on 2026-11-03.
+
+### Verify in production
+
+- The first digest with the replaced feeds, the ticker corrections, and "Why it moved" runs at 22:17 UTC on 2026-11-03. Check that the three feeds succeed, that `MARV` and `LMNT` no longer return 404, and that the section looks right.
+- Through 2026-11-17, check that 95% of deliveries arrive within 15 minutes and that no false failure alerts fire.
+- Check that at least one SEC extract appears in a later edition, and read one against its filing. The 2026-11-03 extracts have not been read against the filings.
+- Check the dashboard's 14-day chart order by eye.
+- Check that the 30-day URL memory survives between runs, because it depends on the Actions cache.
+
+### Fix or decide
+
+- Google News links all share one hostname, so corroboration undercounts publishers (`src/utils/dedup.ts`). Publisher attribution would fix this at the source.
+- Moving to `node-telegram-bot-api` 2 needs its own migration, because version 2 removes the default export. No security alert forces it.
+- Concurrent writes to the delivery metrics could collide (migration v173). This is unlikely with one user.
+- The SEC rate limiter has not been tested under concurrency.
+- Embeddings, earnings transcripts, and AI fallback stay off until their keys are configured. Some of them may cost money.
+- Automated code review has not covered recent PRs, because Codex hit its usage limit on PRs 12, 19, 20, and 25.
+- A database restore drill has not been run.
+
+### Later, if there is demand
+
+Publisher attribution, a signup funnel, shareable edition pages, watchlist changes since yesterday, a catalyst calendar (see TODO-3), `/ask` over the archive, and an always-on worker for many more users.
+
 ## Completed
 
 ### [DONE-1] Persist corroboration_count, grounding_text, effective_score to DB
@@ -29,6 +55,14 @@
 **Context:** Discovered during the `/plan-eng-review` outside-voice challenge on the Thesis Evolution History plan — the reviewer's strategic critique revealed the original incident (NVDA, Blackwell delay, 2026-07-02) was about daily digest article coverage, not the weekly `/thesis` snapshot, prompting the founder to pivot to building `/coverage` first. This TODO captures the follow-up idea of connecting the two once both exist.
 
 **Completed in:** Phase XIII / v14.
+
+### [DONE-3] Data accuracy and delivery timing
+
+**What shipped:** Real stock moves, SEC extraction, pg_cron dispatch, scheduler states, quality alerts, live API contract checks, a stuck-claim release command, replacement feeds, ticker corrections, and "Why it moved".
+
+**Evidence:** The 2026-11-03 edition started at 06:17 MYT, reached Telegram, Slack, and email at 08:00 MYT, showed 21 of 21 non-zero stock moves, and had the first 4 SEC extracts.
+
+**Completed in:** v1.2.0 and the changes listed in `docs/releases/unreleased.md`.
 
 ## Parked / Rejected
 

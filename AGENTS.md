@@ -14,8 +14,8 @@ Conventions and setup state for this repo. Read before making changes.
 - **DB**: Supabase (Postgres + pgvector), managed via **Supabase CLI**, migrations in `supabase/migrations/`
 - **Validation**: `zod` — all AI JSON responses parsed through zod schemas (coerces type-confused fields)
 - **Tests**: Vitest — offline unit tests; integration-labelled mocked suites run under `npm test`
-- **CI**: GitHub Actions — `ci.yml` (lint + unit tests), `codeql.yml` (security scan)
-- **Cron**: GitHub Actions — daily digest, per-user scheduled delivery (every 10 min), weekly thesis snapshots, weekly data retention
+- **CI**: GitHub Actions — `ci.yml` (lint, tests, website, audit, Semgrep, container, Supabase migrations), `codeql.yml` (security scan), `api-contracts.yml` (weekly live Yahoo and EDGAR checks). Dependabot opens weekly update PRs and ignores major versions of `@types/node` and `node-telegram-bot-api`.
+- **Cron**: pg_cron in Supabase dispatches the daily digest and the 10-minute per-user delivery. GitHub Actions schedules stay as their backstop, and also run weekly thesis snapshots and weekly data retention.
 - **Website**: deployed to Vercel at **https://goldirham-stack.vercel.app** — landing page, `/briefing/`, and `/dashboard/` are live. Merging to `main` does not update the site. Deploy with the CLI from a clean copy of `website/` that has a `.vercel/project.json` link: `vercel deploy --prod --skip-domain`, verify, then `vercel promote`. In Git Bash, set `MSYS_NO_PATHCONV=1` for `vercel curl`. In PowerShell, use `npx.cmd`. The local Windows `vercel build` failed with `spawn cmd.exe ENOENT`.
 - **Website hosting**: Vercel (project `goldirham-stack`, team `aizattaqq-s-projects`)
 
@@ -48,8 +48,9 @@ Website preview locally: `.claude/launch.json` has a `website` config (`npx serv
 - **gh CLI**: authenticated as `ixtaqq` as of 2026-09-24; `repo` and `workflow` access were verified.
 - **Website**: deployed to Vercel at **https://goldirham-stack.vercel.app** — landing page, `/briefing/`, and `/dashboard/` are live. The 2026-09-24 release uses production deployment `dpl_22o2Xxmd75k4tYz9fFzKRx5EnsbB`. Prefer the CLI from the linked website directory; use `--skip-domain` to verify a deployment before `vercel promote`. The local Windows `vercel build` failed with `spawn cmd.exe ENOENT`; a hosted build from a clean staging copy succeeded.
 - **Email delivery**: the 2026-11-03 delivery logged a successful email copy. A historical run rejected `SMTP_PASS` with Gmail `535-5.7.8`. Slack/email failures remain non-fatal.
-- **Production migrations**: all 40 canonical versions through `20261102150000` are applied. Supabase's GitHub integration applies migrations automatically on merge to `main`; stop affected workers before merging migration-bearing releases, not only before a CLI push. Render also deploys `main` automatically.
+- **Production migrations**: all 41 canonical versions through `20261103090000` are applied. Supabase's GitHub integration applies migrations automatically on merge to `main`; stop affected workers before merging migration-bearing releases, not only before a CLI push. Render also deploys `main` automatically.
 - **Disabled stages**: embeddings and earnings are off because their keys are not configured. Dedup falls back to Jaccard. The first SEC extracts appeared in the 2026-11-03 edition (4 extracts; the 64 earlier editions have none).
+- **Price history**: on 2026-11-03, 1,251 of the 1,307 pre-fix `stock_prices` rows were recomputed from Yahoo closes and checked against Nasdaq. The other 56 stay at 0%. The old 0% copies in `daily_derived_metrics.price_change_pct` and `stock_mentions.price_change_percent` were deliberately left alone; new rows are correct.
 - **RSS feeds**: on 2026-11-03, Yahoo Finance's URL returned 404, VentureBeat returned 429, and AI News returned 202 with no feed, so their URLs were replaced. The Register recovered. A skipped feed runs again once its failures leave the latest 200 `pipeline_health` rows, so a dead URL shows up as a repeating fail, fail, skip pattern.
 
 ## Conventions / gotchas
@@ -58,6 +59,7 @@ Website preview locally: `.claude/launch.json` has a `website` config (`npx serv
 - **Quality alerts**: `src/pipeline/quality.ts` adds a rule table entry per check. Issues go to Slack and `digest_runs.degraded_stages` and never block publication.
 - **Stuck editorial claim**: inspect the publication and AI ledger, then run `npm run operations -- release-editorial YYYY-MM-DD "evidence and reason"`. The database refuses claims under an hour old.
 - **AI tickers**: `AI_TICKER_CORRECTIONS` in `src/utils/tickers.ts` fixes tickers the model invents. Add an entry when Yahoo logs a 404 for a real company. User watchlists do not use this table.
+- **Why it moved**: `src/utils/why-moved.ts` only uses a story whose first ticker is the stock, so a passing mention can't explain a move. It describes coverage, not cause.
 - **Live API checks**: `npm run verify:live-contracts` reads Yahoo and EDGAR only and runs weekly. Add a check there when a mock stands in for a new external API.
 
 - **Never put real secrets in `.env.example`** — it's tracked in git and public. Only `.env` (gitignored) holds real values. If `.env.example` ever shows a diff with real-looking tokens, do not commit — revert with `git checkout -- .env.example` and re-verify `.env` has the value instead.
