@@ -10,18 +10,18 @@ Goldirham Stack is an informational tool, not financial advice. Do your own rese
 
 ## Current status
 
-Last reviewed on 2026-11-02. The package version is `1.2.0`.
+Last reviewed on 2026-11-03. The package version is `1.2.0`.
 
 | Area | Status |
 |---|---|
-| Daily publishing | Running. 64 editions published. |
+| Daily publishing | Running. 65 editions published. |
 | Telegram bot | Deployed as a webhook service on Render. |
 | Website | Deployed on Vercel. |
-| Workflow timing | GitHub started the digest cron 1.8 to 3.7 hours late, and ran the 10-minute delivery cron about every 4.4 hours (median gap, 2026-10-18 to 2026-11-02). pg_cron now dispatches both workflows on schedule, and GitHub's own crons stay as a backstop. Delivery dispatch started working on 2026-11-02 at 14:50 UTC. The first digest dispatch is due at 22:17 UTC. |
-| Stock quotes | Fix merged on 2026-11-02, not yet seen in a production run. The 1,307 rows stored before the fix all show 0% change. |
-| SEC extracts | Fix merged on 2026-11-02, not yet seen in a production run. None of the 64 published editions contains an extract. |
-| Email copies | Health unverified. A past run failed Gmail authentication with `535-5.7.8`. Email and Slack failures do not stop delivery. |
-| RSS | 65 of 68 feeds succeeded in the latest recorded check. AI News, VentureBeat AI, and Yahoo Finance failed. |
+| Workflow timing | pg_cron dispatches both workflows, and GitHub's own crons stay as a backstop. On 2026-11-03 the digest started at 06:17 MYT and the delivery reached Telegram at 08:00 MYT. GitHub alone had run the digest 1.8 to 3.7 hours late, and the 10-minute delivery cron about every 4.4 hours (median gap, 2026-10-18 to 2026-11-02). |
+| Stock quotes | Working. All 21 quotes in the 2026-11-03 edition show real moves. The 1,307 rows stored before the fix all show 0% change. |
+| SEC extracts | Working. The 2026-11-03 edition has the first 4 extracts, for MRVL, ON, and AMZN. The 64 earlier editions have none. |
+| Email copies | Working. The 2026-11-03 delivery logged a successful email copy. Email and Slack failures do not stop delivery. |
+| RSS | Yahoo Finance, VentureBeat AI, and AI News had dead URLs. Their replacement URLs returned items on 2026-11-03 but have not run in production yet. |
 | SEC coverage | 35 companies are tracked. ANSS no longer appears in EDGAR's ticker list. |
 
 These optional stages are off in production because their keys are not configured. A missing key affects only its own stage.
@@ -57,9 +57,9 @@ flowchart TD
 
 - Reads 68 RSS feeds in 2 tiers: 50 company and financial feeds, and 18 industry feeds.
 - Uses conditional GET with ETag and Last-Modified headers, so unchanged feeds return 304.
-- Retries failed feeds up to 2 times with full-jitter backoff. It skips a feed after 2 or more consecutive failed runs, and flags a feed as likely dead after 3.
+- Retries failed feeds up to 2 times with full-jitter backoff. It skips a feed after 2 or more consecutive failed runs, and flags a feed as likely dead after 3. A skipped feed runs again once its failures leave the latest 200 health rows, after about 2 days.
 - Matches ticker keywords as case-sensitive whole words, and accepts only http and https links.
-- Deduplicates by URL and Jaccard title similarity. With embeddings enabled, it also uses cosine similarity at a 0.85 threshold.
+- Deduplicates by URL for 30 days and by Jaccard title similarity for 48 hours, because feeds relist old stories. With embeddings enabled, it also uses cosine similarity at a 0.85 threshold.
 - Sorts articles into 10 sectors: Chips & GPUs, Cloud & Hyperscalers, Datacenters, Networking, Semiconductor Manufacturing, Power & Utilities, Cooling Infrastructure, AI Models & Labs, M&A, and Earnings.
 - Drops articles with an AI relevance score below 4 out of 10. With embeddings enabled, it also compares each article with 20 AI infrastructure seed sentences at a 0.55 threshold.
 - Marks SEC-related articles with a badge in the digest and `is_sec_filing` in Supabase.
@@ -71,6 +71,7 @@ flowchart TD
 - Sizes batches at 5 to 15 articles, aiming for about 4 batches, and retries up to 3 times with full-jitter backoff.
 - Scores impact from 1 to 10: 1 to 3 is routine, 4 to 6 is notable, 7 to 8 is a significant surprise, and 9 to 10 is market-moving. A score of 8 or more requires a written justification.
 - Writes a skeptical bear case for high-impact articles, and a bull, bear, and context deep-dive for the highest-scoring article.
+- Corrects tickers the model invents, such as `AWS` to `AMZN` and `KLA` to `KLAC`, and drops companies with no US listing.
 - Links articles to same-run SEC filings, earnings guidance, and stock moves for matching tickers.
 - Caches AI responses for 23 hours, keyed on a SHA-256 hash of the source content and the prompt, schema, provider, and model.
 - Parses every AI JSON response through a zod schema, which coerces type-confused fields such as a number returned as a string.
@@ -111,9 +112,13 @@ The `claim_user_delivery` RPC claims each delivery atomically before sending. Co
 
 After delivery, a follow-up message offers thumbs-up and thumbs-down buttons on the top 3 articles. Votes feed the trust multipliers used in ranking.
 
+### Why it moved
+
+The digest pairs up to 3 of the day's largest moves, of at least 3%, with coverage from the same edition. A filing with an impact score of 7 or more comes first, then the top story whose first ticker is that stock. A move with no coverage is left out. The section says that this is coverage and not a proven cause.
+
 ### Website
 
-The landing page, reader, and dashboard are static HTML and vanilla JavaScript with no build framework. The dashboard reads Supabase with the public anon key under row-level security. It has 8 Chart.js charts, a stock ticker strip, sector and impact filters, indexed full-text search, expandable article rows with ranking reasons, a filings table, and thesis snapshots. It refreshes every 5 minutes while the page is visible.
+The landing page, reader, and dashboard are static HTML and vanilla JavaScript with no build framework. The dashboard reads Supabase with the public anon key under row-level security. It has 8 Chart.js charts, a stock ticker strip, sector and impact filters, indexed full-text search that shows each URL once, expandable article rows with ranking reasons, a filings table, and thesis snapshots. It refreshes every 5 minutes while the page is visible.
 
 ### Quality alerts
 
@@ -307,7 +312,7 @@ Reasons must be at least 20 characters and are kept in an audit table. Before yo
 
 ## Database
 
-Supabase holds 35 public tables, managed by 40 migrations in `supabase/migrations/`. `supabase-schema.sql` is a historical snapshot. The migrations are canonical.
+Supabase holds 35 public tables, managed by 41 migrations in `supabase/migrations/`. `supabase-schema.sql` is a historical snapshot. The migrations are canonical.
 
 ```bash
 npx supabase login
@@ -339,7 +344,7 @@ npm run verify:website        # Checks the site at 320, 768, 1024, and 1440px
 npm run verify:live-contracts # Reads live Yahoo and EDGAR responses
 ```
 
-`npm test` reported 616 passing tests across 69 files on 2026-11-02. `verify:website` needs a local server, and `.claude/launch.json` has a `website` configuration for port 4321.
+`npm test` reported 633 passing tests across 71 files on 2026-11-03. `verify:website` needs a local server, and `.claude/launch.json` has a `website` configuration for port 4321.
 
 CI runs lint, both test suites, website verification, `npm audit`, blocking Semgrep, a container check, and local Supabase migration validation. All actions are pinned to commit SHAs, and Dependabot proposes updates.
 
@@ -397,4 +402,4 @@ These are planning estimates and have not been measured recently.
 
 ## License
 
-MIT, as declared in `package.json`.
+MIT. See [LICENSE](LICENSE).
