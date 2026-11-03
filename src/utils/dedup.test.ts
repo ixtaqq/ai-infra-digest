@@ -136,6 +136,30 @@ describe("deduplicateArticles", () => {
     ]);
   });
 
+  it("skips a URL the feed republishes after the title window ends", async () => {
+    const { deduplicateArticles, markArticlesSeen } = await import("./dedup");
+    const url = "https://example.com/republished";
+    await markArticlesSeen([{ url, title: "Republished story about GPUs" }]);
+    const cachePath = path.join(testCacheDir, "articles-cache.json");
+    const cache = JSON.parse(fs.readFileSync(cachePath, "utf8"));
+    cache.entries[0].firstSeen = new Date(Date.now() - 5 * 24 * 3_600_000).toISOString();
+    fs.writeFileSync(cachePath, JSON.stringify(cache));
+
+    expect(await deduplicateArticles([{ url, title: "Republished story about GPUs" }])).toEqual([]);
+  });
+
+  it("allows a similar headline at a new URL after the title window ends", async () => {
+    const { deduplicateArticles, markArticlesSeen } = await import("./dedup");
+    await markArticlesSeen([{ url: "https://example.com/old", title: "NVIDIA announces new GPU roadmap" }]);
+    const cachePath = path.join(testCacheDir, "articles-cache.json");
+    const cache = JSON.parse(fs.readFileSync(cachePath, "utf8"));
+    cache.entries[0].firstSeen = new Date(Date.now() - 5 * 24 * 3_600_000).toISOString();
+    fs.writeFileSync(cachePath, JSON.stringify(cache));
+
+    const fresh = [{ url: "https://example.com/new", title: "NVIDIA announces new GPU roadmap" }];
+    expect(await deduplicateArticles(fresh)).toEqual(fresh);
+  });
+
   it("should respect retention hours", async () => {
     const { deduplicateArticles, markArticlesSeen } = await import("./dedup");
     const articles = [
