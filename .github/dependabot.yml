@@ -5,6 +5,13 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # These types must match the Node 22 runtime.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # Version 2 removes the default export, so moving to it needs its own migration.
+      - dependency-name: node-telegram-bot-api
+        update-types: ["version-update:semver-major"]
     groups:
       minor-and-patch:
         update-types: [minor, patch]
