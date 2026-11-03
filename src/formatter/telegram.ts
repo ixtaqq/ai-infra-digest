@@ -3,6 +3,7 @@ import type { StockPrice } from "../utils/stocks";
 import type { SECFinancialExtract } from "../processor/sec";
 import { escapeHtml } from "../utils/escape";
 import { formatRankingSummary } from "../utils/ranking";
+import { explainMoves } from "../utils/why-moved";
 
 function formatDate(): string {
   const now = new Date();
@@ -109,6 +110,18 @@ export function formatDigestTelegram(
       lines.push(`${sentimentEmoji(stock.sentiment)} <b>${escapeHtml(stock.ticker)}</b>${priceStr}`);
     }
     if (prices?.size) lines.push("<i>Saved price snapshots, not live quotes.</i>");
+    lines.push("");
+  }
+
+  const moves = prices ? explainMoves(prices, digest.articles, options?.secExtracts ?? []) : [];
+  if (moves.length > 0) {
+    lines.push("🔎 <b>Why it moved</b>");
+    for (const { ticker, changePercent, coverage } of moves) {
+      const title = escapeHtml(coverage.title);
+      const label = coverage.url ? `<a href="${escapeHtml(coverage.url)}">${title}</a>` : title;
+      lines.push(`<b>${escapeHtml(ticker)}</b> ${changePercent > 0 ? "+" : ""}${changePercent.toFixed(2)}% · ${label}`);
+    }
+    lines.push("<i>Coverage from this edition, not a proven cause.</i>");
     lines.push("");
   }
 
