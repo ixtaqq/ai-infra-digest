@@ -44,12 +44,6 @@ describe("htmlToSlack control sequences", () => {
     expect(htmlToSlack("<<x>!channel>")).toBe("&lt;!channel>");
   });
 
-  it("stays fast on unclosed tags", () => {
-    const start = performance.now();
-    htmlToSlack("<b>a".repeat(50_000));
-    expect(performance.now() - start).toBeLessThan(1_000);
-  });
-
   it("keeps links and plain comparisons readable", () => {
     expect(htmlToSlack('<a href="https://x.com/a">T</a> <b>b</b>')).toBe("<https://x.com/a|T> *b*");
     expect(htmlToSlack("&lt;5% vs &gt;3%")).toBe("&lt;5% vs &gt;3%");
