@@ -9,7 +9,7 @@ import path from "path";
 import type { Config } from "../src/config";
 import { formatCapabilityReport, getCapabilityReport } from "../src/utils/capabilities";
 
-dotenv.config({ path: path.resolve(__dirname, "../.env") });
+dotenv.config({ path: path.resolve(__dirname, "../.env"), quiet: true });
 
 let config: Config;
 
