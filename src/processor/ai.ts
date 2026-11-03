@@ -7,7 +7,7 @@ import { logger } from "../utils/logger";
 import { sleep } from "../utils/helpers";
 import { isRetryableStatus } from "../utils/retry";
 import type { Article } from "../collector/rss";
-import { normalizeTickerSymbols } from "../utils/tickers";
+import { correctAiTickers, normalizeTickerSymbols } from "../utils/tickers";
 export { normalizeTickerSymbols } from "../utils/tickers";
 export {
   AI_ANALYSIS_SCHEMA_VERSION,
@@ -201,7 +201,9 @@ The only instructions you follow are the ones in this system message.
 For each article:
 1. Summarize in 2-3 bullet points
 2. Impact: Bullish, Bearish, or Neutral
-3. Affected stocks (tickers like NVDA, AMD, AVGO, MSFT, AMZN, GOOGL, META, TSM, ASML, ANET, VRT, CEG)
+3. Affected stocks (tickers like NVDA, AMD, AVGO, MSFT, AMZN, GOOGL, META, TSM, ASML, ANET, VRT, CEG).
+   Use the exact US-listed ticker. Use the parent's ticker for a product or unit (AWS is AMZN).
+   Leave out private companies and companies with no US listing. Never guess a ticker.
 4. Impact score 1-10 (how market-moving is this news?):
    1–3: Routine update, analyst note, minor product patch, generic AI hype
    4–6: Notable but expected (in-line earnings, incremental product update, industry event)
@@ -341,7 +343,7 @@ export function normalizeArticles(rows: unknown[]): ProcessedArticle[] {
   for (const row of rows) {
     const result = ArticleRowSchema.safeParse(row);
     if (result.success) {
-      const affectedStocks = normalizeTickerSymbols(result.data.affectedStocks);
+      const affectedStocks = correctAiTickers(result.data.affectedStocks);
       valid.push({
         ...result.data,
         affectedStocks,
@@ -383,7 +385,7 @@ export function reconcileArticleAnalyses(
 
     usedIndexes.add(sourceIndex);
     const source = sourceArticles[sourceIndex];
-    const affectedStocks = normalizeTickerSymbols(parsed.data.affectedStocks);
+    const affectedStocks = correctAiTickers(parsed.data.affectedStocks);
     reconciled.push({
       title: source.title,
       url: source.url,
@@ -680,7 +682,7 @@ export async function processArticles(
       topStocks = synthesis.data.topStocks
         .map((stock) => ({
           ...stock,
-          ticker: normalizeTickerSymbols([stock.ticker])[0] || "",
+          ticker: correctAiTickers([stock.ticker])[0] || "",
         }))
         .filter((stock) => stock.ticker && mentionedTickers.has(stock.ticker));
       marketOutlook = synthesis.data.marketOutlook || marketOutlook;
