@@ -642,6 +642,18 @@ export const supabase = {
     });
   },
 
+  /** Record a 👍/👎 vote and its article counter atomically. False when the chat already voted. */
+  async recordArticleVote(articleId: number, chatId: number, rating: "up" | "down"): Promise<boolean> {
+    if (!Number.isSafeInteger(articleId) || articleId <= 0 || !Number.isSafeInteger(chatId)) return false;
+    return claimRpc(
+      "record_article_vote",
+      { p_article_id: articleId, p_chat_id: chatId, p_rating: rating },
+      ["record_article_vote"],
+      "recordArticleVote",
+      false
+    );
+  },
+
   /** Store one private rating/comment and update the daily aggregate atomically. */
   async submitDigestFeedback(
     chatId: number,

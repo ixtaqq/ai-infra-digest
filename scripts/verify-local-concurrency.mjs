@@ -15,11 +15,13 @@ const hash = randomBytes(32).toString('hex');
 const owners = [randomUUID(), randomUUID()];
 const update = randomBytes(6).readUIntBE(0, 6);
 const date = new Date(Date.UTC(2100, 0, 1) + randomInt(36500) * 86400000).toISOString().slice(0, 10);
+const article = randomBytes(6).readUIntBE(0, 6);
 
 assert.equal(await sql("SELECT count(*) FROM public.telegram_inbox WHERE status IN ('pending','processing')"), '0', 'Use an idle local inbox for concurrency verification');
 assert.equal(await sql(`SELECT count(*) FROM public.user_preferences WHERE chat_id=${chat}`), '0');
 assert.equal(await sql(`SELECT count(*) FROM public.editorial_jobs WHERE editorial_date='${date}'`), '0');
 assert.equal(await sql(`SELECT count(*) FROM public.telegram_inbox WHERE update_id IN (${update},${update + 1})`), '0');
+assert.equal(await sql(`SELECT count(*) FROM public.articles WHERE id=${article}`), '0');
 
 try {
   const race = async (name, statements) => {
@@ -38,8 +40,17 @@ try {
   await worker(`SELECT public.finish_telegram_update(${claimed},'done')`);
   assert.equal(await worker('SELECT count(*) FROM public.claim_telegram_update()'), '1', 'The next update must become eligible after completion');
   console.log('Webhook inbox: concurrent per-chat serialization and subsequent progress passed');
+
+  await sql(`INSERT INTO public.articles(id, title) VALUES (${article}, 'concurrency vote fixture')`);
+  const voters = Array.from({ length: 20 }, (_, index) => chat + 1 + index);
+  await Promise.all(voters.map(voter => worker(`SELECT public.record_article_vote(${article},${voter},'up')`)));
+  assert.equal(await sql(`SELECT thumbs_up FROM public.articles WHERE id=${article}`), '20', 'Concurrent distinct votes must all be counted');
+  await race('Repeat vote', [0, 1].map(() => `SELECT public.record_article_vote(${article},${chat},'down')`));
+  assert.equal(await sql(`SELECT thumbs_down FROM public.articles WHERE id=${article}`), '1', 'A repeat vote must not move the counter');
+  console.log('Article votes: 20 concurrent votes counted, repeat vote counted once');
 } finally {
   // Remove only the synthetic rows created by this local test, never project data or files.
   await worker(`SELECT public.delete_user_data(${chat})`);
   await sql(`DELETE FROM public.editorial_jobs WHERE editorial_date='${date}' AND owner IN ('${owners[0]}','${owners[1]}')`);
+  await sql(`DELETE FROM public.articles WHERE id=${article}`);
 }

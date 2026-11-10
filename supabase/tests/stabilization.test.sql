@@ -34,5 +34,16 @@ SELECT ok(public.claim_user_delivery(987654321, '2099-01-01'), 'confirmed failed
 UPDATE public.user_delivery_log SET status = 'success' WHERE chat_id = 987654321;
 SELECT ok(NOT public.claim_user_delivery(987654321, '2099-01-01'), 'success stays terminal');
 RESET ROLE;
+
+SELECT ok(NOT has_function_privilege(role_name, 'public.record_article_vote(bigint,bigint,text)', 'EXECUTE'), role_name || ' cannot record votes')
+FROM unnest(ARRAY['anon','authenticated']) role_name;
+INSERT INTO public.articles(id, title) VALUES (987654321, 'vote fixture');
+SET LOCAL ROLE service_role;
+SELECT ok(public.record_article_vote(987654321, 111, 'up'), 'a first vote is recorded');
+SELECT ok(NOT public.record_article_vote(987654321, 111, 'down'), 'a repeat vote from the same chat is ignored');
+SELECT ok(public.record_article_vote(987654321, 222, 'down'), 'another chat may vote');
+SELECT is((SELECT ARRAY[thumbs_up, thumbs_down] FROM public.articles WHERE id = 987654321), ARRAY[1, 1], 'each new vote moves its counter once');
+SELECT throws_ok('SELECT public.record_article_vote(987654321, 333, ''sideways'')', '23514', NULL, 'an unknown rating is rejected by the table check');
+RESET ROLE;
 SELECT * FROM finish();
 ROLLBACK;
