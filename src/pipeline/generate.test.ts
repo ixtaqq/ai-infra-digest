@@ -354,6 +354,16 @@ describe("generateDigest pipeline safety", () => {
     await expect(buildWhatChanged()).resolves.toContain("+100% WoW");
   });
 
+  it("logs why the Market Pulse section was left out when its query fails", async () => {
+    const { logger } = await import("../utils/logger");
+    const warn = vi.spyOn(logger, "warn");
+    h.queryRecentDerivedMetrics.mockRejectedValue(new Error("metrics timeout"));
+
+    await expect(buildWhatChanged()).resolves.toBeUndefined();
+
+    expect(warn.mock.calls.flat().join(" ")).toContain("metrics timeout");
+  });
+
   it("escapes sector names such as Chips & GPUs in the Telegram HTML", async () => {
     h.queryRecentDerivedMetrics.mockResolvedValue(
       Array.from({ length: 8 }, (_, index) => ({

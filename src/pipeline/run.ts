@@ -159,8 +159,8 @@ async function runEditorialPipeline(targetChatId?: number, publishOnly = false):
             deliveryEdition.digest.articles,
             publicationArticleIds
           );
-        } catch {
-          // Non-critical — digest already delivered
+        } catch (error) {
+          logger.warn(`Validation follow-up not sent; digest already delivered: ${(error as Error).message}`);
         }
       }
     }

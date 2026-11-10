@@ -588,7 +588,8 @@ export async function buildWhatChanged(): Promise<string | undefined> {
     }
 
     return lines.join("\n");
-  } catch {
+  } catch (error) {
+    logger.warn(`Market Pulse omitted: ${(error as Error).message}`);
     return undefined;
   }
 }

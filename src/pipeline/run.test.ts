@@ -12,6 +12,8 @@ const h = vi.hoisted(() => ({
   claimUserDelivery: vi.fn(),
   logUserDelivery: vi.fn(),
   wasUserDeliveredToday: vi.fn().mockResolvedValue(true),
+  sendValidationFollowUp: vi.fn(),
+  warn: vi.fn(),
 }));
 
 vi.mock("../config", () => ({
@@ -32,8 +34,8 @@ vi.mock("../utils/supabase", () => ({
     wasUserDeliveredToday: h.wasUserDeliveredToday,
   },
 }));
-vi.mock("../sender/telegram", () => ({ sendValidationFollowUp: vi.fn() }));
-vi.mock("../utils/logger", () => ({ logger: { info: vi.fn(), error: vi.fn() } }));
+vi.mock("../sender/telegram", () => ({ sendValidationFollowUp: h.sendValidationFollowUp }));
+vi.mock("../utils/logger", () => ({ logger: { info: vi.fn(), warn: h.warn, error: vi.fn() } }));
 
 import { runPipeline } from "./run";
 
@@ -184,6 +186,19 @@ describe("editorial pipeline publication", () => {
     expect(h.createDigestPublication.mock.invocationCallOrder[0]).toBeLessThan(
       h.deliverDigest.mock.invocationCallOrder[0]
     );
+  });
+
+  it("logs a failed validation follow-up without failing the delivered run", async () => {
+    await h.getDigestPublication();
+    const stored = await h.getDigestPublication();
+    h.getDigestPublication.mockReset()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue({ ...stored, article_ids: { "https://example.com/a": 3 } });
+    h.sendValidationFollowUp.mockRejectedValueOnce(new Error("keyboard rejected"));
+
+    await expect(runPipeline()).resolves.toBe(true);
+
+    expect(h.warn.mock.calls.flat().join(" ")).toContain("keyboard rejected");
   });
 
   it("does not double-send the default chat when another run owns its delivery", async () => {
