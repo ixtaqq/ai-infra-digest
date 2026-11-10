@@ -233,6 +233,16 @@ describe("generateDigest pipeline safety", () => {
     expect(h.sendMessage.mock.calls[0][1]).not.toContain("Off-topic high impact");
   });
 
+  it("still produces the edition when the optional alert stage cannot read users", async () => {
+    h.processArticles.mockResolvedValue(digestOf([article({ impactScore: 9 })]));
+    h.getAllActiveUsers.mockRejectedValue(new Error("Required rows user_preferences: HTTP 503"));
+
+    const generated = await generateDigest();
+
+    expect(generated?.digest.articles).toHaveLength(1);
+    expect(h.sendMessage).not.toHaveBeenCalled();
+  });
+
   it("marks only the articles the AI actually analyzed as seen", async () => {
     const analyzed = { url: "https://example.com/analyzed", title: "Analyzed GPU story", source: "A", summary: "", contentSnippet: "", date: new Date() };
     const dropped = { url: "https://example.com/dropped", title: "Dropped GPU story", source: "B", summary: "", contentSnippet: "", date: new Date() };

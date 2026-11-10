@@ -438,7 +438,13 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
     // ─── Step 3a.1: Cross-Source Grounding (v9.1) ────────────────────────────
     attachGroundingNotes(digest.articles, secExtracts, earningsAnalyses, stockPrices);
 
-    if (supabase.isConfigured()) await sendHighImpactAlerts(digest.articles);
+    if (supabase.isConfigured()) {
+      const alertStage = await tryStage(() => sendHighImpactAlerts(digest.articles), "High-impact alerts");
+      if (!alertStage.ok) {
+        emitError("telegram", "error", `High-impact alert stage failed: ${alertStage.error}`, undefined,
+          "Alerts already claimed are finalized per user; the edition continues without the rest.");
+      }
+    }
 
     // ─── Step 3c: Build "What Changed" WoW summary ───────────────────────────
     const whatChanged = supabase.isConfigured()
