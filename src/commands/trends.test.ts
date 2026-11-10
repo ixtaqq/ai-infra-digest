@@ -33,6 +33,13 @@ describe("/trends entity lookup", () => {
     expect(h.queryDerivedMetrics).toHaveBeenCalledWith("sector", "Datacenters", 30);
   });
 
+  it("keeps the day range between 1 and 365", async () => {
+    h.queryDerivedMetrics.mockResolvedValue([]);
+    await h.handlers.get("trends")!({ chatId: 1, text: "/trends NVDA 99999999999d" });
+    await h.handlers.get("trends")!({ chatId: 1, text: "/trends NVDA 0d" });
+    expect(h.queryDerivedMetrics.mock.calls.map((call) => call[2])).toEqual([365, 1]);
+  });
+
   it("still upper-cases tickers", async () => {
     h.queryDerivedMetrics.mockResolvedValue([]);
     await h.handlers.get("trends")!({ chatId: 1, text: "/trends nvda" });

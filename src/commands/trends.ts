@@ -66,7 +66,7 @@ export function registerTrendCommands(): void {
     // Parse "/trends NVDA 30d" or "/trends sector Datacenters 30d"
     const parts = ctx.text.split(/\s+/).slice(1);
     const daysMatch = parts.find((p: string) => /^\d+d$/i.test(p));
-    const days = daysMatch ? parseInt(daysMatch, 10) : 30;
+    const days = daysMatch ? Math.min(365, Math.max(1, parseInt(daysMatch, 10))) : 30;
     const entityTypePart: "ticker" | "sector" = parts.find((p: string) => p.toLowerCase() === "sector") ? "sector" : "ticker";
     const entityParts = parts.filter((p: string) => p !== daysMatch && p.toLowerCase() !== "sector");
     const requested = entityParts.join(" ");
