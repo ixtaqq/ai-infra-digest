@@ -137,6 +137,14 @@ describe("editorial pipeline publication", () => {
     expect(h.deliverDigest).not.toHaveBeenCalled();
   });
 
+  it("keeps the persistence error when marking the run failed also fails", async () => {
+    h.generateDigest.mockResolvedValue({ ...generated, digestRunId: 5 });
+    h.persistDigestMetrics.mockRejectedValue(new Error("persist failed"));
+    // The supabase mock has no completeDigestRun, so finalizing the run throws too.
+
+    await expect(runPipeline(undefined, { publishOnly: true })).rejects.toThrow("persist failed");
+  });
+
   it("reuses an existing edition without generation or delivery in publication-only mode", async () => {
     await h.getDigestPublication();
     await expect(runPipeline(undefined, { publishOnly: true })).resolves.toBe(true);

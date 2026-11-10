@@ -169,7 +169,9 @@ async function runEditorialPipeline(targetChatId?: number, publishOnly = false):
     logger.info(succeeded ? "Digest pipeline completed" : "Digest pipeline incomplete");
     return succeeded;
   } catch (error) {
-    await complete(false);
+    await complete(false).catch((finalizeError: Error) => {
+      logger.error(`Run could not be marked failed: ${finalizeError.message}`);
+    });
     throw error;
   }
 }
