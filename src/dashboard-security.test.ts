@@ -23,3 +23,21 @@ describe("dashboard privacy boundary", () => {
     expect(dashboard).toContain("? `'${raw}` : raw");
   });
 });
+
+describe("website security headers", () => {
+  const vercel = JSON.parse(readFileSync(resolve(process.cwd(), "website/vercel.json"), "utf8")) as {
+    headers: { source: string; headers: { key: string }[] }[];
+  };
+
+  it("applies every security header to all paths, including trailing-slash pages", () => {
+    // "/:path*" missed "/briefing/" in production on 2026-11-10; "/(.*)" matches every path.
+    const catchAll = vercel.headers.find((rule) => rule.source === "/(.*)");
+    expect(catchAll?.headers.map((header) => header.key).sort()).toEqual([
+      "Content-Security-Policy",
+      "Permissions-Policy",
+      "Referrer-Policy",
+      "X-Content-Type-Options",
+      "X-Frame-Options",
+    ]);
+  });
+});
