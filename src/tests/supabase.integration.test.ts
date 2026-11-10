@@ -285,6 +285,29 @@ describe("Supabase Integration", () => {
     });
   });
 
+  describe("recordArticleVote", () => {
+    it("records the vote and its counter in one RPC call", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => true });
+
+      const { supabase } = await import("../utils/supabase");
+      await expect(supabase.recordArticleVote(77, 12345, "up")).resolves.toBe(true);
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit];
+      expect(url).toContain("/rest/v1/rpc/record_article_vote");
+      expect(JSON.parse(String(options.body))).toEqual({ p_article_id: 77, p_chat_id: 12345, p_rating: "up" });
+    });
+
+    it("reports a repeat vote as not new and never calls the database for bad input", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => false });
+
+      const { supabase } = await import("../utils/supabase");
+      await expect(supabase.recordArticleVote(77, 12345, "down")).resolves.toBe(false);
+      await expect(supabase.recordArticleVote(-1, 12345, "up")).resolves.toBe(false);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("delivery claim state", () => {
     it("claims a delivery through the retryable RPC", async () => {
       mockFetch.mockResolvedValueOnce({

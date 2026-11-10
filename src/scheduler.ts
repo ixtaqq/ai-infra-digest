@@ -128,10 +128,7 @@ export async function schedulerMain(): Promise<void> {
     return;
   }
 
-  logger.info(
-    `${dueUsers.length} user(s) due for delivery: ` +
-      dueUsers.map((u) => `${u.first_name || u.chat_id} (${u.preferred_time || "08:00"} ${u.timezone || "MYT"})`).join(", ")
-  );
+  logger.info(`${dueUsers.length} user(s) due for delivery`);
 
   // Cheap read-only pre-filter to avoid running the full digest pipeline when
   // nobody is actually pending. This is an optimization, not the correctness
@@ -142,7 +139,7 @@ export async function schedulerMain(): Promise<void> {
       const deliveryDate = getDeliveryDate(user.timezone, now);
       const alreadyDelivered = await supabase.wasUserDeliveredToday(user.chat_id, deliveryDate);
       if (alreadyDelivered) {
-        logger.info(`Skipping user ${user.chat_id} — already delivered for ${deliveryDate}`);
+        logger.info(`Skipping a user already delivered for ${deliveryDate}`);
         return null;
       }
       return { user, deliveryDate };
@@ -264,7 +261,7 @@ export async function schedulerMain(): Promise<void> {
       }
     } catch (error) {
       tally.failed++;
-      logger.error(`Delivery failed for user ${user.chat_id}: ${(error as Error).message}`);
+      logger.error(`Delivery failed for a user: ${(error as Error).message}`);
     }
   });
 

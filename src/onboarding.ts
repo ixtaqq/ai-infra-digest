@@ -104,6 +104,11 @@ function scoreKeyboard(): InlineKeyboardMarkup {
   };
 }
 
+/** Callback data is client-supplied, so only values a keyboard offered are accepted. */
+function offered(keyboard: InlineKeyboardMarkup, data: string): boolean {
+  return keyboard.inline_keyboard.flat().some((button) => button.callback_data === data);
+}
+
 function lengthKeyboard(): InlineKeyboardMarkup {
   return {
     inline_keyboard: [
@@ -334,6 +339,7 @@ export async function handleOnboardingCallback(
 
   // ── Delivery time ─────────────────────────────────────────────────────────
   if (data.startsWith("ob_time_")) {
+    if (!offered(timeKeyboard(), data)) return true;
     const timeVal = data.replace("ob_time_", "");
     state.deliveryTime = timeVal === "skip" ? "08:00" : timeVal;
     state.step = "watchlist";
@@ -369,6 +375,7 @@ export async function handleOnboardingCallback(
 
   // ── Min score ─────────────────────────────────────────────────────────────
   if (data.startsWith("ob_score_")) {
+    if (!offered(scoreKeyboard(), data)) return true;
     const score = parseInt(data.replace("ob_score_", ""), 10);
     state.minScore = score;
 
@@ -386,6 +393,7 @@ export async function handleOnboardingCallback(
 
   // ── Digest length ─────────────────────────────────────────────────────────
   if (data.startsWith("ob_len_")) {
+    if (!offered(lengthKeyboard(), data)) return true;
     const length = data.replace("ob_len_", "") as "brief" | "standard" | "detailed";
     state.digestLength = length;
     state.step = "done";

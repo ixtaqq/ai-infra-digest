@@ -62,9 +62,27 @@ describe("decideWebhook", () => {
   it("returns 429 before parsing a rate-limited update", () => {
     const d = decideWebhook({
       method: "POST", url: PATH, webhookPath: PATH,
-      secret: "s3cret", secretHeader: "s3cret", rawBody: "{not json", rateLimited: true,
+      secret: "s3cret", secretHeader: "s3cret", rawBody: "{not json", allowRequest: () => false,
     });
     expect(d).toEqual({ status: 429, body: "too many requests" });
+  });
+
+  it("does not let forged or stray requests use up Telegram's rate budget", () => {
+    const limiter = new SlidingWindowRateLimiter(1, 60_000);
+    const allowRequest = () => limiter.allow("proxy");
+    for (const request of [
+      { method: "POST", url: PATH, secretHeader: "wrong" },
+      { method: "GET", url: "/health" },
+      { method: "POST", url: "/elsewhere", secretHeader: "s3cret" },
+    ]) {
+      decideWebhook({ ...request, webhookPath: PATH, secret: "s3cret", rawBody: "{}", allowRequest });
+    }
+
+    const real = decideWebhook({
+      method: "POST", url: PATH, webhookPath: PATH, secret: "s3cret", secretHeader: "s3cret",
+      rawBody: '{"update_id":3}', allowRequest,
+    });
+    expect(real.status).toBe(200);
   });
 });
 

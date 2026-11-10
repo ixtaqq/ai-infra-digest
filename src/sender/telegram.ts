@@ -859,57 +859,8 @@ async function handleArticleValidation(
   articleId: number,
   rating: "up" | "down"
 ): Promise<boolean> {
-  const url = config.app.supabaseUrl;
-  const key = config.app.supabaseServiceKey;
-  if (!url || !key) return false;
-
-  const headers = {
-    "apikey": key,
-    "Authorization": `Bearer ${key}`,
-    "Content-Type": "application/json",
-    "Prefer": "return=minimal,resolution=ignore-duplicates",
-  };
-
-  // Insert vote (duplicate silently ignored by ignore-duplicates)
-  const insertRes = await fetch(
-    `${url}/rest/v1/article_validations?on_conflict=article_id,chat_id`,
-    {
-      method: "POST",
-      signal: AbortSignal.timeout(15_000),
-      headers,
-      body: JSON.stringify({ article_id: articleId, chat_id: chatId, rating }),
-    }
-  );
-
-  // 201 = new row; 200 with empty body = duplicate ignored
-  const isNew = insertRes.status === 201;
-  if (!insertRes.ok && insertRes.status !== 200 && insertRes.status !== 201) {
-    logger.warn(`article_validations insert: HTTP ${insertRes.status}`);
-    return false;
-  }
-
-  if (isNew) {
-    // Increment the aggregate counter on the articles row (GET current → PATCH +1)
-    const col = rating === "up" ? "thumbs_up" : "thumbs_down";
-    try {
-      const getRes = await fetch(
-        `${url}/rest/v1/articles?id=eq.${articleId}&select=${col}`,
-        { headers: { "apikey": key, "Authorization": `Bearer ${key}` }, signal: AbortSignal.timeout(15_000) }
-      );
-      if (getRes.ok) {
-        const rows = (await getRes.json()) as Record<string, number>[];
-        const current = rows[0]?.[col] ?? 0;
-        await fetch(`${url}/rest/v1/articles?id=eq.${articleId}`, {
-          method: "PATCH",
-          signal: AbortSignal.timeout(15_000),
-          headers: { "apikey": key, "Authorization": `Bearer ${key}`, "Content-Type": "application/json", "Prefer": "return=minimal" },
-          body: JSON.stringify({ [col]: current + 1 }),
-        });
-      }
-    } catch {/* non-critical */}
-  }
-
-  return isNew;
+  const { supabase } = await import("../utils/supabase");
+  return supabase.recordArticleVote(articleId, chatId, rating);
 }
 
 // ─── Send Functions (unchanged from before) ────────────
@@ -955,6 +906,19 @@ export async function sendTelegramMessage(
   }
 }
 
+/** Nothing has been sent when planning fails, so the failure is definite, never ambiguous. */
+function planParts(
+  text: string
+): { ok: true; parts: string[] } | { ok: false; failure: SendResult } {
+  try {
+    return { ok: true, parts: planMessageParts(text) };
+  } catch (error) {
+    const errMsg = (error as Error).message;
+    logger.error(`Digest not sent; message could not be split: ${errMsg}`);
+    return { ok: false, failure: { success: false, ambiguous: false, error: errMsg } };
+  }
+}
+
 /**
  * Send a digest message to a specific user chat, rather than the default chat.
  * Used for per-user scheduled delivery.
@@ -971,14 +935,15 @@ export async function sendDigestMessageToUser(
     if (text.length <= 4096) {
       const result = await b.sendMessage(chatId, text, {
         parse_mode: parseMode,
-  
+
       });
-      logger.info(`Digest sent to user ${chatId} (ID: ${result.message_id})`);
+      logger.info(`Digest sent to a user (message ${result.message_id})`);
       return { success: true, messageId: result.message_id };
     }
 
-    // Chunk long messages
-    const chunks = planMessageParts(text);
+    const planned = planParts(text);
+    if (!planned.ok) return planned.failure;
+    const chunks = planned.parts;
     let lastResult: SendResult = { success: true };
 
     for (let i = 0; i < chunks.length; i++) {
@@ -990,11 +955,11 @@ export async function sendDigestMessageToUser(
       lastResult = { success: true, messageId: result.message_id };
     }
 
-    logger.info(`Digest sent to user ${chatId} in ${chunks.length} parts`);
+    logger.info(`Digest sent to a user in ${chunks.length} parts`);
     return lastResult;
   } catch (error) {
     const errMsg = (error as Error).message;
-    logger.error(`Failed to send digest to user ${chatId}: ${errMsg}`);
+    logger.error(`Failed to send digest to a user: ${errMsg}`);
     return { success: false, error: errMsg, ambiguous: sentParts > 0 || !definitelyRejected(error) };
   }
 }
@@ -1008,7 +973,9 @@ export async function sendDigestMessage(
     return sendTelegramMessage(digestText);
   }
 
-  const chunks = planMessageParts(digestText);
+  const planned = planParts(digestText);
+  if (!planned.ok) return planned.failure;
+  const chunks = planned.parts;
   let lastResult: SendResult = { success: true };
 
   for (let i = 0; i < chunks.length; i++) {

@@ -99,9 +99,10 @@ export function decideWebhook(opts: {
   secret?: string;
   secretHeader?: string | string[];
   rawBody: string;
-  rateLimited?: boolean;
+  /** Called only for authenticated update POSTs, so other traffic cannot use up the budget. */
+  allowRequest?: () => boolean;
 }): WebhookDecision {
-  const { method, url, webhookPath, secret, secretHeader, rawBody, rateLimited } = opts;
+  const { method, url, webhookPath, secret, secretHeader, rawBody, allowRequest } = opts;
 
   // Health check
   if (method === "GET" && (url === "/" || url === "/health")) {
@@ -117,7 +118,7 @@ export function decideWebhook(opts: {
     return { status: 403, body: "forbidden" };
   }
 
-  if (rateLimited) {
+  if (allowRequest && !allowRequest()) {
     return { status: 429, body: "too many requests" };
   }
 
@@ -162,7 +163,7 @@ function createServer(secret: string): http.Server {
         secret,
         secretHeader: req.headers["x-telegram-bot-api-secret-token"],
         rawBody: Buffer.concat(chunks).toString("utf8"),
-        rateLimited: !rateLimiter.allow(req.socket.remoteAddress || "unknown"),
+        allowRequest: () => rateLimiter.allow(req.socket.remoteAddress || "unknown"),
       });
 
       if (decision.update !== undefined) {

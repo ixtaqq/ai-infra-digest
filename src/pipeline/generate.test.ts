@@ -61,6 +61,7 @@ vi.mock("../config", () => ({
 }));
 vi.mock("../collector/rss", () => ({
   collectArticles: h.collectArticles,
+  DEAD_FEED_THRESHOLD: 3,
   skipFeed: vi.fn(),
   resetSkippedFeeds: vi.fn(),
 }));
@@ -233,6 +234,59 @@ describe("generateDigest pipeline safety", () => {
     expect(h.sendMessage.mock.calls[0][1]).not.toContain("Off-topic high impact");
   });
 
+  it("still produces the edition when the optional alert stage cannot read users", async () => {
+    h.processArticles.mockResolvedValue(digestOf([article({ impactScore: 9 })]));
+    h.getAllActiveUsers.mockRejectedValue(new Error("Required rows user_preferences: HTTP 503"));
+
+    const generated = await generateDigest();
+
+    expect(generated?.digest.articles).toHaveLength(1);
+    expect(h.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("escapes feed errors in the feed-health alert so Telegram accepts it", async () => {
+    h.collectArticles.mockResolvedValue({
+      articles: [{ title: "GPU input", url: "https://example.com/input", source: "Example", contentSnippet: "GPU" }],
+      feedStatuses: [
+        { name: "A&B Feed", url: "https://a.example", status: "failed", articlesFetched: 0, error: "Unexpected close tag </rss>" },
+        { name: "Good", url: "https://b.example", status: "success", articlesFetched: 3 },
+      ],
+    });
+
+    await generateDigest();
+
+    const healthAlert = h.sendMessage.mock.calls.map((call) => String(call[1])).find((text) => text.includes("Feed Health"));
+    expect(healthAlert).toContain("A&amp;B Feed");
+    expect(healthAlert).toContain("Unexpected close tag &lt;/rss&gt;");
+  });
+
+  it("logs a feed-health alert as not sent when Telegram rejects it", async () => {
+    const { logger } = await import("../utils/logger");
+    const error = vi.spyOn(logger, "error");
+    const warn = vi.spyOn(logger, "warn");
+    h.collectArticles.mockResolvedValue({
+      articles: [{ title: "GPU input", url: "https://example.com/input", source: "Example", contentSnippet: "GPU" }],
+      feedStatuses: [{ name: "Down", url: "https://a.example", status: "failed", articlesFetched: 0, error: "HTTP 503" }],
+    });
+    h.sendMessage.mockRejectedValueOnce(Object.assign(new Error("Bad Request"), {
+      code: "ETELEGRAM", response: { status: 400 },
+    }));
+
+    await generateDigest();
+
+    expect(error.mock.calls.flat().join(" ")).toContain("Feed health alert not sent");
+    expect(warn.mock.calls.flat().join(" ")).not.toContain("Feed health alert sent");
+  });
+
+  it("escapes the error text in the generation-failure alert", async () => {
+    h.processArticles.mockRejectedValue(new Error("Unexpected token < in JSON at position 0"));
+
+    expect(await generateDigest()).toBeNull();
+
+    const failureAlert = h.sendMessage.mock.calls.map((call) => String(call[1])).find((text) => text.includes("failed to generate"));
+    expect(failureAlert).toContain("<code>Unexpected token &lt; in JSON at position 0</code>");
+  });
+
   it("marks only the articles the AI actually analyzed as seen", async () => {
     const analyzed = { url: "https://example.com/analyzed", title: "Analyzed GPU story", source: "A", summary: "", contentSnippet: "", date: new Date() };
     const dropped = { url: "https://example.com/dropped", title: "Dropped GPU story", source: "B", summary: "", contentSnippet: "", date: new Date() };
@@ -316,6 +370,30 @@ describe("generateDigest pipeline safety", () => {
     );
 
     await expect(buildWhatChanged()).resolves.toContain("+100% WoW");
+  });
+
+  it("logs why the Market Pulse section was left out when its query fails", async () => {
+    const { logger } = await import("../utils/logger");
+    const warn = vi.spyOn(logger, "warn");
+    h.queryRecentDerivedMetrics.mockRejectedValue(new Error("metrics timeout"));
+
+    await expect(buildWhatChanged()).resolves.toBeUndefined();
+
+    expect(warn.mock.calls.flat().join(" ")).toContain("metrics timeout");
+  });
+
+  it("escapes sector names such as Chips & GPUs in the Telegram HTML", async () => {
+    h.queryRecentDerivedMetrics.mockResolvedValue(
+      Array.from({ length: 8 }, (_, index) => ({
+        date: `2026-07-${String(index + 1).padStart(2, "0")}`,
+        entity_type: "sector",
+        entity: "Chips & GPUs",
+        mention_count: index === 7 ? 10 : 5,
+        avg_impact_score: 7,
+      }))
+    );
+
+    await expect(buildWhatChanged()).resolves.toContain("Chips &amp; GPUs mentions +100% WoW");
   });
 });
 

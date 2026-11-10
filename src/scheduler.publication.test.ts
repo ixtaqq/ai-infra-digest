@@ -205,6 +205,24 @@ it("reports total delivery failure as a failed scheduler run", async () => {
   h.deliverDigest.mockResolvedValue({ success: false, error: "blocked" });
   await expect(schedulerMain()).rejects.toThrow("0 delivered, 1 failed");
 });
+it("keeps subscriber names and chat IDs out of the public Actions log", async () => {
+  const { logger } = await import("./utils/logger");
+  h.getAllActiveUsers.mockResolvedValue([
+    { chat_id: 987654321, first_name: "Aisha", preferred_time: "00:00", timezone: "UTC" },
+    { chat_id: 123456789, first_name: "Ben", preferred_time: "00:00", timezone: "UTC" },
+  ]);
+  h.wasUserDeliveredToday.mockImplementation(async (chatId: number) => chatId === 123456789);
+  h.deliverDigest.mockRejectedValue(new Error("boom"));
+
+  await expect(schedulerMain()).rejects.toThrow("1 failed");
+
+  const logged = [logger.info, logger.warn, logger.error]
+    .flatMap((fn) => vi.mocked(fn).mock.calls)
+    .map((call) => JSON.stringify(call))
+    .join("\n");
+  expect(logged).toContain("2 user(s) due");
+  for (const secret of ["Aisha", "Ben", "987654321", "123456789"]) expect(logged).not.toContain(secret);
+});
 it("rejects an empty nested digest before delivery can claim a slot", async () => {
   h.getDigestPublication.mockResolvedValue({ id: 17, payload: { ...payload, digest: {} } });
   await expect(schedulerMain()).rejects.toThrow("1 failed");

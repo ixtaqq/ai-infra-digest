@@ -103,6 +103,34 @@ describe("Telegram Integration", () => {
     expect(mockMethods.sendMessage.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
+  it("reports unplannable HTML as a definite failure, sending nothing", async () => {
+    const { mockMethods } = await import("node-telegram-bot-api");
+    const { sendDigestMessage, sendDigestMessageToUser } = await import("../sender/telegram");
+    const unbalanced = `<b>${"A".repeat(5000)}`;
+    mockMethods.sendMessage.mockClear();
+
+    const toUser = await sendDigestMessageToUser(777, unbalanced);
+    const toDefault = await sendDigestMessage(unbalanced);
+
+    expect(mockMethods.sendMessage).not.toHaveBeenCalled();
+    expect(toUser).toMatchObject({ success: false, ambiguous: false });
+    expect(toDefault).toMatchObject({ success: false, ambiguous: false });
+    expect(toUser.error).toContain("Unbalanced Telegram HTML");
+  });
+
+  it("keeps the recipient's chat ID out of the per-user send log", async () => {
+    const { logger } = await import("../utils/logger");
+    const info = vi.spyOn(logger, "info");
+    const { sendDigestMessageToUser } = await import("../sender/telegram");
+
+    await sendDigestMessageToUser(987654321, "Short digest");
+    await sendDigestMessageToUser(987654321, "B".repeat(9000));
+
+    const logged = info.mock.calls.flat().join(" ");
+    expect(logged).toContain("Digest sent to a user");
+    expect(logged).not.toContain("987654321");
+  });
+
   it("should register command handlers", async () => {
     const { registerCommand, startInteractiveBot } = await import(
       "../sender/telegram"

@@ -438,7 +438,13 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
     // ─── Step 3a.1: Cross-Source Grounding (v9.1) ────────────────────────────
     attachGroundingNotes(digest.articles, secExtracts, earningsAnalyses, stockPrices);
 
-    if (supabase.isConfigured()) await sendHighImpactAlerts(digest.articles);
+    if (supabase.isConfigured()) {
+      const alertStage = await tryStage(() => sendHighImpactAlerts(digest.articles), "High-impact alerts");
+      if (!alertStage.ok) {
+        emitError("telegram", "error", `High-impact alert stage failed: ${alertStage.error}`, undefined,
+          "The edition continues without the remaining alerts; check alert_delivery_log for any left pending.");
+      }
+    }
 
     // ─── Step 3c: Build "What Changed" WoW summary ───────────────────────────
     const whatChanged = supabase.isConfigured()
@@ -519,7 +525,7 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
     try {
       await sendDigestMessage(
         `⚠️ <b>AI Infra Digest — Error</b>\n\n` +
-          `The daily digest failed to generate:\n<code>${errMsg}</code>\n\n` +
+          `The daily digest failed to generate:\n<code>${escapeHtml(errMsg)}</code>\n\n` +
           `Check the GitHub Actions logs for details.`
       );
     } catch {
@@ -576,12 +582,14 @@ export async function buildWhatChanged(): Promise<string | undefined> {
     for (const m of top) {
       const arrow = m.direction === "up" ? "📈" : "📉";
       const sign = m.pct >= 0 ? "+" : "";
-      const label = m.entityType === "sector" ? m.entity : `<b>${m.entity}</b>`;
+      const entity = escapeHtml(m.entity);
+      const label = m.entityType === "sector" ? entity : `<b>${entity}</b>`;
       lines.push(`${arrow} ${label} mentions ${sign}${m.pct.toFixed(0)}% WoW`);
     }
 
     return lines.join("\n");
-  } catch {
+  } catch (error) {
+    logger.warn(`Market Pulse omitted: ${(error as Error).message}`);
     return undefined;
   }
 }
@@ -645,7 +653,7 @@ export async function sendHighImpactAlerts(articles: import("../processor/ai").P
         if (!finalized) logger.error("Alert finalization failed; manual reconciliation required");
         if (!result.success || !finalized) continue;
         const logTitle = typeof article.title === "string" ? article.title : "untitled";
-        logger.info(`Alert sent for article "${logTitle.slice(0, 60)}..." to user ${user.chat_id}`);
+        logger.info(`Alert sent for article "${logTitle.slice(0, 60)}..."`);
       } catch (error) {
         if (claimed) {
           await supabase.logHighImpactAlert(
@@ -672,7 +680,7 @@ async function checkFeedHealth(feedStatuses: FeedResult[]): Promise<void> {
     const failedFeeds = feedStatuses
       .filter((f) => f.status === "failed")
       .slice(0, 10)
-      .map((f) => `• <code>${f.name}</code>: ${f.error || "unknown error"}`)
+      .map((f) => `• <code>${escapeHtml(f.name)}</code>: ${escapeHtml(f.error || "unknown error")}`)
       .join("\n");
 
     const alertText =
@@ -681,8 +689,9 @@ async function checkFeedHealth(feedStatuses: FeedResult[]): Promise<void> {
       `Failed feeds:\n${failedFeeds}\n\n` +
       `<i>Check the pipeline health dashboard for details.</i>`;
 
-    await sendDigestMessage(alertText);
-    logger.warn(`Feed health alert sent: ${failed}/${total} feeds failing`);
+    const result = await sendDigestMessage(alertText);
+    if (result.success) logger.warn(`Feed health alert sent: ${failed}/${total} feeds failing`);
+    else logger.error(`Feed health alert not sent (${failed}/${total} feeds failing): ${result.error}`);
   }
 }
 
