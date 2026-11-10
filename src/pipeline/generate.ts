@@ -582,7 +582,8 @@ export async function buildWhatChanged(): Promise<string | undefined> {
     for (const m of top) {
       const arrow = m.direction === "up" ? "📈" : "📉";
       const sign = m.pct >= 0 ? "+" : "";
-      const label = m.entityType === "sector" ? m.entity : `<b>${m.entity}</b>`;
+      const entity = escapeHtml(m.entity);
+      const label = m.entityType === "sector" ? entity : `<b>${entity}</b>`;
       lines.push(`${arrow} ${label} mentions ${sign}${m.pct.toFixed(0)}% WoW`);
     }
 

@@ -353,6 +353,20 @@ describe("generateDigest pipeline safety", () => {
 
     await expect(buildWhatChanged()).resolves.toContain("+100% WoW");
   });
+
+  it("escapes sector names such as Chips & GPUs in the Telegram HTML", async () => {
+    h.queryRecentDerivedMetrics.mockResolvedValue(
+      Array.from({ length: 8 }, (_, index) => ({
+        date: `2026-07-${String(index + 1).padStart(2, "0")}`,
+        entity_type: "sector",
+        entity: "Chips & GPUs",
+        mention_count: index === 7 ? 10 : 5,
+        avg_impact_score: 7,
+      }))
+    );
+
+    await expect(buildWhatChanged()).resolves.toContain("Chips &amp; GPUs mentions +100% WoW");
+  });
 });
 
 describe("sendHighImpactAlerts", () => {
