@@ -963,7 +963,6 @@ export async function sendTelegramMessage(
 function planParts(
   text: string
 ): { ok: true; parts: string[] } | { ok: false; failure: SendResult } {
-  if (text.length <= 4096) return { ok: true, parts: [text] };
   try {
     return { ok: true, parts: planMessageParts(text) };
   } catch (error) {
