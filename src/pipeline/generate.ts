@@ -645,7 +645,7 @@ export async function sendHighImpactAlerts(articles: import("../processor/ai").P
         if (!finalized) logger.error("Alert finalization failed; manual reconciliation required");
         if (!result.success || !finalized) continue;
         const logTitle = typeof article.title === "string" ? article.title : "untitled";
-        logger.info(`Alert sent for article "${logTitle.slice(0, 60)}..." to user ${user.chat_id}`);
+        logger.info(`Alert sent for article "${logTitle.slice(0, 60)}..."`);
       } catch (error) {
         if (claimed) {
           await supabase.logHighImpactAlert(

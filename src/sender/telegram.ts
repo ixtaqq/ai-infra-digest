@@ -973,7 +973,7 @@ export async function sendDigestMessageToUser(
         parse_mode: parseMode,
   
       });
-      logger.info(`Digest sent to user ${chatId} (ID: ${result.message_id})`);
+      logger.info(`Digest sent to a user (message ${result.message_id})`);
       return { success: true, messageId: result.message_id };
     }
 
@@ -990,11 +990,11 @@ export async function sendDigestMessageToUser(
       lastResult = { success: true, messageId: result.message_id };
     }
 
-    logger.info(`Digest sent to user ${chatId} in ${chunks.length} parts`);
+    logger.info(`Digest sent to a user in ${chunks.length} parts`);
     return lastResult;
   } catch (error) {
     const errMsg = (error as Error).message;
-    logger.error(`Failed to send digest to user ${chatId}: ${errMsg}`);
+    logger.error(`Failed to send digest to a user: ${errMsg}`);
     return { success: false, error: errMsg, ambiguous: sentParts > 0 || !definitelyRejected(error) };
   }
 }

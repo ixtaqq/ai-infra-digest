@@ -76,7 +76,7 @@ export async function deliverDigest(
 
   logger.info(
     targetChatId
-      ? `Delivering digest to user ${targetChatId}${isPersonalized ? " (personalized)" : ""}...`
+      ? `Delivering digest to a user${isPersonalized ? " (personalized)" : ""}...`
       : "Sending digest to default chat..."
   );
 
@@ -86,7 +86,7 @@ export async function deliverDigest(
       ? await supabase.claimUserDelivery(targetChatId, runDate)
       : true;
     if (!claimed) {
-      logger.info(`Skipping delivery to user ${targetChatId} — slot already claimed for ${runDate}`);
+      logger.info(`Skipping a delivery — slot already claimed for ${runDate}`);
       return { success: false, held: true, error: "delivery slot already claimed" };
     }
 
@@ -108,7 +108,7 @@ export async function deliverDigest(
         ? await supabase.logUserDelivery(...deliveryArgs, generated.publicationId)
         : await supabase.logUserDelivery(...deliveryArgs);
       if (!finalized) {
-        logger.error(`Primary delivery finalization failed for ${targetChatId}/${runDate}; manual reconciliation required`);
+        logger.error(`Primary delivery finalization failed for ${runDate}; run npm run operations -- status to reconcile`);
         return { ...sendResult, success: false, ambiguous: true, error: "Primary delivery finalization failed; do not replay" };
       }
       await supabase.recordProductEvent(
