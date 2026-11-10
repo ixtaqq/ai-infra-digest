@@ -442,7 +442,7 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
       const alertStage = await tryStage(() => sendHighImpactAlerts(digest.articles), "High-impact alerts");
       if (!alertStage.ok) {
         emitError("telegram", "error", `High-impact alert stage failed: ${alertStage.error}`, undefined,
-          "Alerts already claimed are finalized per user; the edition continues without the rest.");
+          "The edition continues without the remaining alerts; check alert_delivery_log for any left pending.");
       }
     }
 

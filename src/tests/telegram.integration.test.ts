@@ -118,6 +118,19 @@ describe("Telegram Integration", () => {
     expect(toUser.error).toContain("Unbalanced Telegram HTML");
   });
 
+  it("keeps the recipient's chat ID out of the per-user send log", async () => {
+    const { logger } = await import("../utils/logger");
+    const info = vi.spyOn(logger, "info");
+    const { sendDigestMessageToUser } = await import("../sender/telegram");
+
+    await sendDigestMessageToUser(987654321, "Short digest");
+    await sendDigestMessageToUser(987654321, "B".repeat(9000));
+
+    const logged = info.mock.calls.flat().join(" ");
+    expect(logged).toContain("Digest sent to a user");
+    expect(logged).not.toContain("987654321");
+  });
+
   it("should register command handlers", async () => {
     const { registerCommand, startInteractiveBot } = await import(
       "../sender/telegram"

@@ -1,6 +1,6 @@
 # Goldirham Stack review and roadmap
 
-Reviewed on November 10, 2026, against `main` at `f24be08`. Fixes are on the branch `fix/review-2026-11-10` (11 commits). Nothing in this review was pushed, merged, deployed or sent.
+Reviewed on November 10, 2026, against `main` at `f24be08`. Fixes are on the branch `fix/review-2026-11-10`, one commit per finding plus review follow-ups. Nothing in this review was pushed, merged, deployed or sent.
 
 This review follows [the October 6 review](project-review-2026-10-06.md) and [`AUDIT.md`](../AUDIT.md). It rechecks their open items and adds new findings. Closed findings are not repeated.
 
@@ -18,7 +18,7 @@ This review follows [the October 6 review](project-review-2026-10-06.md) and [`A
 
 | Check | `main` | This branch |
 | --- | --- | --- |
-| `npm test` (with build) | 633 passed, 0 failed, 0 skipped, 71 files | 646 passed, 0 failed, 0 skipped, 71 files |
+| `npm test` (with build) | 633 passed, 0 failed, 0 skipped, 71 files | 648 passed, 0 failed, 0 skipped, 71 files |
 | `npm run test:unit` | 580 passed, 66 files | not rerun |
 | `npm run lint` | pass | pass |
 | `npm audit` | 0 vulnerabilities | unchanged |
@@ -66,6 +66,17 @@ Checked and not a bug:
 - `ai_attempts` holds no user identity.
 
 Decision for you: `reconciliation_audit.identity` keeps a chat identity after `/delete`. That looks like a deliberate audit trail; if so, say so in the privacy notes.
+
+### Review of this branch
+
+A standards review and a spec review ran on the branch diff. A separate run measured that every fixed row's new test fails on `main`'s code and passes on the branch, except the webhook row, as noted above. Fixed after review: a doc comment that had detached from `sendDigestMessageToUser`, a finalization test that passed only because a mock was missing, a misleading hint in the alert-stage error, and missing tests for the per-user send log and the feed-health result log.
+
+Left as is, with reasons:
+
+- The `deliver.ts` log lines changed in `531a7af` have no direct test, because `deliver.ts` has no test file of its own; the scheduler and send-path tests cover the rest of that row.
+- An alert-stage failure goes to `emitError`, like the SEC and stock stages. It does not appear in `digest_runs.degraded_stages`, which the embeddings and earnings stages use. Add a capability entry if you want it on the quality alerts.
+- `/trends` uses an inline 365-day bound.
+- Forged onboarding values are dropped without a log line. The callback is still answered at `onboarding.ts:326`, so the client does not hang.
 
 ## 3. Improvements ranked by impact versus effort
 

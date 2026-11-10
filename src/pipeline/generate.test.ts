@@ -260,6 +260,24 @@ describe("generateDigest pipeline safety", () => {
     expect(healthAlert).toContain("Unexpected close tag &lt;/rss&gt;");
   });
 
+  it("logs a feed-health alert as not sent when Telegram rejects it", async () => {
+    const { logger } = await import("../utils/logger");
+    const error = vi.spyOn(logger, "error");
+    const warn = vi.spyOn(logger, "warn");
+    h.collectArticles.mockResolvedValue({
+      articles: [{ title: "GPU input", url: "https://example.com/input", source: "Example", contentSnippet: "GPU" }],
+      feedStatuses: [{ name: "Down", url: "https://a.example", status: "failed", articlesFetched: 0, error: "HTTP 503" }],
+    });
+    h.sendMessage.mockRejectedValueOnce(Object.assign(new Error("Bad Request"), {
+      code: "ETELEGRAM", response: { status: 400 },
+    }));
+
+    await generateDigest();
+
+    expect(error.mock.calls.flat().join(" ")).toContain("Feed health alert not sent");
+    expect(warn.mock.calls.flat().join(" ")).not.toContain("Feed health alert sent");
+  });
+
   it("escapes the error text in the generation-failure alert", async () => {
     h.processArticles.mockRejectedValue(new Error("Unexpected token < in JSON at position 0"));
 
