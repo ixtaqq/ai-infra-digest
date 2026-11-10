@@ -103,6 +103,21 @@ describe("Telegram Integration", () => {
     expect(mockMethods.sendMessage.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
+  it("reports unplannable HTML as a definite failure, sending nothing", async () => {
+    const { mockMethods } = await import("node-telegram-bot-api");
+    const { sendDigestMessage, sendDigestMessageToUser } = await import("../sender/telegram");
+    const unbalanced = `<b>${"A".repeat(5000)}`;
+    mockMethods.sendMessage.mockClear();
+
+    const toUser = await sendDigestMessageToUser(777, unbalanced);
+    const toDefault = await sendDigestMessage(unbalanced);
+
+    expect(mockMethods.sendMessage).not.toHaveBeenCalled();
+    expect(toUser).toMatchObject({ success: false, ambiguous: false });
+    expect(toDefault).toMatchObject({ success: false, ambiguous: false });
+    expect(toUser.error).toContain("Unbalanced Telegram HTML");
+  });
+
   it("should register command handlers", async () => {
     const { registerCommand, startInteractiveBot } = await import(
       "../sender/telegram"

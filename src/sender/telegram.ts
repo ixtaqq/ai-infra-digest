@@ -959,6 +959,20 @@ export async function sendTelegramMessage(
  * Send a digest message to a specific user chat, rather than the default chat.
  * Used for per-user scheduled delivery.
  */
+/** Nothing has been sent when planning fails, so the failure is definite, never ambiguous. */
+function planParts(
+  text: string
+): { ok: true; parts: string[] } | { ok: false; failure: SendResult } {
+  if (text.length <= 4096) return { ok: true, parts: [text] };
+  try {
+    return { ok: true, parts: planMessageParts(text) };
+  } catch (error) {
+    const errMsg = (error as Error).message;
+    logger.error(`Digest not sent; message could not be split: ${errMsg}`);
+    return { ok: false, failure: { success: false, ambiguous: false, error: errMsg } };
+  }
+}
+
 export async function sendDigestMessageToUser(
   chatId: number,
   text: string,
@@ -966,19 +980,20 @@ export async function sendDigestMessageToUser(
 ): Promise<SendResult> {
   const b = getBot();
   let sentParts = 0;
+  const planned = planParts(text);
+  if (!planned.ok) return planned.failure;
 
   try {
     if (text.length <= 4096) {
       const result = await b.sendMessage(chatId, text, {
         parse_mode: parseMode,
-  
+
       });
       logger.info(`Digest sent to a user (message ${result.message_id})`);
       return { success: true, messageId: result.message_id };
     }
 
-    // Chunk long messages
-    const chunks = planMessageParts(text);
+    const chunks = planned.parts;
     let lastResult: SendResult = { success: true };
 
     for (let i = 0; i < chunks.length; i++) {
@@ -1008,7 +1023,9 @@ export async function sendDigestMessage(
     return sendTelegramMessage(digestText);
   }
 
-  const chunks = planMessageParts(digestText);
+  const planned = planParts(digestText);
+  if (!planned.ok) return planned.failure;
+  const chunks = planned.parts;
   let lastResult: SendResult = { success: true };
 
   for (let i = 0; i < chunks.length; i++) {
