@@ -173,4 +173,42 @@ describe("onboarding consent", () => {
       vi.useRealTimers();
     }
   });
+
+  it("ignores callback values the onboarding keyboard never offered", async () => {
+    const bot = {
+      sendMessage: vi.fn(async () => ({ message_id: 1 })),
+      answerCallbackQuery: vi.fn(async () => undefined),
+      editMessageText: vi.fn(async () => undefined),
+    } as unknown as Parameters<typeof startOnboarding>[0];
+    await startOnboarding(bot, {
+      chat: { id: 45 },
+      from: { first_name: "Kai", username: "kai" },
+    } as unknown as Parameters<typeof startOnboarding>[1]);
+
+    for (const [index, data] of [
+      "ob_time_<b>99:99</b>",
+      "ob_time_09:00",
+      "ob_watchlist_skip",
+      "ob_score_77",
+      "ob_score_5",
+      "ob_len_huge",
+      "ob_len_brief",
+    ].entries()) {
+      await handleOnboardingCallback(bot, {
+        id: `forged-${index}`,
+        data,
+        message: { chat: { id: 45 }, message_id: index + 1 },
+        from: { first_name: "Kai", username: "kai" },
+      } as unknown as Parameters<typeof handleOnboardingCallback>[1]);
+    }
+
+    expect(supabase.upsertUserPreferences).toHaveBeenLastCalledWith(expect.objectContaining({
+      chat_id: 45,
+      preferred_time: "09:00",
+      min_impact_score: 5,
+      digest_length: "brief",
+    }));
+    const edits = vi.mocked(bot.editMessageText).mock.calls.map((call) => String(call[0])).join("\n");
+    expect(edits).not.toContain("99:99");
+  });
 });
