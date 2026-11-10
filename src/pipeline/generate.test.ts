@@ -61,6 +61,7 @@ vi.mock("../config", () => ({
 }));
 vi.mock("../collector/rss", () => ({
   collectArticles: h.collectArticles,
+  DEAD_FEED_THRESHOLD: 3,
   skipFeed: vi.fn(),
   resetSkippedFeeds: vi.fn(),
 }));
@@ -241,6 +242,31 @@ describe("generateDigest pipeline safety", () => {
 
     expect(generated?.digest.articles).toHaveLength(1);
     expect(h.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("escapes feed errors in the feed-health alert so Telegram accepts it", async () => {
+    h.collectArticles.mockResolvedValue({
+      articles: [{ title: "GPU input", url: "https://example.com/input", source: "Example", contentSnippet: "GPU" }],
+      feedStatuses: [
+        { name: "A&B Feed", url: "https://a.example", status: "failed", articlesFetched: 0, error: "Unexpected close tag </rss>" },
+        { name: "Good", url: "https://b.example", status: "success", articlesFetched: 3 },
+      ],
+    });
+
+    await generateDigest();
+
+    const healthAlert = h.sendMessage.mock.calls.map((call) => String(call[1])).find((text) => text.includes("Feed Health"));
+    expect(healthAlert).toContain("A&amp;B Feed");
+    expect(healthAlert).toContain("Unexpected close tag &lt;/rss&gt;");
+  });
+
+  it("escapes the error text in the generation-failure alert", async () => {
+    h.processArticles.mockRejectedValue(new Error("Unexpected token < in JSON at position 0"));
+
+    expect(await generateDigest()).toBeNull();
+
+    const failureAlert = h.sendMessage.mock.calls.map((call) => String(call[1])).find((text) => text.includes("failed to generate"));
+    expect(failureAlert).toContain("<code>Unexpected token &lt; in JSON at position 0</code>");
   });
 
   it("marks only the articles the AI actually analyzed as seen", async () => {

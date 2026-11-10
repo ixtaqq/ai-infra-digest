@@ -525,7 +525,7 @@ export async function generateDigest(): Promise<GeneratedDigest | null> {
     try {
       await sendDigestMessage(
         `⚠️ <b>AI Infra Digest — Error</b>\n\n` +
-          `The daily digest failed to generate:\n<code>${errMsg}</code>\n\n` +
+          `The daily digest failed to generate:\n<code>${escapeHtml(errMsg)}</code>\n\n` +
           `Check the GitHub Actions logs for details.`
       );
     } catch {
@@ -678,7 +678,7 @@ async function checkFeedHealth(feedStatuses: FeedResult[]): Promise<void> {
     const failedFeeds = feedStatuses
       .filter((f) => f.status === "failed")
       .slice(0, 10)
-      .map((f) => `• <code>${f.name}</code>: ${f.error || "unknown error"}`)
+      .map((f) => `• <code>${escapeHtml(f.name)}</code>: ${escapeHtml(f.error || "unknown error")}`)
       .join("\n");
 
     const alertText =
@@ -687,8 +687,9 @@ async function checkFeedHealth(feedStatuses: FeedResult[]): Promise<void> {
       `Failed feeds:\n${failedFeeds}\n\n` +
       `<i>Check the pipeline health dashboard for details.</i>`;
 
-    await sendDigestMessage(alertText);
-    logger.warn(`Feed health alert sent: ${failed}/${total} feeds failing`);
+    const result = await sendDigestMessage(alertText);
+    if (result.success) logger.warn(`Feed health alert sent: ${failed}/${total} feeds failing`);
+    else logger.error(`Feed health alert not sent (${failed}/${total} feeds failing): ${result.error}`);
   }
 }
 
