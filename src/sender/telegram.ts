@@ -955,10 +955,6 @@ export async function sendTelegramMessage(
   }
 }
 
-/**
- * Send a digest message to a specific user chat, rather than the default chat.
- * Used for per-user scheduled delivery.
- */
 /** Nothing has been sent when planning fails, so the failure is definite, never ambiguous. */
 function planParts(
   text: string
@@ -972,6 +968,10 @@ function planParts(
   }
 }
 
+/**
+ * Send a digest message to a specific user chat, rather than the default chat.
+ * Used for per-user scheduled delivery.
+ */
 export async function sendDigestMessageToUser(
   chatId: number,
   text: string,
@@ -979,8 +979,6 @@ export async function sendDigestMessageToUser(
 ): Promise<SendResult> {
   const b = getBot();
   let sentParts = 0;
-  const planned = planParts(text);
-  if (!planned.ok) return planned.failure;
 
   try {
     if (text.length <= 4096) {
@@ -992,6 +990,8 @@ export async function sendDigestMessageToUser(
       return { success: true, messageId: result.message_id };
     }
 
+    const planned = planParts(text);
+    if (!planned.ok) return planned.failure;
     const chunks = planned.parts;
     let lastResult: SendResult = { success: true };
 

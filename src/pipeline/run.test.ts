@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
   wasUserDeliveredToday: vi.fn().mockResolvedValue(true),
   sendValidationFollowUp: vi.fn(),
   warn: vi.fn(),
+  completeDigestRun: vi.fn(),
 }));
 
 vi.mock("../config", () => ({
@@ -32,6 +33,7 @@ vi.mock("../utils/supabase", () => ({
     claimUserDelivery: h.claimUserDelivery,
     logUserDelivery: h.logUserDelivery,
     wasUserDeliveredToday: h.wasUserDeliveredToday,
+    completeDigestRun: h.completeDigestRun,
   },
 }));
 vi.mock("../sender/telegram", () => ({ sendValidationFollowUp: h.sendValidationFollowUp }));
@@ -142,9 +144,10 @@ describe("editorial pipeline publication", () => {
   it("keeps the persistence error when marking the run failed also fails", async () => {
     h.generateDigest.mockResolvedValue({ ...generated, digestRunId: 5 });
     h.persistDigestMetrics.mockRejectedValue(new Error("persist failed"));
-    // The supabase mock has no completeDigestRun, so finalizing the run throws too.
+    h.completeDigestRun.mockRejectedValueOnce(new Error("finalize failed"));
 
     await expect(runPipeline(undefined, { publishOnly: true })).rejects.toThrow("persist failed");
+    expect(h.completeDigestRun).toHaveBeenCalledWith(5, "failed", expect.any(String));
   });
 
   it("reuses an existing edition without generation or delivery in publication-only mode", async () => {
